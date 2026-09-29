@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { SignoffSummary } from "@biosite-signoff/shared";
 import { getStock } from "../lib/api.js";
@@ -11,28 +11,14 @@ import { card, chip, errorBox, page, primary } from "../lib/ui.js";
 
 // The home screen: one tab per sign-off type (Setup → Types) showing what's in stock right now —
 // mechanisms with the first check done but not the last one yet. Finishing the last check makes
-// a mechanism drop off (it has left). "All sign-offs" is the full searchable list.
-const TAB_KEY = "biosite-signoff.home-tab";
+// a mechanism drop off (it has left). "All sign-offs" is the full searchable list — and the tab
+// the screen always opens on.
 const ALL = "__all";
 
 export function HomePage() {
   const types = useSignoffTypes();
-  const [tab, setTab] = useState<string>(() => {
-    try {
-      return localStorage.getItem(TAB_KEY) ?? "";
-    } catch {
-      return "";
-    }
-  });
-  const active = tab === ALL || types.some((t) => t.id === tab) ? tab : (types[0]?.id ?? ALL);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(TAB_KEY, active);
-    } catch {
-      // best-effort
-    }
-  }, [active]);
+  const [tab, setTab] = useState<string>(ALL);
+  const active = tab === ALL || types.some((t) => t.id === tab) ? tab : ALL;
 
   return (
     <div>
