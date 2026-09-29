@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PhotoFiles } from "../src/services/photoFiles.js";
 import { SignoffTypesService } from "../src/services/signoffTypes.js";
 import { SqliteStore } from "../src/store/sqlite/SqliteStore.js";
 import { AuthService } from "../src/services/auth.js";
@@ -7,12 +11,17 @@ import { MirrorService } from "../src/mirror/MirrorService.js";
 import { FakeSheetsApi } from "../src/mirror/SheetsApi.js";
 import { buildApp } from "../src/app.js";
 
+/** Smallest thing the server accepts as a JPEG (SOI marker + padding) — as an upload data URL. */
+export const FAKE_JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(200, 7)]);
+export const FAKE_JPEG_URL = `data:image/jpeg;base64,${FAKE_JPEG.toString("base64")}`;
+
 export async function setup(opts: { withSheets?: boolean; now?: () => number } = {}) {
   const store = new SqliteStore(":memory:");
   const auth = new AuthService(store, { now: opts.now });
   const catalog = new CatalogService(store);
   const signoffTypes = new SignoffTypesService(store);
-  const signoffs = new SignoffService(store, signoffTypes);
+  const photosDir = mkdtempSync(join(tmpdir(), "topbox-photos-"));
+  const signoffs = new SignoffService(store, signoffTypes, new PhotoFiles(photosDir));
   const sheets = new FakeSheetsApi();
   const mirror = new MirrorService(store, opts.withSheets === false ? null : sheets, "sheet-1", { cacheTtlMs: 60_000 });
   const app = await buildApp({ store, auth, catalog, signoffs, signoffTypes, mirror });
@@ -35,5 +44,5 @@ export async function setup(opts: { withSheets?: boolean; now?: () => number } =
     return call;
   }
 
-  return { ids, store, auth, catalog, signoffs, signoffTypes, sheets, mirror, app, template, login, as };
+  return { photosDir, ids, store, auth, catalog, signoffs, signoffTypes, sheets, mirror, app, template, login, as };
 }

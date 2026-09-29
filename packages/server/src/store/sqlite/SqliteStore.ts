@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
-import type { Mark, Part, ReplacedPart, Signature, Signoff, SignoffStatus, Template } from "@biosite-signoff/shared";
+import { mechanismKey, type Mark, type Part, type ReplacedPart, type Signature, type Signoff, type SignoffPhoto, type SignoffStatus, type Template } from "@biosite-signoff/shared";
 import type {
   AppSettingsRepo,
   AuditEntry,
@@ -451,6 +451,21 @@ interface SignatureRow {
   at: string;
 }
 
+interface PhotoRow {
+  id: string;
+  signoff_id: string;
+  check_id: string;
+  file: string;
+  taken_by: string;
+  taken_by_name: string;
+  taken_at: string;
+}
+
+const toPhoto = (p: PhotoRow): SignoffPhoto => ({ id: p.id, checkId: p.check_id, takenBy: p.taken_by, takenByName: p.taken_by_name, takenAt: p.taken_at });
+
+/** SQL twin of mechanismKey(): upper-cased, a trailing "R" after a digit dropped. */
+const MECHANISM_KEY_SQL = "(CASE WHEN upper(serial_number) GLOB '*[0-9]R' THEN substr(upper(serial_number), 1, length(serial_number) - 1) ELSE upper(serial_number) END)";
+
 interface PartLineRow {
   id: string;
   signoff_id: string;
@@ -478,7 +493,7 @@ class SqliteSignoffs implements SignoffsRepo {
     this.enqueue("signoffs", id);
   }
 
-  async create(s: Omit<Signoff, "marks" | "signatures" | "parts"> & { status: SignoffStatus }) {
+  async create(s: Omit<Signoff, "marks" | "signatures" | "parts" | "photos"> & { status: SignoffStatus }) {
     return this.tx(() => {
       const res = this.db
         .prepare(
@@ -499,6 +514,7 @@ class SqliteSignoffs implements SignoffsRepo {
     const marks = this.db.prepare(`SELECT * FROM signoff_marks WHERE deleted_at = '' AND signoff_id IN (${placeholders})`).all(...ids) as MarkRow[];
     const sigs = this.db.prepare(`SELECT * FROM signoff_signatures WHERE deleted_at = '' AND signoff_id IN (${placeholders})`).all(...ids) as SignatureRow[];
     const parts = this.db.prepare(`SELECT * FROM signoff_parts WHERE deleted_at = '' AND signoff_id IN (${placeholders}) ORDER BY created_at`).all(...ids) as PartLineRow[];
+    const photos = this.db.prepare(`SELECT * FROM signoff_photos WHERE deleted_at = '' AND signoff_id IN (${placeholders}) ORDER BY taken_at`).all(...ids) as PhotoRow[];
     return rows.map((r) => ({
       id: r.id,
       number: r.number,
@@ -520,6 +536,7 @@ class SqliteSignoffs implements SignoffsRepo {
         .map((m) => ({ rowId: m.row_id, checkId: m.check_id, value: m.value, byUserId: m.by_user_id, byName: m.by_name, at: m.at })),
       signatures: sigs.filter((s) => s.signoff_id === r.id).map((s) => ({ checkId: s.check_id, userId: s.user_id, name: s.name, path: s.path, date: s.date, time: s.time, at: s.at })),
       parts: parts.filter((p) => p.signoff_id === r.id).map((p) => ({ id: p.id, partId: p.part_id, partNumber: p.part_number, name: p.name, qty: Number(p.qty) || 1, note: p.note })),
+      photos: photos.filter((p) => p.signoff_id === r.id).map(toPhoto),
     }));
   }
 
@@ -552,8 +569,8 @@ class SqliteSignoffs implements SignoffsRepo {
       params.push(f.typeId);
     }
     if (f.serial) {
-      where.push("serial_number = ? COLLATE NOCASE");
-      params.push(f.serial);
+      where.push(`${MECHANISM_KEY_SQL} = ?`);
+      params.push(mechanismKey(f.serial));
     }
     const clause = where.join(" AND ");
     const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM signoffs WHERE ${clause}`).get(...params) as { n: number }).n;
@@ -642,7 +659,7 @@ class SqliteSignoffs implements SignoffsRepo {
       .prepare(
         `SELECT serial_number AS serialNumber, COUNT(*) AS visits, MAX(arrived_at || '|' || created_at || '|' || id) AS lastKey
          FROM signoffs WHERE deleted_at = '' ${where}
-         GROUP BY serial_number COLLATE NOCASE ORDER BY MAX(updated_at) DESC LIMIT ?`,
+         GROUP BY ${MECHANISM_KEY_SQL} ORDER BY MAX(updated_at) DESC LIMIT ?`,
       )
       .all(...(search ? [`%${search}%`, limit] : [limit])) as { serialNumber: string; visits: number; lastKey: string }[];
     return rows.map((r) => ({ serialNumber: r.serialNumber, visits: r.visits, lastId: r.lastKey.split("|").pop()! }));
@@ -692,6 +709,33 @@ class SqliteSignoffs implements SignoffsRepo {
         )
         .run(p.id, signoffId, p.partId, p.partNumber, p.name, String(p.qty), p.note, at, at);
       this.enqueue("signoff_parts", p.id);
+      this.touch(signoffId, at);
+    });
+  }
+
+  async addPhoto(signoffId: string, p: SignoffPhoto & { file: string }, at: string) {
+    this.tx(() => {
+      const res = this.db
+        .prepare(
+          `INSERT OR IGNORE INTO signoff_photos (id, signoff_id, check_id, file, taken_by, taken_by_name, taken_at, created_at, updated_at, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '')`,
+        )
+        .run(p.id, signoffId, p.checkId, p.file, p.takenBy, p.takenByName, p.takenAt, at, at);
+      if (res.changes === 0) return;
+      this.enqueue("signoff_photos", p.id);
+      this.touch(signoffId, at);
+    });
+  }
+
+  async getPhoto(photoId: string) {
+    const r = this.db.prepare("SELECT * FROM signoff_photos WHERE id = ? AND deleted_at = ''").get(photoId) as PhotoRow | undefined;
+    return r ? { ...toPhoto(r), signoffId: r.signoff_id, file: r.file } : null;
+  }
+
+  async removePhoto(signoffId: string, photoId: string, at: string) {
+    this.tx(() => {
+      const res = this.db.prepare("UPDATE signoff_photos SET deleted_at = ?, updated_at = ? WHERE id = ? AND signoff_id = ? AND deleted_at = ''").run(at, at, photoId, signoffId);
+      if (res.changes > 0) this.enqueue("signoff_photos", photoId);
       this.touch(signoffId, at);
     });
   }

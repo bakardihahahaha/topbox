@@ -126,3 +126,22 @@ export function crossCheckBlock(s: Signoff, checkId: string, actor: { userId: st
     ? `You already signed ${labels} — this check must be signed by a different operator.`
     : `With ${operators} operators, one person may sign at most ${max} of the ${s.template.checks.length} checks — you already signed ${labels}. Another operator must sign this one.`;
 }
+
+/** A mechanism's identity across visits: a refurbished unit comes back with an "R" appended to its
+ * serial number (667 → 667R) but it's still the same TopBox, so both share one history. */
+export function mechanismKey(serial: string): string {
+  const s = serial.trim().toUpperCase();
+  return /\dR$/.test(s) ? s.slice(0, -1) : s;
+}
+
+/** Operators may only add or drop the refurbished "R" on a serial number — nothing else. */
+export function isRefurbishToggle(from: string, to: string): boolean {
+  const a = from.trim();
+  const b = to.trim();
+  return a.toUpperCase() !== b.toUpperCase() && mechanismKey(a) === mechanismKey(b) && /^.*\d$/.test(mechanismKey(a));
+}
+
+/** Once the first check is signed the sign-off type (New (UK) / Service…) is fixed for operators. */
+export function typeLocked(s: Pick<Signoff, "signatures">): boolean {
+  return s.signatures.length > 0;
+}

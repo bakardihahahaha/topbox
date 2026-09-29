@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SqliteStore } from "../src/store/sqlite/SqliteStore.js";
 import { TABLES } from "../src/store/schema.js";
-import { setup } from "./helpers.js";
+import { FAKE_JPEG_URL, setup } from "./helpers.js";
 
 describe("Store generic table access", () => {
   it("round-trips every mirrored table through readRows/importRows", async () => {
@@ -16,6 +16,7 @@ describe("Store generic table access", () => {
     await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: t.template.checks[0]!.id, value: "pass" });
     await call("PUT", `/api/signoffs/${id}/signatures/${t.template.checks[0]!.id}`, { path: "M10 10L90 60L150 20", date: "2026-01-01" });
     await call("PUT", `/api/signoffs/${id}/parts/${crypto.randomUUID()}`, { partId: part.id, qty: 1 });
+    await call("POST", `/api/signoffs/${id}/photos`, { photoId: crypto.randomUUID(), checkId: t.template.checks[0]!.id, dataUrl: FAKE_JPEG_URL });
 
     const copy = new SqliteStore(":memory:");
     for (const spec of TABLES) {

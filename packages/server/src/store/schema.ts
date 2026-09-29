@@ -16,7 +16,7 @@ export interface TableSpec {
   columns: readonly string[];
 }
 
-export type MirroredTable = "app_settings" | "users" | "parts" | "templates" | "signoffs" | "signoff_marks" | "signoff_signatures" | "signoff_parts";
+export type MirroredTable = "app_settings" | "users" | "parts" | "templates" | "signoffs" | "signoff_marks" | "signoff_signatures" | "signoff_parts" | "signoff_photos";
 
 /** In dependency order — restore imports them in exactly this order. */
 export const TABLES: readonly TableSpec[] = [
@@ -71,6 +71,9 @@ export const TABLES: readonly TableSpec[] = [
   { name: "signoff_marks", columns: ["id", "signoff_id", "row_id", "check_id", "value", "by_user_id", "by_name", "at", "updated_at", "deleted_at"] },
   { name: "signoff_signatures", columns: ["id", "signoff_id", "check_id", "user_id", "name", "path", "date", "time", "at", "updated_at", "deleted_at"] },
   { name: "signoff_parts", columns: ["id", "signoff_id", "part_id", "part_number", "name", "qty", "note", "created_at", "updated_at", "deleted_at"] },
+  // Photo metadata only — the image files themselves stay on the NAS (PHOTOS_PATH), `file` is the
+  // path relative to that folder.
+  { name: "signoff_photos", columns: ["id", "signoff_id", "check_id", "file", "taken_by", "taken_by_name", "taken_at", "created_at", "updated_at", "deleted_at"] },
 ];
 
 export function tableSpec(name: string): TableSpec {

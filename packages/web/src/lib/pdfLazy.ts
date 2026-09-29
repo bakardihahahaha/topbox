@@ -1,6 +1,7 @@
 import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
 import { getDocumentSettings } from "./api.js";
-import type { PdfBranding } from "./pdf.js";
+import type { PdfBranding, PdfPhotos } from "./pdf.js";
+import { photoForPdf } from "./photos.js";
 
 // jsPDF is ~400 KB — loaded only the first time someone actually generates a PDF. The company
 // header (Setup → Document) is fetched fresh each time and remembered on the device, so a PDF
@@ -41,9 +42,17 @@ async function branding(override?: DocumentSettings): Promise<PdfBranding> {
   }
 }
 
+/** Every photo of these sign-offs, for the attachment pages (ones this device can't reach are
+ * left out rather than failing the whole PDF). */
+async function loadPhotos(signoffs: Signoff[]): Promise<PdfPhotos> {
+  const ids = signoffs.flatMap((s) => (s.photos ?? []).map((p) => p.id));
+  const loaded = await Promise.all(ids.map(async (id) => [id, await photoForPdf(id)] as const));
+  return new Map(loaded.filter((e): e is [string, NonNullable<(typeof e)[1]>] => e[1] !== null));
+}
+
 export async function downloadPdf(signoffs: Signoff[]): Promise<void> {
-  const [pdf, b] = await Promise.all([import("./pdf.js"), branding()]);
-  pdf.downloadSignoffsPdf(signoffs, b);
+  const [pdf, b, photos] = await Promise.all([import("./pdf.js"), branding(), loadPhotos(signoffs)]);
+  pdf.downloadSignoffsPdf(signoffs, b, photos);
 }
 
 /** `settings` lets Setup → Document preview unsaved changes. */
@@ -51,8 +60,8 @@ export async function openPdf(signoffs: Signoff[], settings?: DocumentSettings):
   // The tab is opened synchronously, inside the click — opened after the awaits below, popup
   // blockers would swallow it.
   const tab = window.open("about:blank", "_blank");
-  const [pdf, b] = await Promise.all([import("./pdf.js"), branding(settings)]);
-  const url = pdf.signoffsPdfUrl(signoffs, b);
+  const [pdf, b, photos] = await Promise.all([import("./pdf.js"), branding(settings), loadPhotos(signoffs)]);
+  const url = pdf.signoffsPdfUrl(signoffs, b, photos);
   if (tab) tab.location.href = url;
   else window.location.href = url;
 }

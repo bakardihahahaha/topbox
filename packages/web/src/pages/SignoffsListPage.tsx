@@ -7,7 +7,7 @@ import { useData } from "../lib/useData.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { topboxUrl } from "../lib/format.js";
-import { card, chip, errorBox, infoBox, errorMessage, formatDateTime, ghost, h1, input, page, primary } from "../lib/ui.js";
+import { card, chip, errorBox, infoBox, errorMessage, ghost, h1, input, page, primary } from "../lib/ui.js";
 
 const PAGE_SIZE = 50;
 
@@ -68,15 +68,17 @@ export function SignoffsListPage() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 12 }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search serial or SO number" style={{ ...input, gridColumn: "1 / -1" }} />
-        <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} style={input}>
-          <option value="">All templates</option>
-          {templates.data?.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search serial number" style={{ ...input, gridColumn: "1 / -1" }} />
+        {(templates.data?.length ?? 0) > 1 && (
+          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} style={input}>
+            <option value="">All templates</option>
+            {templates.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} style={input}>
           <option value="">Any status</option>
           <option value="draft">In progress</option>
@@ -129,15 +131,12 @@ export function SignoffsListPage() {
 function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; onToggle: () => void }) {
   return (
     <div style={{ ...card, padding: "14px 14px", display: "flex", alignItems: "center", gap: 14, borderColor: selected ? "var(--accent)" : "var(--border-soft)" }}>
-      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.number}`} style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none" }} />
+      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.serialNumber}`} style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none" }} />
       <Link to={topboxUrl(s.serialNumber, s.id)} style={{ flex: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>{s.serialNumber}</span>
+          <span className="mono" style={{ fontSize: 17, fontWeight: 700 }}>{s.serialNumber}</span>
           <span style={chip(s.status === "complete" ? "accent" : "warn")}>{s.status === "complete" ? "Complete" : `In progress ${s.progress}`}</span>
           <span style={chip("muted")}>{s.typeName}</span>
-        </div>
-        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {s.number} · {s.templateName} · {s.createdByName} · {formatDateTime(s.updatedAt)}
         </div>
       </Link>
     </div>

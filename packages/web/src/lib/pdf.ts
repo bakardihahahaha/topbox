@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable, { type CellHookData } from "jspdf-autotable";
 import { DEFAULT_DOCUMENT_SETTINGS, SIGNATURE_BOX, departedAt, typeNameOf, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
 import { parseSignaturePath } from "./signaturePath.js";
+import { localStamp } from "./format.js";
 
 // The PDF is built entirely in the browser (jsPDF) on whatever device presses the button — the
 // NAS never renders anything, it only serves JSON. Layout follows the paper PA-DOC-189 form: the
@@ -13,6 +14,64 @@ import { parseSignaturePath } from "./signaturePath.js";
 export interface PdfBranding {
   settings: DocumentSettings;
   logo?: { dataUrl: string; width: number; height: number };
+}
+
+export interface PdfImage {
+  dataUrl: string;
+  width: number;
+  height: number;
+}
+
+/** Photo id → image, loaded by the caller (from the NAS or this device's cache). */
+export type PdfPhotos = Map<string, PdfImage>;
+
+/** The attachment after a sign-off's form: every photo, two per row, each captioned with the
+ * check it was taken during. Returns false when there's nothing to print. */
+function drawPhotos(doc: jsPDF, s: Signoff, photos: PdfPhotos): boolean {
+  const list = (s.photos ?? []).filter((p) => photos.has(p.id));
+  if (list.length === 0) return false;
+  const colW = (PAGE.w - PAGE.margin * 2 - 6) / 2;
+  const imgH = 78;
+  const cellH = imgH + 12;
+  let y = 0;
+  let col = 0;
+  const heading = (cont: boolean) => {
+    doc.addPage();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.setTextColor(...INK);
+    doc.text(pdfText(`Photos - TopBox ${s.serialNumber}${cont ? " (continued)" : ""}`), PAGE.margin, PAGE.top + 2);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...GREY);
+    doc.text(pdfText(`${typeNameOf(s)} - attachment to the checklist above`), PAGE.margin, PAGE.top + 7);
+    y = PAGE.top + 12;
+    col = 0;
+  };
+  heading(false);
+  list.forEach((p, i) => {
+    if (col === 0 && i > 0 && y + cellH > PAGE.h - PAGE.bottom) heading(true);
+    const img = photos.get(p.id)!;
+    const x = PAGE.margin + col * (colW + 6);
+    const scale = Math.min(colW / img.width, imgH / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    doc.addImage(img.dataUrl, "JPEG", x + (colW - w) / 2, y + (imgH - h) / 2, w, h);
+    doc.setDrawColor(...GREY);
+    doc.setLineWidth(0.2);
+    doc.rect(x, y, colW, imgH);
+    const check = s.template.checks.find((c) => c.id === p.checkId)?.label ?? "check";
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text(pdfText(`Taken during ${check}`), x, y + imgH + 4);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...GREY);
+    doc.text(pdfText(`${localStamp(p.takenAt)} - ${p.takenByName}`), x, y + imgH + 8);
+    col = 1 - col;
+    if (col === 0) y += cellH;
+  });
+  return true;
 }
 
 const PAGE = { w: 210, h: 297, margin: 14, top: 34, bottom: 24 };
@@ -199,7 +258,7 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
   const p2 = (n: number) => String(n).padStart(2, "0");
   const arrivedText = `${p2(arrived.getDate())}/${p2(arrived.getMonth() + 1)}/${arrived.getFullYear()} ${p2(arrived.getHours())}:${p2(arrived.getMinutes())}`;
   const leftText = left ? `  ·  left ${left.slice(0, 10).split("-").reverse().join("/")}${left.slice(10)}` : "";
-  doc.text(pdfText(`${s.number}  ·  ${typeNameOf(s)}  ·  arrived ${arrivedText}${leftText}  ·  started by ${s.createdByName}`), PAGE.margin, y + 1);
+  doc.text(pdfText(`${typeNameOf(s)}  ·  arrived ${arrivedText}${leftText}  ·  started by ${s.createdByName}`), PAGE.margin, y + 1);
   y += 3;
 
   if (s.mode === "service" && s.parts.length > 0) {
@@ -226,7 +285,7 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
   return y;
 }
 
-export function buildSignoffsPdf(signoffs: Signoff[], branding: PdfBranding = { settings: DEFAULT_DOCUMENT_SETTINGS }): jsPDF {
+export function buildSignoffsPdf(signoffs: Signoff[], branding: PdfBranding = { settings: DEFAULT_DOCUMENT_SETTINGS }, photos: PdfPhotos = new Map()): jsPDF {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   // Each page's masthead/footer belongs to the first sign-off drawn on it.
   const pageDocs: { ref: string; id: string }[] = [];
@@ -247,6 +306,12 @@ export function buildSignoffsPdf(signoffs: Signoff[], branding: PdfBranding = { 
     const page = doc.getNumberOfPages();
     if (!pageDocs[page - 1]) pageDocs[page - 1] = { ref: s.template.documentRef, id: s.template.documentId };
     y = drawSignoff(doc, s, y);
+    // Its photos follow on their own page(s); the next sign-off then starts on a fresh page.
+    if (drawPhotos(doc, s, photos)) {
+      const last = doc.getNumberOfPages();
+      for (let p = page + 1; p <= last; p++) pageDocs[p - 1] = { ref: s.template.documentRef, id: s.template.documentId };
+      y = PAGE.h;
+    }
   });
 
   const pages = doc.getNumberOfPages();
@@ -262,17 +327,17 @@ export function buildSignoffsPdf(signoffs: Signoff[], branding: PdfBranding = { 
 export function pdfFileName(signoffs: Signoff[]): string {
   if (signoffs.length === 1) {
     const s = signoffs[0]!;
-    return `${s.template.name} ${s.serialNumber} ${s.number}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
+    return `TopBox ${s.serialNumber} ${typeNameOf(s)} ${s.arrivedAt.slice(0, 10)}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
   }
   return `Sign-offs ${new Date().toISOString().slice(0, 10)} (${signoffs.length}).pdf`;
 }
 
 /** Builds and downloads the PDF on this device. */
-export function downloadSignoffsPdf(signoffs: Signoff[], branding: PdfBranding): void {
-  buildSignoffsPdf(signoffs, branding).save(pdfFileName(signoffs));
+export function downloadSignoffsPdf(signoffs: Signoff[], branding: PdfBranding, photos?: PdfPhotos): void {
+  buildSignoffsPdf(signoffs, branding, photos).save(pdfFileName(signoffs));
 }
 
 /** Blob URL of the PDF, for opening in a tab (handy on desktops for printing straight away). */
-export function signoffsPdfUrl(signoffs: Signoff[], branding: PdfBranding): string {
-  return String(buildSignoffsPdf(signoffs, branding).output("bloburl"));
+export function signoffsPdfUrl(signoffs: Signoff[], branding: PdfBranding, photos?: PdfPhotos): string {
+  return String(buildSignoffsPdf(signoffs, branding, photos).output("bloburl"));
 }

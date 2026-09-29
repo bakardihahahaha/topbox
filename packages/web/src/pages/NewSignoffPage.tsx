@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { departedAt, type Signoff } from "@biosite-signoff/shared";
+import { departedAt, mechanismKey, type Signoff } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
 import { stamp, topboxUrl } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
@@ -12,7 +12,7 @@ import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
 import { cacheSignoff } from "../lib/signoffCache.js";
 import { draftSignoff } from "../lib/localSignoff.js";
-import { card, errorBox, errorMessage, h1, hint, input, label, page, primary } from "../lib/ui.js";
+import { card, errorBox, errorMessage, ghost, h1, hint, input, label, page, primary } from "../lib/ui.js";
 
 export function NewSignoffPage() {
   const navigate = useNavigate();
@@ -23,7 +23,6 @@ export function NewSignoffPage() {
   const [templateId, setTemplateId] = useState(params.get("templateId") ?? "");
   const types = useSignoffTypes();
   const [typeId, setTypeId] = useState(params.get("typeId") ?? "");
-  const type = types.find((t) => t.id === typeId) ?? types[0];
   const [serial, setSerial] = useState(params.get("serial") ?? "");
   // Returning mechanism? Show its previous visits so nobody starts a duplicate while it's still in.
   const [previous, setPrevious] = useState<Signoff[] | null>(null);
@@ -35,6 +34,12 @@ export function NewSignoffPage() {
   }, [serial]);
   const lastVisit = previous?.[previous.length - 1];
   const stillIn = lastVisit && !departedAt(lastVisit);
+  // A mechanism that has been out at a client and comes back is serviced — unless someone picks
+  // a type themselves, a returning serial defaults to the first parts-allowing type (Service).
+  const returning = Boolean(previous && previous.length > 0 && !stillIn);
+  const type = types.find((t) => t.id === typeId) ?? (returning ? types.find((t) => t.allowsParts) : undefined) ?? types[0];
+  const key = mechanismKey(serial);
+  const hasR = serial.trim() !== "" && key !== serial.trim().toUpperCase();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -64,7 +69,7 @@ export function NewSignoffPage() {
       {templates.data?.length === 0 && <div style={errorBox}>No templates yet — an admin needs to create one under Setup → Templates.</div>}
 
       <form onSubmit={submit} style={{ ...card, display: "flex", flexDirection: "column", gap: 16 }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={{ display: (templates.data?.length ?? 0) > 1 ? "flex" : "none", flexDirection: "column", gap: 6 }}>
           <span className="mono" style={label}>
             Checklist
           </span>
@@ -112,12 +117,17 @@ export function NewSignoffPage() {
           </span>
           <input value={serial} onChange={(e) => setSerial(e.target.value)} autoFocus style={{ ...input, height: 56, fontSize: 18 }} className="mono" autoCapitalize="characters" />
         </label>
+        {/\d$/.test(key) && (
+          <button type="button" onClick={() => setSerial(hasR ? serial.trim().slice(0, -1) : `${serial.trim()}R`)} style={{ ...ghost, height: 48, alignSelf: "flex-start" }} title="R = refurbished">
+            {hasR ? "Remove R" : "+R refurbished"}
+          </button>
+        )}
 
         {previous && previous.length > 0 && lastVisit && (
           <div style={{ borderLeft: `3px solid ${stillIn ? "var(--warn)" : "var(--accent)"}`, background: stillIn ? "var(--bg-deep)" : "var(--accent-wash)", borderRadius: "var(--radius-callout)", padding: "10px 12px", fontSize: 13.5 }}>
             {stillIn ? (
               <>
-                <b>{lastVisit.serialNumber}</b> is still in the workshop (visit {previous.length}, {lastVisit.number}) —{" "}
+                <b>{lastVisit.serialNumber}</b> is still in the workshop (visit {previous.length}) —{" "}
                 <a href={topboxUrl(lastVisit.serialNumber, lastVisit.id)} style={{ color: "var(--accent)", fontWeight: 700 }}>
                   open it instead
                 </a>
@@ -125,7 +135,7 @@ export function NewSignoffPage() {
               </>
             ) : (
               <>
-                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit))}.
+                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit))}. Type set to <b>{type?.name}</b>{/\d$/.test(key) && !hasR ? " — add R if it was refurbished" : ""}.
               </>
             )}
           </div>

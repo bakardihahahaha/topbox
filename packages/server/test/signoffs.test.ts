@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Signoff } from "@biosite-signoff/shared";
-import { setup } from "./helpers.js";
+import { FAKE_JPEG, FAKE_JPEG_URL, setup } from "./helpers.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 const SIG = "M10 10L50 60L90 20";
 const today = "2026-09-29";
@@ -346,5 +348,65 @@ describe("operator restrictions", () => {
 
     await admin("PUT", "/api/permissions", { deleteSignoffs: "all" });
     expect((await op("DELETE", `/api/signoffs/${id}`)).statusCode).toBe(200);
+  });
+});
+
+describe("photos, refurbished serials and the fixed type", () => {
+  it("stores check photos as files on disk; serves them; only an admin removes one", async () => {
+    const t = await setup();
+    const op = t.as((await t.login("op", "2222")).token);
+    const id = randomUUID();
+    await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "667", typeId: "new-uk" });
+    const photoId = randomUUID();
+    const first = t.template.checks[0]!;
+    const res = await op("POST", `/api/signoffs/${id}/photos`, { photoId, checkId: first.id, dataUrl: FAKE_JPEG_URL, takenAt: "2026-09-29T10:00:00.000Z" });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as Signoff).photos).toMatchObject([{ id: photoId, checkId: first.id, takenByName: "Olga Operator" }]);
+    // Retried upload (offline queue) doesn't duplicate.
+    expect(((await op("POST", `/api/signoffs/${id}/photos`, { photoId, checkId: first.id, dataUrl: FAKE_JPEG_URL })).json() as Signoff).photos).toHaveLength(1);
+    const file = (await t.store.signoffs.getPhoto(photoId))!.file;
+    expect(file).toMatch(/^667\/2026-09-29_1st-Check_/);
+    expect(existsSync(join(t.photosDir, file))).toBe(true);
+    const img = await op("GET", `/api/photos/${photoId}`);
+    expect(img.headers["content-type"]).toBe("image/jpeg");
+    expect(img.rawPayload.equals(FAKE_JPEG)).toBe(true);
+    expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: "data:image/jpeg;base64,AAAA" })).statusCode).toBe(400);
+
+    expect((await op("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).statusCode).toBe(403);
+    const admin = t.as((await t.login("admin", "1111")).token);
+    expect(((await admin("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).json() as Signoff).photos).toHaveLength(0);
+  });
+
+  it("operators may only add/remove the refurbished R; 667R shares 667's history", async () => {
+    const t = await setup();
+    const op = t.as((await t.login("op", "2222")).token);
+    const v1 = randomUUID();
+    const v2 = randomUUID();
+    await op("POST", "/api/signoffs", { id: v1, templateId: t.template.id, serialNumber: "667", typeId: "new-uk" });
+    await op("POST", "/api/signoffs", { id: v2, templateId: t.template.id, serialNumber: "667", typeId: "service" });
+    expect((await op("PATCH", `/api/signoffs/${v2}`, { serialNumber: "668" })).statusCode).toBe(403);
+    expect(((await op("PATCH", `/api/signoffs/${v2}`, { serialNumber: "667R" })).json() as Signoff).serialNumber).toBe("667R");
+    expect(((await op("PATCH", `/api/signoffs/${v2}`, { serialNumber: "667" })).json() as Signoff).serialNumber).toBe("667");
+    await op("PATCH", `/api/signoffs/${v2}`, { serialNumber: "667R" });
+    for (const serial of ["667", "667R", "667r"]) {
+      const visits = (await op("GET", `/api/mechanisms/${serial}/visits`)).json() as Signoff[];
+      expect(visits.map((v) => v.id)).toEqual([v1, v2]);
+    }
+    const mechs = (await op("GET", "/api/mechanisms")).json() as { serialNumber: string; visits: number }[];
+    expect(mechs).toEqual([expect.objectContaining({ serialNumber: "667R", visits: 2 })]);
+  });
+
+  it("fixes the type for operators once the first check is signed", async () => {
+    const t = await setup();
+    const op = t.as((await t.login("op", "2222")).token);
+    const id = randomUUID();
+    await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "T-1", typeId: "new-uk" });
+    expect((await op("PATCH", `/api/signoffs/${id}`, { typeId: "new-usa" })).statusCode).toBe(200);
+    const first = t.template.checks[0]!;
+    await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: first.id, value: "pass" });
+    await op("PUT", `/api/signoffs/${id}/signatures/${first.id}`, { path: SIG, date: today });
+    expect((await op("PATCH", `/api/signoffs/${id}`, { typeId: "new-uk" })).statusCode).toBe(403);
+    const admin = t.as((await t.login("admin", "1111")).token);
+    expect(((await admin("PATCH", `/api/signoffs/${id}`, { typeId: "new-uk" })).json() as Signoff).typeName).toBe("New (UK)");
   });
 });

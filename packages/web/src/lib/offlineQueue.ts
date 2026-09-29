@@ -26,6 +26,8 @@ export type QueuedAction =
   | { kind: "unsign"; id: string; checkId: string }
   | { kind: "setPart"; id: string; lineId: string; partId: string; qty: number; note: string }
   | { kind: "removePart"; id: string; lineId: string }
+  | { kind: "addPhoto"; id: string; photoId: string; checkId: string; dataUrl: string; takenAt: string }
+  | { kind: "removePhoto"; id: string; photoId: string }
   | { kind: "deleteSignoff"; id: string }
   | { kind: "createPart"; partId: string; input: PartInput }
   | { kind: "updatePart"; partId: string; patch: Partial<PartInput> }
@@ -56,6 +58,10 @@ function describe(a: QueuedAction): string {
       return "Record a replaced part";
     case "removePart":
       return "Remove a replaced part";
+    case "addPhoto":
+      return "Upload a photo";
+    case "removePhoto":
+      return "Remove a photo";
     case "deleteSignoff":
       return "Delete a sign-off";
     case "createPart":
@@ -97,6 +103,10 @@ async function apply(a: QueuedAction): Promise<unknown> {
       return api.setPartLine(a.id, a.lineId, a.partId, a.qty, a.note);
     case "removePart":
       return api.removePartLine(a.id, a.lineId);
+    case "addPhoto":
+      return api.addPhoto(a.id, a.photoId, a.checkId, a.dataUrl, a.takenAt);
+    case "removePhoto":
+      return api.removePhoto(a.id, a.photoId);
     case "deleteSignoff":
       return api.deleteSignoff(a.id);
     case "createPart":

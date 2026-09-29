@@ -96,7 +96,7 @@ export function MechanismHistoryPage() {
                     <div style={{ fontWeight: 700, fontSize: 16 }}>
                       Visit {i + 1} · {typeNameOf(v)}{" "}
                       <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 400 }}>
-                        {v.number}
+                        {v.serialNumber}
                       </span>
                     </div>
                     {left ? <span style={chip("accent")}>Left {stamp(left)}</span> : <span style={chip("warn")}>In workshop</span>}

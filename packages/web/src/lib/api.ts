@@ -42,6 +42,8 @@ export const getStock = (typeId: string) => getJsonCached<SignoffSummary[]>(`/ap
 export const getVisits = (serial: string) => getJsonCached<Signoff[]>(`/api/mechanisms/${encodeURIComponent(serial)}/visits`);
 export const unsignCheck = (id: string, checkId: string) => sendJson<Signoff>("DELETE", `/api/signoffs/${id}/signatures/${checkId}`);
 export const setPartLine = (id: string, lineId: string, partId: string, qty: number, note: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/parts/${lineId}`, { partId, qty, note });
+export const addPhoto = (id: string, photoId: string, checkId: string, dataUrl: string, takenAt: string) => sendJson<Signoff>("POST", `/api/signoffs/${id}/photos`, { photoId, checkId, dataUrl, takenAt });
+export const removePhoto = (id: string, photoId: string) => sendJson<Signoff>("DELETE", `/api/signoffs/${id}/photos/${photoId}`);
 export const removePartLine = (id: string, lineId: string) => sendJson<Signoff>("DELETE", `/api/signoffs/${id}/parts/${lineId}`);
 
 // ---- admin ----

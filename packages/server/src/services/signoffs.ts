@@ -1,5 +1,6 @@
-import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, typeLocked, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
+import { PhotoFiles } from "./photoFiles.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
 import { HttpError, badRequest, conflict, forbidden, notFound } from "./errors.js";
 
@@ -21,6 +22,7 @@ export class SignoffService {
   constructor(
     private readonly store: Store,
     private readonly types: SignoffTypesService,
+    private readonly photoFiles: PhotoFiles,
   ) {}
 
   private async require(id: string) {
@@ -93,8 +95,17 @@ export class SignoffService {
     if (patch.arrivedAt !== undefined && Number.isNaN(Date.parse(patch.arrivedAt))) throw badRequest("Invalid arrival time.");
     const s = await this.require(id);
     // Serial number and arrival are fixed once a sign-off is started — only an admin corrects them.
-    if (actor.role !== "admin" && (patch.serialNumber !== undefined || patch.arrivedAt !== undefined)) {
-      throw forbidden("Only an admin can change the serial number or arrival time.");
+    // The one exception: an operator may add (or take back) the refurbished "R" (667 → 667R).
+    if (actor.role !== "admin") {
+      if (patch.arrivedAt !== undefined) throw forbidden("Only an admin can change the arrival time.");
+      if (patch.serialNumber !== undefined && patch.serialNumber.trim() !== s.serialNumber && !isRefurbishToggle(s.serialNumber, patch.serialNumber)) {
+        throw forbidden('Only an admin can change the serial number — you can only add or remove the refurbished "R".');
+      }
+      // The type is what the mechanism was checked as — fixed once the first check is signed.
+      const typeChange = patch.mode !== undefined || (patch.typeId !== undefined && patch.typeId !== s.typeId);
+      if (typeChange && typeLocked(s)) {
+        throw forbidden(`This was checked as ${typeNameOf(s)} — the type can't change after the first check. A mechanism coming back starts a new visit (e.g. as Service).`);
+      }
     }
     this.assertEditable(s, actor);
     if (patch.serialNumber !== undefined && !patch.serialNumber.trim()) throw badRequest("Serial number is required.");
@@ -264,6 +275,42 @@ export class SignoffService {
       name = part.name;
     }
     await this.store.signoffs.upsertPart(id, { id: partRowId, partId: input.partId, partNumber: partNumber!, name: name!, qty: input.qty, note: input.note.trim() }, new Date().toISOString());
+    return this.refresh(id);
+  }
+
+  /** Stores a photo taken during one check. `photoId` comes from the client, so a retried upload
+   * from the offline queue lands on the same photo. */
+  async addPhoto(id: string, input: { photoId: string; checkId: string; jpeg: Buffer; takenAt?: string }, actor: Actor): Promise<Signoff> {
+    const s = await this.require(id);
+    this.assertCheck(s, input.checkId);
+    if (s.photos.some((p) => p.id === input.photoId)) return s;
+    this.assertEditable(s, actor);
+    if (input.jpeg.length < 100 || input.jpeg[0] !== 0xff || input.jpeg[1] !== 0xd8) throw badRequest("The photo must be a JPEG image.");
+    const now = new Date().toISOString();
+    const takenAt = input.takenAt && !Number.isNaN(Date.parse(input.takenAt)) ? input.takenAt : now;
+    const check = s.template.checks.find((c) => c.id === input.checkId)!;
+    const file = PhotoFiles.fileName(s.serialNumber, check.label, takenAt, input.photoId);
+    await this.photoFiles.write(file, input.jpeg);
+    await this.store.signoffs.addPhoto(id, { id: input.photoId, checkId: input.checkId, takenBy: actor.userId, takenByName: actor.name, takenAt, file }, now);
+    return this.refresh(id);
+  }
+
+  async photoImage(photoId: string): Promise<Buffer> {
+    const p = await this.store.signoffs.getPhoto(photoId);
+    if (!p) throw notFound("Photo");
+    try {
+      return await this.photoFiles.read(p.file);
+    } catch {
+      throw notFound("Photo file");
+    }
+  }
+
+  /** Photos are evidence — like everything else, only an admin removes one. The file stays on the
+   * NAS; only the record is (soft-)deleted. */
+  async removePhoto(id: string, photoId: string, actor: Actor): Promise<Signoff> {
+    if (actor.role !== "admin") throw forbidden("Only an admin can remove a photo.");
+    await this.require(id);
+    await this.store.signoffs.removePhoto(id, photoId, new Date().toISOString());
     return this.refresh(id);
   }
 

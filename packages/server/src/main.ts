@@ -5,6 +5,7 @@ import { SqliteStore } from "./store/sqlite/SqliteStore.js";
 import { AuthService } from "./services/auth.js";
 import { CatalogService, mechanismChecklistSeed } from "./services/catalog.js";
 import { SignoffService } from "./services/signoffs.js";
+import { PhotoFiles } from "./services/photoFiles.js";
 import { MirrorService, SEED_TEMPLATE_SETTING } from "./mirror/MirrorService.js";
 import { FakeSheetsApi, GoogleSheetsApi, type SheetsApi } from "./mirror/SheetsApi.js";
 import { buildApp } from "./app.js";
@@ -16,6 +17,9 @@ const SERVICE_ACCOUNT_PATH = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH;
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID || null;
 const WEB_DIST_PATH = process.env.WEB_DIST_PATH ?? join(process.cwd(), "web-dist");
 const TRUST_PROXY = process.env.TRUST_PROXY === "true";
+// Photo files (JPEG) — by default a `photos` folder next to the database, i.e. inside the NAS's
+// bind-mounted data folder, created automatically.
+const PHOTOS_PATH = process.env.PHOTOS_PATH || join(dirname(resolve(DB_PATH)), "photos");
 
 async function main() {
   mkdirSync(dirname(resolve(DB_PATH)), { recursive: true });
@@ -27,7 +31,9 @@ async function main() {
   const auth = new AuthService(store, { failureDelayMs: 1000 });
   const catalog = new CatalogService(store);
   const signoffTypes = new SignoffTypesService(store);
-  const signoffs = new SignoffService(store, signoffTypes);
+  mkdirSync(PHOTOS_PATH, { recursive: true });
+  console.log(`Photos: ${resolve(PHOTOS_PATH)}`);
+  const signoffs = new SignoffService(store, signoffTypes, new PhotoFiles(PHOTOS_PATH));
 
   // ADMIN_NAME / ADMIN_PIN from docker-compose.yml — only used on the very first start (empty
   // database); after that the admin changes their PIN in the app (Setup → My account).

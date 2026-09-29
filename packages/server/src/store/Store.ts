@@ -1,4 +1,4 @@
-import type { Mark, MarkValue, Part, ReplacedPart, Role, Signature, Signoff, SignoffMode, SignoffStatus, Template } from "@biosite-signoff/shared";
+import type { Mark, MarkValue, Part, ReplacedPart, Role, Signature, Signoff, SignoffMode, SignoffPhoto, SignoffStatus, Template } from "@biosite-signoff/shared";
 import type { MirroredTable, Row } from "./schema.js";
 
 // The ONLY thing the rest of the server knows about persistence. Services and routes depend on
@@ -64,7 +64,7 @@ export interface SignoffListFilter {
   status?: SignoffStatus;
   mode?: SignoffMode;
   typeId?: string;
-  /** Exact serial number (case-insensitive) — one mechanism's visits. */
+  /** One mechanism's visits: the serial number (case-insensitive) with or without the refurbished "R". */
   serial?: string;
   /** Default: in-progress first, then completed; newest first within each. "arrived_asc" = a mechanism's history in order. */
   order?: "created_desc" | "arrived_asc";
@@ -128,7 +128,7 @@ export interface TemplatesRepo {
 export interface SignoffsRepo {
   /** Idempotent on id — creating a sign-off whose id already exists is a no-op returning false,
    * so a retried create from the client's offline queue can never make a duplicate. */
-  create(signoff: Omit<Signoff, "marks" | "signatures" | "parts"> & { status: SignoffStatus }): Promise<boolean>;
+  create(signoff: Omit<Signoff, "marks" | "signatures" | "parts" | "photos"> & { status: SignoffStatus }): Promise<boolean>;
   get(id: string): Promise<(Signoff & { status: SignoffStatus }) | null>;
   list(filter: SignoffListFilter): Promise<{ items: (Signoff & { status: SignoffStatus })[]; total: number }>;
   /** Next free running number, e.g. 124 — the service formats it. */
@@ -150,6 +150,11 @@ export interface SignoffsRepo {
 
   upsertPart(signoffId: string, part: ReplacedPart, at: string): Promise<void>;
   removePart(signoffId: string, partRowId: string, at: string): Promise<void>;
+
+  /** Idempotent on photo id. `file` is relative to the photos folder. */
+  addPhoto(signoffId: string, photo: SignoffPhoto & { file: string }, at: string): Promise<void>;
+  getPhoto(photoId: string): Promise<(SignoffPhoto & { signoffId: string; file: string }) | null>;
+  removePhoto(signoffId: string, photoId: string, at: string): Promise<void>;
 }
 
 /** The backup mirror's durable to-do list: (table, row id) pairs changed since the last push. */

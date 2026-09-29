@@ -22,6 +22,7 @@ export function draftSignoff(input: { id: string; serialNumber: string; arrivedA
     marks: [],
     signatures: [],
     parts: [],
+    photos: [],
     createdBy: me.userId,
     createdByName: me.name,
     createdAt: now,
@@ -69,6 +70,11 @@ export function applyLocal(s: Signoff, a: QueuedAction, me: Me, parts: Part[], t
     }
     case "removePart":
       return { ...s, parts: s.parts.filter((p) => p.id !== a.lineId) };
+    case "addPhoto":
+      if ((s.photos ?? []).some((p) => p.id === a.photoId)) return s;
+      return { ...s, photos: [...(s.photos ?? []), { id: a.photoId, checkId: a.checkId, takenBy: me.userId, takenByName: me.name, takenAt: a.takenAt }] };
+    case "removePhoto":
+      return { ...s, photos: (s.photos ?? []).filter((p) => p.id !== a.photoId) };
     default:
       return s;
   }

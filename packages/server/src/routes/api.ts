@@ -251,6 +251,32 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     return s.signoffs.clearCheck(req.params.id, body.checkId);
   });
 
+  // ---- photos (taken during a check; JPEG files on the NAS) -----------------------------------
+
+  // Resized on the device before upload (~0.2–1 MB); sent as a data URL so the offline queue can
+  // hold it as plain JSON until there's signal.
+  app.post<{ Params: { id: string } }>("/api/signoffs/:id/photos", { ...authed, bodyLimit: 15 * 1024 * 1024 }, async (req) => {
+    const body = parse(
+      z.object({
+        photoId: z.string().uuid(),
+        checkId: id,
+        dataUrl: z.string().max(14 * 1024 * 1024).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, "The photo must be a JPEG image"),
+        takenAt: z.string().datetime().optional(),
+      }),
+      req.body,
+    );
+    const jpeg = Buffer.from(body.dataUrl.slice(body.dataUrl.indexOf(",") + 1), "base64");
+    return s.signoffs.addPhoto(req.params.id, { photoId: body.photoId, checkId: body.checkId, jpeg, takenAt: body.takenAt }, actor(req));
+  });
+
+  app.get<{ Params: { photoId: string } }>("/api/photos/:photoId", authed, async (req, reply) => {
+    const jpeg = await s.signoffs.photoImage(req.params.photoId);
+    // A photo never changes once taken — the device may keep it for good (also offline).
+    return reply.type("image/jpeg").header("cache-control", "private, max-age=31536000, immutable").send(jpeg);
+  });
+
+  app.delete<{ Params: { id: string; photoId: string } }>("/api/signoffs/:id/photos/:photoId", authed, async (req) => s.signoffs.removePhoto(req.params.id, req.params.photoId, actor(req)));
+
   // ---- mechanisms (one serial number across all its visits) ----------------------------------
 
   app.get("/api/mechanisms", authed, async (req) => {

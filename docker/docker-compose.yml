@@ -23,6 +23,9 @@ services:
       # The whole database — a single SQLite file on the NAS's own disk (bind-mounted ./data), so
       # every read/write is local and fast. Visible in File Station; back it up like any file.
       DB_PATH: /app/data/signoff.db
+      # Photos taken during checks (JPEG files) — the "photos" folder inside the same data folder,
+      # created automatically: /volume1/docker/topbox/data/photos/<serial number>/…
+      PHOTOS_PATH: /app/data/photos
       # DSM's reverse proxy is the only thing that can reach this container (port published on
       # 127.0.0.1 only), so trusting its X-Forwarded-For is safe — and required for the
       # one-IP-per-account rule and the login rate limit to see real client IPs.

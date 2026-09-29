@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, crossCheckBlock, isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, crossCheckBlock, isCheckFullyMarked, mechanismKey, signoffProgress, signoffStatus, summarize, typeLocked, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -15,8 +15,9 @@ import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount, usePermissions } from "../lib/permissions.js";
-import { localStamp } from "../lib/format.js";
-import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
+import { localStamp, stamp } from "../lib/format.js";
+import { PhotosCard } from "../components/PhotosCard.js";
+import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
 const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fail: "na", na: null };
 
@@ -128,6 +129,18 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const allowed = allowedPartIds(t, liveTemplate);
   const allowedParts = allowed === "all" ? parts : parts.filter((p) => allowed.has(p.id));
   const showParts = s.mode === "service";
+  const firstCheckAt = summarize(s).firstCheckAt;
+  // The type is what the mechanism was checked as — fixed for operators after the first check.
+  const typeFixed = !isAdmin && typeLocked(s);
+  // Refurbished units get an "R" after the serial number (667 → 667R) — the one serial change an
+  // operator may make.
+  const serialKey = mechanismKey(s.serialNumber);
+  const hasR = serialKey !== s.serialNumber.trim().toUpperCase();
+  const canToggleR = !isAdmin && !closed && /\d$/.test(serialKey);
+  function toggleR() {
+    const next = hasR ? s.serialNumber.trim().slice(0, -1) : `${s.serialNumber.trim()}R`;
+    void mutate({ kind: "updateHeader", id, patch: { serialNumber: next } }, () => api.updateSignoffHeader(id, { serialNumber: next }));
+  }
 
   function tap(rowId: string, checkId: string) {
     const value = NEXT[markOf(rowId, checkId) ?? "none"]!;
@@ -148,7 +161,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   }
 
   async function remove() {
-    if (!(await confirmDialog(`Delete ${s.number} (${s.serialNumber})? This can't be undone from the app.`, { confirmLabel: "Delete", danger: true }))) return;
+    if (!(await confirmDialog(`Delete this sign-off of ${s.serialNumber}? This can't be undone from the app.`, { confirmLabel: "Delete", danger: true }))) return;
     try {
       await withSaving(() => mutateOrQueue({ kind: "deleteSignoff", id }, () => api.deleteSignoff(id)));
       forgetSignoff(id);
@@ -163,17 +176,14 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
       {/* Header */}
       <div style={{ ...card, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <div style={{ minWidth: 0 }}>
-            <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-              {s.number} · {t.documentId || t.documentRef || "—"}
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>{t.name}</div>
-            <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <span style={chip(status === "complete" ? "accent" : "warn")}>{status === "complete" ? "Complete" : `In progress ${done}/${total}`}</span>
-              <span className="mono" style={{ fontSize: 11, color: "var(--text-4)" }}>
-                started by {s.createdByName} · {formatDateTime(s.createdAt)}
-              </span>
+              <span style={chip("muted")}>{typeNameOf(s)}</span>
             </div>
+            <span className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+              started by {s.createdByName} · 1st check {firstCheckAt ? stamp(firstCheckAt) : "not done yet"}
+            </span>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button style={primary} onClick={() => void downloadPdf([s])}>
@@ -186,7 +196,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="mono" style={label}>
               {t.serialLabel}
             </span>
@@ -200,7 +210,12 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                 if (next && next !== s.serialNumber) void mutate({ kind: "updateHeader", id, patch: { serialNumber: next } }, () => api.updateSignoffHeader(id, { serialNumber: next }));
               }}
             />
-          </label>
+            {canToggleR && (
+              <button type="button" onClick={toggleR} style={{ ...ghost, height: 44 }} title="R = refurbished">
+                {hasR ? `Remove R → ${s.serialNumber.trim().slice(0, -1)}` : `+R refurbished → ${s.serialNumber.trim()}R`}
+              </button>
+            )}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="mono" style={label}>
               Type
@@ -212,7 +227,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                   <button
                     key={x.id}
                     onClick={() => void changeType(x.id)}
-                    disabled={closed}
+                    disabled={closed || typeFixed}
                     style={{ ...ghost, height: 38, borderColor: on ? "var(--accent)" : "var(--border)", color: on ? "var(--accent)" : "var(--text-3)", background: on ? "var(--accent-wash)" : "transparent" }}
                   >
                     {x.name}
@@ -221,6 +236,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
               })}
             </div>
             {!currentTypeId && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Recorded as: {typeNameOf(s)}</span>}
+            {typeFixed && !closed && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Fixed after the first check. When it comes back, start a new visit (e.g. as Service).</span>}
           </div>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="mono" style={label}>
@@ -403,6 +419,14 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
           </div>
         </div>
       )}
+
+      <PhotosCard
+        signoff={s}
+        canAdd={!closed}
+        canRemove={isAdmin}
+        onAdd={(checkId, photoId, dataUrl, takenAt) => mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt))}
+        onRemove={(photoId) => mutate({ kind: "removePhoto", id, photoId }, () => api.removePhoto(id, photoId))}
+      />
 
       {/* Notes */}
       <div style={{ ...card, marginBottom: 12 }}>

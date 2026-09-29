@@ -37,6 +37,7 @@ export function mechanismPreview(template: Template | undefined, me: Me, serialN
     marks: [],
     signatures: [],
     parts: [],
+    photos: [],
     createdBy: me.userId,
     createdByName: me.name,
     createdAt: now,

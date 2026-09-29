@@ -98,7 +98,7 @@ function StockTab({ typeId, typeName, service }: { typeId: string; typeName: str
               {s.firstCheckBy ? ` · ${s.firstCheckBy}` : ""}
             </div>
             <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-              arrived {localStamp(s.arrivedAt)} · {s.templateName}
+              arrived {localStamp(s.arrivedAt)}
             </div>
           </Link>
         ))}

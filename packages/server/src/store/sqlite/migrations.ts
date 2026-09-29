@@ -165,6 +165,22 @@ const MIGRATIONS: string[] = [
   CREATE INDEX signoffs_serial_arrived ON signoffs(serial_number COLLATE NOCASE, arrived_at);
   ALTER TABLE signoff_signatures ADD COLUMN time TEXT NOT NULL DEFAULT '';
   `,
+  // 5: photos taken during a check (files on disk, metadata here).
+  `
+  CREATE TABLE signoff_photos (
+    id TEXT PRIMARY KEY,
+    signoff_id TEXT NOT NULL,
+    check_id TEXT NOT NULL,
+    file TEXT NOT NULL,
+    taken_by TEXT NOT NULL,
+    taken_by_name TEXT NOT NULL,
+    taken_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX signoff_photos_signoff ON signoff_photos(signoff_id);
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

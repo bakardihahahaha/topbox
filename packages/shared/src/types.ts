@@ -128,6 +128,17 @@ export interface ReplacedPart {
   note: string;
 }
 
+/** A photo documenting something found during one check. Only the metadata travels with the
+ * sign-off; the JPEG itself is stored as a file on the NAS and fetched separately. */
+export interface SignoffPhoto {
+  id: string;
+  checkId: string;
+  takenBy: string;
+  takenByName: string;
+  /** ISO time the photo was taken (on the device). */
+  takenAt: string;
+}
+
 export interface Signoff {
   id: string;
   /** Human-facing running number (SO-000123). */
@@ -149,6 +160,8 @@ export interface Signoff {
   marks: Mark[];
   signatures: Signature[];
   parts: ReplacedPart[];
+  /** Photos taken during a check (the image files live on the NAS, see /api/photos/:id). */
+  photos: SignoffPhoto[];
   createdBy: string;
   createdByName: string;
   createdAt: string;
