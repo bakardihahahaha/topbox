@@ -657,12 +657,12 @@ class SqliteSignoffs implements SignoffsRepo {
     const where = search ? "AND serial_number LIKE ?" : "";
     const rows = this.db
       .prepare(
-        `SELECT serial_number AS serialNumber, COUNT(*) AS visits, MAX(arrived_at || '|' || created_at || '|' || id) AS lastKey
+        `SELECT serial_number AS serialNumber, COUNT(*) AS visits, SUM(CASE WHEN status = 'complete' THEN 1 ELSE 0 END) AS completedVisits, MAX(arrived_at || '|' || created_at || '|' || id) AS lastKey
          FROM signoffs WHERE deleted_at = '' ${where}
          GROUP BY ${MECHANISM_KEY_SQL} ORDER BY MAX(updated_at) DESC LIMIT ?`,
       )
-      .all(...(search ? [`%${search}%`, limit] : [limit])) as { serialNumber: string; visits: number; lastKey: string }[];
-    return rows.map((r) => ({ serialNumber: r.serialNumber, visits: r.visits, lastId: r.lastKey.split("|").pop()! }));
+      .all(...(search ? [`%${search}%`, limit] : [limit])) as { serialNumber: string; visits: number; completedVisits: number; lastKey: string }[];
+    return rows.map((r) => ({ serialNumber: r.serialNumber, visits: r.visits, completedVisits: r.completedVisits, lastId: r.lastKey.split("|").pop()! }));
   }
 
   async clearMark(signoffId: string, rowId: string, checkId: string, at: string) {

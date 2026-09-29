@@ -250,7 +250,7 @@ describe("mechanism history (rotating serial numbers)", () => {
     expect(visits[0]!.signatures.map((s) => `${s.date} ${s.time}`)).toEqual(expect.arrayContaining(["2026-08-01 09:15", "2026-08-01 14:40"]));
 
     const mechs = (await t.as(admin.token)("GET", "/api/mechanisms?q=MX-77")).json();
-    expect(mechs).toMatchObject([{ serialNumber: "MX-77", visits: 2, atClient: false, last: { id: second, departedAt: null } }]);
+    expect(mechs).toMatchObject([{ serialNumber: "MX-77", visits: 2, completedVisits: 1, atClient: false, last: { id: second, departedAt: null } }]);
     const list = (await t.as(admin.token)("GET", "/api/signoffs?q=MX-77&status=complete")).json();
     expect(list.items[0].departedAt).toBe("2026-08-01 14:40");
   });

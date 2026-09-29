@@ -48,9 +48,12 @@ export function SignoffsListPage() {
     setPdfError(null);
     try {
       // Printed in SO-number order, oldest first — the order they'd sit in a paper file.
-      // Only finished sign-offs (every check signed) go into a PDF.
-      const full = (await getSignoffs([...selected])).filter((s) => signoffStatus(s) === "complete");
-      if (full.length === 0) throw new Error("None of the selected sign-offs is complete yet — a PDF needs every check signed.");
+      // Only finished sign-offs (every check signed) go into a PDF — anything else stops it.
+      const full = await getSignoffs([...selected]);
+      const unfinished = full.filter((s) => signoffStatus(s) !== "complete");
+      if (unfinished.length > 0) {
+        throw new Error(`Can't create the PDF — not every check is signed on ${unfinished.map((s) => s.serialNumber).join(", ")}. Untick ${unfinished.length === 1 ? "it" : "them"} and try again.`);
+      }
       full.sort((a, b) => a.number.localeCompare(b.number));
       await downloadPdf(full);
     } catch (err) {

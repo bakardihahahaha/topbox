@@ -135,7 +135,7 @@ export interface SignoffsRepo {
   nextNumber(): Promise<number>;
   updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: SignoffMode; typeId?: string; typeName?: string; arrivedAt?: string }, at: string): Promise<void>;
   /** Serial numbers with their visit count and latest sign-off id, most recently active first. */
-  serials(search: string | undefined, limit: number): Promise<{ serialNumber: string; visits: number; lastId: string }[]>;
+  serials(search: string | undefined, limit: number): Promise<{ serialNumber: string; visits: number; completedVisits: number; lastId: string }[]>;
   setStatus(id: string, status: SignoffStatus, at: string): Promise<void>;
   softDelete(id: string, at: string): Promise<void>;
 

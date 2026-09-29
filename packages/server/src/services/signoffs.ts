@@ -182,7 +182,7 @@ export class SignoffService {
       const last = await this.store.signoffs.get(r.lastId);
       if (!last) continue;
       const summary = this.toSummary(last);
-      out.push({ serialNumber: last.serialNumber, visits: r.visits, last: summary, atClient: summary.status === "complete" });
+      out.push({ serialNumber: last.serialNumber, visits: r.visits, completedVisits: r.completedVisits, last: summary, atClient: summary.status === "complete" });
     }
     return out;
   }

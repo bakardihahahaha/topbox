@@ -234,6 +234,8 @@ export const PIN_PATTERN = /^\d{4,8}$/;
 export interface MechanismSummary {
   serialNumber: string;
   visits: number;
+  /** Visits with every check signed — the ones that can go into a PDF. */
+  completedVisits: number;
   /** The latest visit. */
   last: SignoffSummary;
   /** Latest visit complete = it has left and is out at a client. */

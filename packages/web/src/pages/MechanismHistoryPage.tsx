@@ -1,11 +1,12 @@
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { checkDoneAt, departedAt, typeNameOf, type Signoff } from "@biosite-signoff/shared";
+import { checkDoneAt, departedAt, signoffStatus, typeNameOf, type Signoff } from "@biosite-signoff/shared";
+import { downloadPdf } from "../lib/pdfLazy.js";
 import { getVisits } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { daysBetween, localStamp, stamp } from "../lib/format.js";
 import { SignoffPage } from "./SignoffPage.js";
 import { useMe } from "../lib/meContext.js";
-import { card, chip, errorBox, h1, page, primary } from "../lib/ui.js";
+import { card, chip, errorBox, ghost, h1, page, primary } from "../lib/ui.js";
 
 /**
  * The TopBox page — topbox.duckdns.org/signoff/<serial number>. On top: the checklist of the
@@ -24,11 +25,12 @@ export function MechanismHistoryPage() {
   const latest = list[list.length - 1];
   const selectedId = params.get("id") ?? latest?.id ?? null;
   const inWorkshop = latest && !departedAt(latest);
+  const finished = list.filter((v) => signoffStatus(v) === "complete");
 
   const startNewVisit = () =>
     navigate(
-      `/signoffs/new?serial=${encodeURIComponent(latest?.serialNumber ?? serial)}` +
-        (latest ? `&templateId=${encodeURIComponent(latest.templateId)}&typeId=${encodeURIComponent(latest.typeId)}` : ""),
+      // No type passed on: a returning TopBox defaults to Service on the New sign-off screen.
+      `/signoffs/new?serial=${encodeURIComponent(latest?.serialNumber ?? serial)}` + (latest ? `&templateId=${encodeURIComponent(latest.templateId)}` : ""),
     );
 
   return (
@@ -43,11 +45,18 @@ export function MechanismHistoryPage() {
             {latest && (inWorkshop ? " · in the workshop now" : ` · at client since ${stamp(departedAt(latest))}`)}
           </div>
         </div>
-        {(!latest || !inWorkshop) && visits.data && me.role !== "viewer" && (
-          <button style={{ ...primary, height: 56, fontSize: 15 }} onClick={startNewVisit}>
-            {latest ? "Mechanism is back — start new visit" : "Start first sign-off"}
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {finished.length > 0 && (
+            <button style={{ ...ghost, height: 56, fontSize: 14 }} onClick={() => void downloadPdf(finished)} title="Every finished visit of this TopBox, oldest first">
+              PDF — all {finished.length} finished visit{finished.length === 1 ? "" : "s"}
+            </button>
+          )}
+          {(!latest || !inWorkshop) && visits.data && me.role !== "viewer" && (
+            <button style={{ ...primary, height: 56, fontSize: 15 }} onClick={startNewVisit}>
+              {latest ? "Mechanism is back — start new visit" : "Start first sign-off"}
+            </button>
+          )}
+        </div>
       </div>
       {visits.error && !selectedId && <div style={errorBox}>{visits.error}</div>}
 
