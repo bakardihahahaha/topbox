@@ -5,8 +5,10 @@ import { confirmDialog } from "../lib/confirmDialog.js";
 import { localStamp } from "../lib/format.js";
 import { card, ghost, primary } from "../lib/ui.js";
 
-/** The photos taken during each check (they're taken with the 📷 button under each check's Sign
- * button). Printed on the PDF after the form. */
+const checkLabel = (s: Signoff, checkId: string) => s.template.checks.find((c) => c.id === checkId)?.label ?? "check";
+
+/** Every photo of the sign-off, grouped by check, as thumbnails — tap one to enlarge. Printed on
+ * the PDF after the form. */
 export function PhotosCard(props: { signoff: Signoff; canRemove: boolean; onRemove: (photoId: string) => Promise<void> }) {
   const { signoff: s } = props;
   const photos = s.photos ?? [];
@@ -39,75 +41,187 @@ export function PhotosCard(props: { signoff: Signoff; canRemove: boolean; onRemo
           );
         })}
       </div>
-
-      {open && (
-        <div role="dialog" onClick={() => setOpen(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 50, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 16 }}>
-          <Photo id={open.id} style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }} />
-          <div style={{ color: "#fff", fontSize: 13 }}>
-            Taken during {s.template.checks.find((c) => c.id === open.checkId)?.label} by {open.takenByName} · {localStamp(open.takenAt)}
-          </div>
-          <div style={{ display: "flex", gap: 8 }} onClick={(e) => e.stopPropagation()}>
-            {props.canRemove && (
-              <button
-                style={{ ...ghost, color: "var(--danger)", borderColor: "var(--danger)" }}
-                onClick={async () => {
-                  if (await confirmDialog("Remove this photo from the sign-off?", { confirmLabel: "Remove", danger: true })) {
-                    setOpen(null);
-                    await props.onRemove(open.id);
-                  }
-                }}
-              >
-                Remove photo
-              </button>
-            )}
-            <button style={primary} onClick={() => setOpen(null)}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {open && <Lightbox signoff={s} photos={photos} start={open} canRemove={props.canRemove} onRemove={props.onRemove} onClose={() => setOpen(null)} />}
     </div>
   );
 }
 
-/** The 📷 button under a check's Sign button — same size. Opens the camera; greyed out (tapping
+/** Small thumbnails of one check's photos, right under its 📷 button in the grid. */
+export function PhotoStrip(props: { signoff: Signoff; checkId: string; canRemove: boolean; onRemove: (photoId: string) => Promise<void> }) {
+  const mine = (props.signoff.photos ?? []).filter((p) => p.checkId === props.checkId);
+  const [open, setOpen] = useState<SignoffPhoto | null>(null);
+  if (mine.length === 0) return null;
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 3, marginTop: 4 }}>
+        {mine.map((p) => (
+          <button key={p.id} onClick={() => setOpen(p)} aria-label={`Photo by ${p.takenByName}`} style={{ padding: 0, border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden", background: "var(--bg-deep)", cursor: "pointer", aspectRatio: "1" }}>
+            <Photo id={p.id} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          </button>
+        ))}
+      </div>
+      {open && <Lightbox signoff={props.signoff} photos={mine} start={open} canRemove={props.canRemove} onRemove={props.onRemove} onClose={() => setOpen(null)} />}
+    </>
+  );
+}
+
+/** Full-screen photo with ‹ › (and swipe) through the others. */
+function Lightbox(props: { signoff: Signoff; photos: SignoffPhoto[]; start: SignoffPhoto; canRemove: boolean; onRemove: (photoId: string) => Promise<void>; onClose: () => void }) {
+  const [index, setIndex] = useState(() => Math.max(0, props.photos.findIndex((p) => p.id === props.start.id)));
+  const touchX = useRef<number | null>(null);
+  const p = props.photos[index];
+  const many = props.photos.length > 1;
+  const go = (d: number) => setIndex((i) => (i + d + props.photos.length) % props.photos.length);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") props.onClose();
+      if (e.key === "ArrowRight") go(1);
+      if (e.key === "ArrowLeft") go(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+  if (!p) return null;
+  const arrow = { ...ghost, width: 64, height: 64, fontSize: 30, color: "#fff", borderColor: "rgba(255,255,255,0.4)", background: "rgba(0,0,0,0.3)", flex: "none" as const };
+  return (
+    <div
+      role="dialog"
+      onClick={props.onClose}
+      onTouchStart={(e) => (touchX.current = e.touches[0]?.clientX ?? null)}
+      onTouchEnd={(e) => {
+        const start = touchX.current;
+        const end = e.changedTouches[0]?.clientX;
+        if (start !== null && end !== undefined && Math.abs(end - start) > 50) go(end < start ? 1 : -1);
+        touchX.current = null;
+      }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", zIndex: 50, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 16 }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, maxWidth: "100%" }} onClick={(e) => e.stopPropagation()}>
+        {many && (
+          <button aria-label="Previous photo" style={arrow} onClick={() => go(-1)}>
+            ‹
+          </button>
+        )}
+        <Photo id={p.id} style={{ maxWidth: many ? "calc(100vw - 200px)" : "calc(100vw - 32px)", maxHeight: "78vh", objectFit: "contain" }} />
+        {many && (
+          <button aria-label="Next photo" style={arrow} onClick={() => go(1)}>
+            ›
+          </button>
+        )}
+      </div>
+      <div style={{ color: "#fff", fontSize: 14, textAlign: "center" }}>
+        Taken during <b>{checkLabel(props.signoff, p.checkId)}</b> by <b>{p.takenByName}</b> · {localStamp(p.takenAt)}
+        {many && <span style={{ opacity: 0.7 }}> · {index + 1} / {props.photos.length}</span>}
+      </div>
+      <div style={{ display: "flex", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+        {props.canRemove && (
+          <button
+            style={{ ...ghost, color: "var(--danger)", borderColor: "var(--danger)" }}
+            onClick={async () => {
+              if (await confirmDialog("Remove this photo from the sign-off?", { confirmLabel: "Remove", danger: true })) {
+                props.onClose();
+                await props.onRemove(p.id);
+              }
+            }}
+          >
+            Remove photo
+          </button>
+        )}
+        <button style={{ ...primary, height: 52, minWidth: 120 }} onClick={props.onClose}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The 📷 button under a check's Sign button — same size. Opens a panel to take several photos in
+ * a row (camera again and again) or pick several at once from the gallery. Greyed out (tapping
  * explains why) when the photo would belong to somebody else's check. */
-export function CameraButton(props: { checkLabel: string; count: number; busy: boolean; blocked: string | null; onBlocked: (reason: string) => void; onFile: (f: File | undefined) => void }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const dim = props.blocked !== null || props.busy;
+export function CameraButton(props: {
+  signoff: Signoff;
+  checkId: string;
+  checkLabel: string;
+  busy: boolean;
+  blocked: string | null;
+  onBlocked: (reason: string) => void;
+  onFiles: (files: File[]) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const count = (props.signoff.photos ?? []).filter((p) => p.checkId === props.checkId).length;
+  const dim = props.blocked !== null;
   return (
     <>
       <button
         type="button"
         aria-label={`Take a photo for ${props.checkLabel}`}
-        title={props.blocked ?? `Take a photo for ${props.checkLabel}`}
-        disabled={props.busy}
-        onClick={() => (props.blocked ? props.onBlocked(props.blocked) : ref.current?.click())}
-        style={{ ...primary, position: "relative", height: 56, width: "100%", padding: 0, fontSize: 24, lineHeight: 1, opacity: dim ? 0.35 : 1, cursor: props.blocked ? "not-allowed" : "pointer" }}
+        title={props.blocked ?? `Take photos for ${props.checkLabel}`}
+        onClick={() => (props.blocked ? props.onBlocked(props.blocked) : setOpen(true))}
+        style={{ ...primary, position: "relative", height: 56, width: "100%", padding: 0, fontSize: 24, lineHeight: 1, opacity: dim ? 0.35 : 1, cursor: dim ? "not-allowed" : "pointer" }}
       >
         {props.busy ? "…" : "📷"}
-        {props.count > 0 && (
+        {count > 0 && (
           <span className="mono" style={{ position: "absolute", top: 4, right: 6, fontSize: 11, fontWeight: 700 }}>
-            {props.count}
+            {count}
           </span>
         )}
       </button>
-      <input
-        ref={ref}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: "none" }}
-        onChange={(e) => {
-          props.onFile(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
+      {open && <PhotoSheet {...props} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function Photo({ id, style }: { id: string; style: React.CSSProperties }) {
+function PhotoSheet(props: { signoff: Signoff; checkId: string; checkLabel: string; busy: boolean; onFiles: (files: File[]) => Promise<void>; onClose: () => void }) {
+  const camera = useRef<HTMLInputElement>(null);
+  const gallery = useRef<HTMLInputElement>(null);
+  const [working, setWorking] = useState(0);
+  const mine = (props.signoff.photos ?? []).filter((p) => p.checkId === props.checkId);
+  async function add(list: FileList | null) {
+    const files = [...(list ?? [])];
+    if (files.length === 0) return;
+    setWorking(files.length);
+    try {
+      await props.onFiles(files);
+    } finally {
+      setWorking(0);
+    }
+  }
+  const big = { ...primary, height: 72, fontSize: 17, flex: "1 1 200px" };
+  return (
+    <div role="dialog" aria-label={`Photos for ${props.checkLabel}`} onClick={props.onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 40, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...card, width: "min(640px, 100%)", maxHeight: "90vh", overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontWeight: 700, fontSize: 18 }}>Photos — {props.checkLabel}</div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button type="button" style={big} disabled={working > 0} onClick={() => camera.current?.click()}>
+            📷 Take photo
+          </button>
+          <button type="button" style={{ ...big, background: "transparent", color: "var(--accent)", border: "1px solid var(--accent)" }} disabled={working > 0} onClick={() => gallery.current?.click()}>
+            🖼 Choose several
+          </button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+          {working > 0 ? `Saving ${working} photo${working === 1 ? "" : "s"}…` : "Take as many as you need — after each photo you come back here. Or pick several from the gallery at once."}
+        </div>
+        {mine.length > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 6 }}>
+            {mine.map((p) => (
+              <div key={p.id} style={{ border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden", aspectRatio: "1" }}>
+                <Photo id={p.id} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </div>
+            ))}
+          </div>
+        )}
+        <button type="button" style={{ ...ghost, height: 56, fontSize: 15 }} onClick={props.onClose} disabled={working > 0}>
+          Done ({mine.length} photo{mine.length === 1 ? "" : "s"})
+        </button>
+        <input ref={camera} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => void add(e.target.files).then(() => (e.target.value = ""))} />
+        <input ref={gallery} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => void add(e.target.files).then(() => (e.target.value = ""))} />
+      </div>
+    </div>
+  );
+}
+
+export function Photo({ id, style }: { id: string; style: React.CSSProperties }) {
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -120,6 +234,6 @@ function Photo({ id, style }: { id: string; style: React.CSSProperties }) {
       alive = false;
     };
   }, [id]);
-  if (!src) return <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-4)", fontSize: 11 }}>{failed ? "not available offline" : "…"}</div>;
+  if (!src) return <div style={{ ...style, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-4)", fontSize: 11 }}>{failed ? "offline" : "…"}</div>;
   return <img src={src} alt="" style={style} />;
 }

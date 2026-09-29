@@ -16,7 +16,7 @@ import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount, usePermissions } from "../lib/permissions.js";
 import { localStamp, stamp } from "../lib/format.js";
-import { CameraButton, PhotosCard } from "../components/PhotosCard.js";
+import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
 import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
 import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
@@ -165,15 +165,17 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   }
 
   /** Camera → shrunk JPEG → shown at once, uploaded with the queue. */
-  async function takePhoto(checkId: string, file: File | undefined) {
-    if (!file) return;
+  async function takePhotos(checkId: string, files: File[]) {
     setPhotoBusy(checkId);
     try {
-      const dataUrl = await toJpegDataUrl(file);
-      const photoId = crypto.randomUUID();
-      const takenAt = new Date().toISOString();
-      await rememberPhoto(photoId, dataUrl);
-      await mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt));
+      // One after another — each is shrunk, shown and queued before the next is read.
+      for (const file of files) {
+        const dataUrl = await toJpegDataUrl(file);
+        const photoId = crypto.randomUUID();
+        const takenAt = new Date().toISOString();
+        await rememberPhoto(photoId, dataUrl);
+        await mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt));
+      }
     } catch (err) {
       setError(`Couldn't use that photo: ${errorMessage(err)}`);
     } finally {
@@ -384,15 +386,17 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                       {!closed && (
                         <div style={{ marginTop: 6 }}>
                           <CameraButton
+                            signoff={s}
+                            checkId={c.id}
                             checkLabel={c.label}
-                            count={(s.photos ?? []).filter((p) => p.checkId === c.id).length}
                             busy={photoBusy === c.id}
                             blocked={photoBlock(s, c.id, me, operators)}
                             onBlocked={setError}
-                            onFile={(f) => void takePhoto(c.id, f)}
+                            onFiles={(files) => takePhotos(c.id, files)}
                           />
                         </div>
                       )}
+                      <PhotoStrip signoff={s} checkId={c.id} canRemove={isAdmin} onRemove={(photoId) => mutate({ kind: "removePhoto", id, photoId }, () => api.removePhoto(id, photoId))} />
                     </td>
                   );
                 })}
