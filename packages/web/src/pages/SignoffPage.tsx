@@ -134,6 +134,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const allowedParts = allowed === "all" ? parts : parts.filter((p) => allowed.has(p.id));
   const showParts = s.mode === "service";
   const firstCheckAt = summarize(s).firstCheckAt;
+  const pdfReady = status === "complete";
   // The type is what the mechanism was checked as — fixed for operators after the first check.
   const typeFixed = !isAdmin && typeLocked(s);
   // Refurbished units get an "R" after the serial number (667 → 667R) — the one serial change an
@@ -212,13 +213,17 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
               started by {s.createdByName} · 1st check {firstCheckAt ? stamp(firstCheckAt) : "not done yet"}
             </span>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={primary} onClick={() => void downloadPdf([s])}>
-              Download PDF
-            </button>
-            <button style={{ ...ghost, height: 38 }} onClick={() => void openPdf([s])}>
-              Open / print
-            </button>
+          {/* The PDF is the finished record — only once every check is signed (for everyone). */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button style={{ ...primary, opacity: pdfReady ? 1 : 0.35, cursor: pdfReady ? "pointer" : "not-allowed" }} disabled={!pdfReady} onClick={() => void downloadPdf([s])}>
+                Download PDF
+              </button>
+              <button style={{ ...ghost, height: 38, opacity: pdfReady ? 1 : 0.35, cursor: pdfReady ? "pointer" : "not-allowed" }} disabled={!pdfReady} onClick={() => void openPdf([s])}>
+                Open / print
+              </button>
+            </div>
+            {!pdfReady && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>PDF available once all {total} checks are signed</span>}
           </div>
         </div>
 

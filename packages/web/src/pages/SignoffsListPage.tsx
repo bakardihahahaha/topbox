@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { SignoffSummary, Template } from "@biosite-signoff/shared";
+import { signoffStatus, type SignoffSummary, type Template } from "@biosite-signoff/shared";
 import { getSignoffs, listTemplates } from "../lib/api.js";
 import { listSignoffsOfflineAware } from "../lib/offlineList.js";
 import { useData } from "../lib/useData.js";
@@ -48,7 +48,9 @@ export function SignoffsListPage() {
     setPdfError(null);
     try {
       // Printed in SO-number order, oldest first — the order they'd sit in a paper file.
-      const full = await getSignoffs([...selected]);
+      // Only finished sign-offs (every check signed) go into a PDF.
+      const full = (await getSignoffs([...selected])).filter((s) => signoffStatus(s) === "complete");
+      if (full.length === 0) throw new Error("None of the selected sign-offs is complete yet — a PDF needs every check signed.");
       full.sort((a, b) => a.number.localeCompare(b.number));
       await downloadPdf(full);
     } catch (err) {
@@ -135,7 +137,16 @@ export function SignoffsListPage() {
 function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; onToggle: () => void }) {
   return (
     <div style={{ ...card, padding: "14px 14px", display: "flex", alignItems: "center", gap: 14, borderColor: selected ? "var(--accent)" : "var(--border-soft)" }}>
-      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.serialNumber}`} style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none" }} />
+      {/* Selecting is for the PDF — only complete sign-offs can be printed. */}
+      <input
+        type="checkbox"
+        checked={selected}
+        disabled={s.status !== "complete"}
+        onChange={onToggle}
+        aria-label={`Select ${s.serialNumber}`}
+        title={s.status === "complete" ? "Select for PDF" : "PDF available once every check is signed"}
+        style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none", opacity: s.status === "complete" ? 1 : 0.3 }}
+      />
       <Link to={topboxUrl(s.serialNumber, s.id)} style={{ flex: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span className="mono" style={{ fontSize: 17, fontWeight: 700 }}>{s.serialNumber}</span>
