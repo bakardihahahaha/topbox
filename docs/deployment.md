@@ -43,14 +43,14 @@ Reuse the service account from Decom/KPI if you have one, or:
 
 ## 4. Run it (Container Manager)
 
-1. Make the image pullable once: GitHub → **Packages → signoff-server → Package settings →
-   Change visibility → Public**, and under **Manage Actions access** give the `topbox` repository
-   **Write** (so its CI can publish new versions). The image is built by `.github/workflows/ci.yml`
+1. Make the image pullable once: GitHub → **Packages → topbox-server → Package settings →
+   Change visibility → Public** (it's created
+   by this repository's CI on the first push to `main`). The image is built by `.github/workflows/ci.yml`
    on every push to `main` (or **Actions → Sign-off → Run workflow**).
 2. File Station: create `/volume1/docker/topbox/` with an empty `data` folder, copy
    `docker/docker-compose.yml` into it and the JSON key next to it as `service-account.json`.
 3. **Container Manager → Project → Create** → path `/volume1/docker/topbox` → it reads the compose
-   file, pulls `ghcr.io/bakardihahahaha/signoff-server:latest`, starts it.
+   file, pulls `ghcr.io/bakardihahahaha/topbox-server:latest`, starts it.
 4. Before step 3, edit `ADMIN_NAME` and `ADMIN_PIN` at the top of the compose file (4–8 digits,
    in quotes). Left empty, a random PIN is printed once in Container → **Log**. Forgot it later?
    Set `ADMIN_RESET: "yes"` with a new `ADMIN_PIN`, restart, sign in, set it back to `"no"`.

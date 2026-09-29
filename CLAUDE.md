@@ -5,5 +5,5 @@
 - Talk to the owner in Polish; code, comments, commit messages and docs stay in English.
 - Before pushing: `npm test`, `npm run typecheck`, `npm run build --workspace packages/web`.
 - Deployment target: Synology NAS, `/volume1/docker/topbox`, https://topbox.duckdns.org (see
-  docs/deployment.md). The NAS pulls `ghcr.io/bakardihahahaha/signoff-server:latest`, published by
+  docs/deployment.md). The NAS pulls `ghcr.io/bakardihahahaha/topbox-server:latest`, published by
   `.github/workflows/ci.yml` on pushes to `main`.

@@ -1,9 +1,9 @@
 services:
-  signoff-server:
+  topbox-server:
     # Built by .github/workflows/ci.yml (repo bakardihahahaha/topbox) and pulled from GHCR — the NAS
     # only pulls and runs. Update: Container Manager > Project > topbox > Action > Update.
-    image: ghcr.io/bakardihahahaha/signoff-server:latest
-    container_name: signoff-server
+    image: ghcr.io/bakardihahahaha/topbox-server:latest
+    container_name: topbox-server
     restart: unless-stopped
     environment:
       # ============================== FILL IN BEFORE THE FIRST START ==============================

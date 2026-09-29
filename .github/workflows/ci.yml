@@ -1,6 +1,6 @@
 name: Sign-off
 
-# Tests on every push/PR; publishes ghcr.io/<owner>/signoff-server (what the NAS pulls, see
+# Tests on every push/PR; publishes ghcr.io/<owner>/topbox-server (what the NAS pulls, see
 # docker/docker-compose.yml) from main.
 
 on:
@@ -46,5 +46,5 @@ jobs:
           build-args: |
             GIT_SHA=${{ github.sha }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/signoff-server:latest
-            ghcr.io/${{ github.repository_owner }}/signoff-server:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/topbox-server:latest
+            ghcr.io/${{ github.repository_owner }}/topbox-server:${{ github.sha }}

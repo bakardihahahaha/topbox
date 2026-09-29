@@ -7,7 +7,7 @@ original. Same team, same look and conventions as [Decom](https://github.com/bak
 its theme tokens, sign-in screen, sync dot and offline queue are reused directly.
 
 Deployed at `https://topbox.duckdns.org` (Synology, see `docs/deployment.md`). CI:
-`.github/workflows/ci.yml` — tests on every push, publishes `ghcr.io/bakardihahahaha/signoff-server`
+`.github/workflows/ci.yml` — tests on every push, publishes `ghcr.io/bakardihahahaha/topbox-server`
 from `main`.
 
 ## What it does
@@ -38,7 +38,7 @@ from `main`.
 ## Architecture
 
 ```
-browser (PWA)  ──HTTPS──>  DSM reverse proxy  ──>  signoff-server (Fastify, Docker on the NAS)
+browser (PWA)  ──HTTPS──>  DSM reverse proxy  ──>  topbox-server (Fastify, Docker on the NAS)
    │  offline queue (IndexedDB)                         │
    │  jsPDF — PDFs made on the device                   ├── SQLite file on the NAS  ← source of truth, all reads/writes
    └  SSE live refresh                                  └── outbox ──(background)──> Google Sheet  ← backup mirror
