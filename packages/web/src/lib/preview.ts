@@ -29,6 +29,7 @@ export function mechanismPreview(template: Template | undefined, me: Me, serialN
     templateId: t.id,
     template: t,
     serialNumber,
+    arrivedAt: now,
     mode: "new",
     typeId: "",
     typeName: "New",

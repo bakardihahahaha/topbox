@@ -1,5 +1,8 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { departedAt, type Signoff } from "@biosite-signoff/shared";
+import { getVisits } from "../lib/api.js";
+import { stamp } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { createSignoff, listTemplates } from "../lib/api.js";
@@ -13,13 +16,25 @@ import { card, errorBox, errorMessage, h1, hint, input, label, page, primary } f
 
 export function NewSignoffPage() {
   const navigate = useNavigate();
+  // Prefilled from the home tabs ("+ New Service") and "Mechanism is back — start new visit".
+  const [params] = useSearchParams();
   const me = useMe();
   const templates = useData<Template[]>(listTemplates);
-  const [templateId, setTemplateId] = useState("");
+  const [templateId, setTemplateId] = useState(params.get("templateId") ?? "");
   const types = useSignoffTypes();
-  const [typeId, setTypeId] = useState("");
+  const [typeId, setTypeId] = useState(params.get("typeId") ?? "");
   const type = types.find((t) => t.id === typeId) ?? types[0];
-  const [serial, setSerial] = useState("");
+  const [serial, setSerial] = useState(params.get("serial") ?? "");
+  // Returning mechanism? Show its previous visits so nobody starts a duplicate while it's still in.
+  const [previous, setPrevious] = useState<Signoff[] | null>(null);
+  useEffect(() => {
+    const s = serial.trim();
+    if (s.length < 2) return setPrevious(null);
+    const t = setTimeout(() => void getVisits(s).then(setPrevious, () => setPrevious(null)), 300);
+    return () => clearTimeout(t);
+  }, [serial]);
+  const lastVisit = previous?.[previous.length - 1];
+  const stillIn = lastVisit && !departedAt(lastVisit);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -98,6 +113,23 @@ export function NewSignoffPage() {
           <input value={serial} onChange={(e) => setSerial(e.target.value)} autoFocus style={{ ...input, height: 56, fontSize: 18 }} className="mono" autoCapitalize="characters" />
         </label>
 
+        {previous && previous.length > 0 && lastVisit && (
+          <div style={{ borderLeft: `3px solid ${stillIn ? "var(--warn)" : "var(--accent)"}`, background: stillIn ? "var(--bg-deep)" : "var(--accent-wash)", borderRadius: "var(--radius-callout)", padding: "10px 12px", fontSize: 13.5 }}>
+            {stillIn ? (
+              <>
+                <b>{lastVisit.serialNumber}</b> is still in the workshop (visit {previous.length}, {lastVisit.number}) —{" "}
+                <a href={`/signoffs/${lastVisit.id}`} style={{ color: "var(--accent)", fontWeight: 700 }}>
+                  open it instead
+                </a>
+                .
+              </>
+            ) : (
+              <>
+                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit))}.
+              </>
+            )}
+          </div>
+        )}
         <button type="submit" disabled={busy || !chosen || !serial.trim()} style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !serial.trim() ? 0.6 : 1 }}>
           {busy ? "Creating…" : "Start sign-off"}
         </button>

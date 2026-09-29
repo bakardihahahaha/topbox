@@ -205,6 +205,15 @@ export function SignoffPage() {
             </div>
             {!currentTypeId && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Recorded as: {typeNameOf(s)}</span>}
           </div>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="mono" style={label}>
+              Arrived
+            </span>
+            <ArrivedField value={s.arrivedAt} onSave={(arrivedAt) => mutate({ kind: "updateHeader", id, patch: { arrivedAt } }, () => api.updateSignoffHeader(id, { arrivedAt }))} />
+            <Link to={`/mechanisms/${encodeURIComponent(s.serialNumber)}`} style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600 }}>
+              History of {s.serialNumber} →
+            </Link>
+          </label>
         </div>
       </div>
 
@@ -229,6 +238,15 @@ export function SignoffPage() {
                         style={{ ...ghost, height: 32, padding: "0 8px", fontSize: 11.5, marginTop: 4 }}
                       >
                         ✓ all
+                      </button>
+                    )}
+                    {!sig && full && (
+                      <button
+                        onClick={() => void mutate({ kind: "clearCheck", id, checkId: c.id }, () => api.clearCheck(id, c.id))}
+                        title="Untick every item in this check"
+                        style={{ ...ghost, height: 32, padding: "0 8px", fontSize: 11.5, marginTop: 4 }}
+                      >
+                        ✕ all
                       </button>
                     )}
                     {sig && <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>🔒 signed</div>}
@@ -268,6 +286,7 @@ export function SignoffPage() {
                           <div style={{ fontSize: 10.5, lineHeight: 1.2 }}>{sig.name}</div>
                           <div className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>
                             {sig.date.split("-").reverse().join("/")}
+                            {sig.time && <div>{sig.time}</div>}
                           </div>
                           {(sig.userId === me.userId || me.role === "admin") && (
                             <button
@@ -370,10 +389,10 @@ export function SignoffPage() {
           checkLabel={signing.label}
           name={me.name}
           onCancel={() => setSigning(null)}
-          onSave={(path, date) => {
+          onSave={(path, date, time) => {
             const checkId = signing.id;
             setSigning(null);
-            void mutate({ kind: "sign", id, checkId, path, date }, () => api.signCheck(id, checkId, path, date));
+            void mutate({ kind: "sign", id, checkId, path, date, time }, () => api.signCheck(id, checkId, path, date, time));
           }}
         />
       )}
@@ -415,6 +434,32 @@ function MarkCell({ value, locked, onTap }: { value: MarkValue | undefined; lock
     >
       {look.text}
     </button>
+  );
+}
+
+/** ISO <-> the local "YYYY-MM-DDTHH:MM" a datetime-local input wants. */
+const toLocalInput = (iso: string) => {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+function ArrivedField({ value, onSave }: { value: string; onSave: (iso: string) => void }) {
+  const [v, setV] = useState(toLocalInput(value));
+  useEffect(() => setV(toLocalInput(value)), [value]);
+  return (
+    <input
+      type="datetime-local"
+      value={v}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => {
+        const t = Date.parse(v);
+        if (Number.isNaN(t)) return setV(toLocalInput(value));
+        const iso = new Date(t).toISOString();
+        if (toLocalInput(iso) !== toLocalInput(value)) onSave(iso);
+      }}
+      style={input}
+    />
   );
 }
 

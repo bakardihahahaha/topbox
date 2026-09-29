@@ -113,6 +113,8 @@ export interface Signature {
   path: string;
   /** YYYY-MM-DD — the date printed next to the signature. */
   date: string;
+  /** HH:MM, local time of the signing device ('' on records from before times were kept). */
+  time: string;
   at: string;
 }
 
@@ -135,6 +137,9 @@ export interface Signoff {
    * later (new rows, renamed checks) never changes what an existing record shows or prints. */
   template: Template;
   serialNumber: string;
+  /** When the mechanism arrived at the workshop for this visit (ISO) — defaults to when the
+   * sign-off was started, editable. */
+  arrivedAt: string;
   mode: SignoffMode;
   /** Which sign-off type was picked; its name is snapshotted so renaming/deleting the type later
    * never changes an existing record. Empty on records from before types existed. */
@@ -158,6 +163,12 @@ export interface SignoffSummary {
   serialNumber: string;
   mode: SignoffMode;
   typeName: string;
+  arrivedAt: string;
+  /** "YYYY-MM-DD HH:MM" of the last check's signature once complete — when it left. */
+  departedAt: string | null;
+  /** "YYYY-MM-DD HH:MM" when the first check was completed (signed), null before. */
+  firstCheckAt: string | null;
+  firstCheckBy: string | null;
   status: SignoffStatus;
   /** "2/3" — checks signed (or fully marked when the sign row is off) out of total. */
   progress: string;
@@ -204,3 +215,13 @@ export interface LoginUser {
 }
 
 export const PIN_PATTERN = /^\d{4,8}$/;
+
+/** One physical mechanism (serial number) across all its visits to the workshop. */
+export interface MechanismSummary {
+  serialNumber: string;
+  visits: number;
+  /** The latest visit. */
+  last: SignoffSummary;
+  /** Latest visit complete = it has left and is out at a client. */
+  atClient: boolean;
+}

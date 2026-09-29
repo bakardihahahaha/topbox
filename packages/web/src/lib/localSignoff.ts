@@ -6,7 +6,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 /** A brand-new sign-off built locally — shown immediately (even offline) while the create request
  * syncs in the background. The server assigns the real SO number; until then it reads "pending". */
-export function draftSignoff(input: { id: string; serialNumber: string }, type: SignoffType, template: Template, me: Me): Signoff {
+export function draftSignoff(input: { id: string; serialNumber: string; arrivedAt?: string }, type: SignoffType, template: Template, me: Me): Signoff {
   const now = new Date().toISOString();
   return {
     id: input.id,
@@ -14,6 +14,7 @@ export function draftSignoff(input: { id: string; serialNumber: string }, type: 
     templateId: template.id,
     template,
     serialNumber: input.serialNumber,
+    arrivedAt: input.arrivedAt ?? now,
     mode: modeOf(type),
     typeId: type.id,
     typeName: type.name,
@@ -51,10 +52,12 @@ export function applyLocal(s: Signoff, a: QueuedAction, me: Me, parts: Part[], t
         .map((r) => ({ rowId: r.id, checkId: a.checkId, value: a.value, byUserId: me.userId, byName: me.name, at }));
       return { ...s, marks: [...s.marks, ...added] };
     }
+    case "clearCheck":
+      return { ...s, marks: s.marks.filter((m) => m.checkId !== a.checkId) };
     case "sign":
       return {
         ...s,
-        signatures: [...s.signatures.filter((x) => x.checkId !== a.checkId), { checkId: a.checkId, userId: me.userId, name: me.name, path: a.path, date: a.date || today(), at }],
+        signatures: [...s.signatures.filter((x) => x.checkId !== a.checkId), { checkId: a.checkId, userId: me.userId, name: me.name, path: a.path, date: a.date || today(), time: a.time ?? "", at }],
       };
     case "unsign":
       return { ...s, signatures: s.signatures.filter((x) => x.checkId !== a.checkId) };

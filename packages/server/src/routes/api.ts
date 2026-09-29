@@ -214,14 +214,14 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   });
 
   app.post("/api/signoffs", authed, async (req) => {
-    const body = parse(z.object({ id: z.string().uuid(), templateId: id, serialNumber: z.string().max(100), typeId: id.optional(), mode: mode.optional() }), req.body);
+    const body = parse(z.object({ id: z.string().uuid(), templateId: id, serialNumber: z.string().max(100), typeId: id.optional(), mode: mode.optional(), arrivedAt: z.string().datetime().optional() }), req.body);
     return s.signoffs.create(body, actor(req));
   });
 
   app.get<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => s.signoffs.get(req.params.id));
 
   app.patch<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => {
-    const body = parse(z.object({ serialNumber: z.string().max(100).optional(), notes: z.string().max(5000).optional(), typeId: id.optional(), mode: mode.optional() }), req.body);
+    const body = parse(z.object({ serialNumber: z.string().max(100).optional(), notes: z.string().max(5000).optional(), typeId: id.optional(), mode: mode.optional(), arrivedAt: z.string().datetime().optional() }), req.body);
     return s.signoffs.updateHeader(req.params.id, body);
   });
 
@@ -240,8 +240,22 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     return s.signoffs.fillCheck(req.params.id, body, actor(req));
   });
 
+  app.post<{ Params: { id: string } }>("/api/signoffs/:id/marks/clear", authed, async (req) => {
+    const body = parse(z.object({ checkId: id }), req.body);
+    return s.signoffs.clearCheck(req.params.id, body.checkId);
+  });
+
+  // ---- mechanisms (one serial number across all its visits) ----------------------------------
+
+  app.get("/api/mechanisms", authed, async (req) => {
+    const q = parse(z.object({ q: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(500).default(200) }), req.query);
+    return s.signoffs.mechanisms(q.q?.trim() || undefined, q.limit);
+  });
+  app.get<{ Params: { typeId: string } }>("/api/stock/:typeId", authed, async (req) => s.signoffs.stock(req.params.typeId));
+  app.get<{ Params: { serial: string } }>("/api/mechanisms/:serial/visits", authed, async (req) => s.signoffs.visits(req.params.serial));
+
   app.put<{ Params: { id: string; checkId: string } }>("/api/signoffs/:id/signatures/:checkId", authed, async (req) => {
-    const body = parse(z.object({ path: z.string().max(40_000), date: z.string() }), req.body);
+    const body = parse(z.object({ path: z.string().max(40_000), date: z.string(), time: z.string().max(5).optional() }), req.body);
     return s.signoffs.sign(req.params.id, { checkId: req.params.checkId, ...body }, actor(req));
   });
 

@@ -55,6 +55,7 @@ export const TABLES: readonly TableSpec[] = [
       "template_id",
       "template_json",
       "serial_number",
+      "arrived_at",
       "mode",
       "type_id",
       "type_name",
@@ -68,7 +69,7 @@ export const TABLES: readonly TableSpec[] = [
     ],
   },
   { name: "signoff_marks", columns: ["id", "signoff_id", "row_id", "check_id", "value", "by_user_id", "by_name", "at", "updated_at", "deleted_at"] },
-  { name: "signoff_signatures", columns: ["id", "signoff_id", "check_id", "user_id", "name", "path", "date", "at", "updated_at", "deleted_at"] },
+  { name: "signoff_signatures", columns: ["id", "signoff_id", "check_id", "user_id", "name", "path", "date", "time", "at", "updated_at", "deleted_at"] },
   { name: "signoff_parts", columns: ["id", "signoff_id", "part_id", "part_number", "name", "qty", "note", "created_at", "updated_at", "deleted_at"] },
 ];
 

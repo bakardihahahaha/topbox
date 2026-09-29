@@ -1,4 +1,5 @@
-import type { Signoff, SignoffStatus, Template } from "./types.js";
+import type { Signature, Signoff, SignoffStatus, SignoffSummary, Template } from "./types.js";
+import { typeNameOf } from "./types.js";
 
 export function itemRows(template: Template) {
   return template.rows.filter((r) => r.kind === "item");
@@ -35,7 +36,58 @@ export function allowedPartIds(frozen: Template, live?: Template | null): "all" 
   return new Set([...frozen.partIds, ...current.partIds]);
 }
 
+/** "YYYY-MM-DD HH:MM" (or just the date on old records) of a signature. */
+export function signatureStamp(sig: Pick<Signature, "date" | "time">): string {
+  return sig.time ? `${sig.date} ${sig.time}` : sig.date;
+}
+
+/** When the mechanism left after this visit: the last check column's signature (or, for a
+ * checklist without a sign row, when it was completed). null while still in the workshop. */
+export function departedAt(s: Pick<Signoff, "template" | "marks" | "signatures" | "updatedAt">): string | null {
+  if (signoffStatus(s) !== "complete") return null;
+  if (!s.template.signRowEnabled) return s.updatedAt.slice(0, 16).replace("T", " ");
+  const last = s.template.checks[s.template.checks.length - 1];
+  const sig = last && s.signatures.find((g) => g.checkId === last.id);
+  return sig ? signatureStamp(sig) : null;
+}
+
 export const MARK_LABEL: Record<string, string> = { pass: "✓", fail: "✗", na: "N/A" };
 
 /** Signature capture box — SignaturePad draws in it, the PDF generator scales from it. */
 export const SIGNATURE_BOX = { width: 300, height: 100 } as const;
+
+/** When a check column was completed: its signature's date + time, or (checklists without a
+ * sign row) the latest mark in it. null while incomplete. */
+export function checkDoneAt(s: Pick<Signoff, "template" | "marks" | "signatures">, checkId: string): { at: string; by: string } | null {
+  if (!isCheckComplete(s, checkId)) return null;
+  if (s.template.signRowEnabled) {
+    const sig = s.signatures.find((g) => g.checkId === checkId)!;
+    return { at: signatureStamp(sig), by: sig.name };
+  }
+  const last = s.marks.filter((m) => m.checkId === checkId).sort((a, b) => b.at.localeCompare(a.at))[0];
+  return last ? { at: last.at.slice(0, 16).replace("T", " "), by: last.byName } : null;
+}
+
+/** The list-row view of a sign-off — one definition for the server and the offline list. */
+export function summarize(s: Signoff): SignoffSummary {
+  const { done, total } = signoffProgress(s);
+  const first = s.template.checks[0] ? checkDoneAt(s, s.template.checks[0].id) : null;
+  return {
+    id: s.id,
+    number: s.number,
+    templateId: s.templateId,
+    templateName: s.template.name,
+    serialNumber: s.serialNumber,
+    mode: s.mode,
+    typeName: typeNameOf(s),
+    arrivedAt: s.arrivedAt,
+    departedAt: departedAt(s),
+    firstCheckAt: first?.at ?? null,
+    firstCheckBy: first?.by ?? null,
+    status: signoffStatus(s),
+    progress: `${done}/${total}`,
+    createdByName: s.createdByName,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  };
+}

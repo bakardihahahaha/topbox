@@ -1,0 +1,18 @@
+/** "2026-09-29 14:05" (or "2026-09-29") -> "29/09/2026 14:05". */
+export function stamp(s: string | null | undefined): string {
+  if (!s) return "—";
+  const [d, t] = s.split(" ");
+  return `${d!.split("-").reverse().join("/")}${t ? ` ${t}` : ""}`;
+}
+
+/** ISO -> local "29/09/2026 14:05". */
+export function localStamp(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Whole days between two moments. */
+export function daysBetween(fromIso: string, to: Date): number {
+  return Math.max(0, Math.floor((to.getTime() - Date.parse(fromIso)) / 86_400_000));
+}

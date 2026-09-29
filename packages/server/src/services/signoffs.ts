@@ -1,4 +1,4 @@
-import { allowedPartIds, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary } from "@biosite-signoff/shared";
+import { allowedPartIds, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
 import { badRequest, conflict, forbidden, notFound } from "./errors.js";
@@ -39,21 +39,7 @@ export class SignoffService {
   }
 
   toSummary(s: Signoff): SignoffSummary {
-    const { done, total } = signoffProgress(s);
-    return {
-      id: s.id,
-      number: s.number,
-      templateId: s.templateId,
-      templateName: s.template.name,
-      serialNumber: s.serialNumber,
-      mode: s.mode,
-      typeName: typeNameOf(s),
-      status: signoffStatus(s),
-      progress: `${done}/${total}`,
-      createdByName: s.createdByName,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-    };
+    return summarize(s);
   }
 
   async list(filter: SignoffListFilter): Promise<{ items: SignoffSummary[]; total: number }> {
@@ -66,7 +52,7 @@ export class SignoffService {
   }
 
   /** `id` comes from the client so a queued/retried create is idempotent. */
-  async create(input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode }, actor: Actor): Promise<Signoff> {
+  async create(input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }, actor: Actor): Promise<Signoff> {
     const existing = await this.store.signoffs.get(input.id);
     if (existing) return existing;
     const template = await this.store.templates.get(input.templateId);
@@ -89,6 +75,7 @@ export class SignoffService {
           notes: "",
           createdBy: actor.userId,
           createdByName: actor.name,
+          arrivedAt: input.arrivedAt ?? now,
           createdAt: now,
           updatedAt: now,
         });
@@ -100,14 +87,15 @@ export class SignoffService {
     return this.require(input.id);
   }
 
-  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode }): Promise<Signoff> {
+  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }): Promise<Signoff> {
+    if (patch.arrivedAt !== undefined && Number.isNaN(Date.parse(patch.arrivedAt))) throw badRequest("Invalid arrival time.");
     const s = await this.require(id);
     if (patch.serialNumber !== undefined && !patch.serialNumber.trim()) throw badRequest("Serial number is required.");
     const type = patch.typeId !== undefined || patch.mode !== undefined ? await this.types.resolve(patch) : undefined;
     if (type?.mode === "new" && s.parts.length > 0) {
       throw conflict("HAS_PARTS", `Remove the replaced parts before switching this sign-off to ${type.typeName || "a check-only type"}.`);
     }
-    await this.store.signoffs.updateHeader(id, { serialNumber: patch.serialNumber?.trim(), notes: patch.notes, ...type }, new Date().toISOString());
+    await this.store.signoffs.updateHeader(id, { serialNumber: patch.serialNumber?.trim(), notes: patch.notes, arrivedAt: patch.arrivedAt, ...type }, new Date().toISOString());
     return this.refresh(id);
   }
 
@@ -142,6 +130,43 @@ export class SignoffService {
   }
 
   /** "Tick all" — marks every still-empty item in one check column (never overwrites a ✗). */
+  /** "✕ all" — clears every mark in one (unsigned) check column. */
+  async clearCheck(id: string, checkId: string): Promise<Signoff> {
+    const s = await this.require(id);
+    this.assertCheck(s, checkId);
+    this.assertNotSigned(s, checkId);
+    await this.store.signoffs.clearMarks(id, checkId, new Date().toISOString());
+    return this.refresh(id);
+  }
+
+  /** Every mechanism (serial number) with its latest visit — where it is right now. */
+  async mechanisms(search: string | undefined, limit: number): Promise<MechanismSummary[]> {
+    const out: MechanismSummary[] = [];
+    for (const r of await this.store.signoffs.serials(search, limit)) {
+      const last = await this.store.signoffs.get(r.lastId);
+      if (!last) continue;
+      const summary = this.toSummary(last);
+      out.push({ serialNumber: last.serialNumber, visits: r.visits, last: summary, atClient: summary.status === "complete" });
+    }
+    return out;
+  }
+
+  /** "In stock" for one sign-off type — the home screen's tabs: mechanisms whose first check is
+   * done but that haven't completed (left) yet. Check-only types sort by serial number (highest
+   * first, numbers compared as numbers); parts-allowing (service) types by when the first check
+   * was done, most recent first. */
+  async stock(typeId: string): Promise<SignoffSummary[]> {
+    const type = (await this.types.list()).find((t) => t.id === typeId);
+    const items = (await this.store.signoffs.list({ typeId, status: "draft", limit: 5000, offset: 0 })).items.map((s) => summarize(s)).filter((s) => s.firstCheckAt);
+    if (type?.allowsParts) return items.sort((a, b) => b.firstCheckAt!.localeCompare(a.firstCheckAt!));
+    return items.sort((a, b) => b.serialNumber.localeCompare(a.serialNumber, undefined, { numeric: true, sensitivity: "base" }));
+  }
+
+  /** All visits of one mechanism, oldest first. */
+  async visits(serial: string): Promise<Signoff[]> {
+    return (await this.store.signoffs.list({ serial, order: "arrived_asc", limit: 1000, offset: 0 })).items;
+  }
+
   async fillCheck(id: string, input: { checkId: string; value: MarkValue }, actor: Actor): Promise<Signoff> {
     const s = await this.require(id);
     this.assertCheck(s, input.checkId);
@@ -155,11 +180,12 @@ export class SignoffService {
     return this.refresh(id);
   }
 
-  async sign(id: string, input: { checkId: string; path: string; date: string }, actor: Actor): Promise<Signoff> {
+  async sign(id: string, input: { checkId: string; path: string; date: string; time?: string }, actor: Actor): Promise<Signoff> {
     const s = await this.require(id);
     this.assertCheck(s, input.checkId);
     if (!s.template.signRowEnabled) throw badRequest("This template has no sign row.");
     if (!DATE_RE.test(input.date)) throw badRequest("Date must be YYYY-MM-DD.");
+    if (input.time !== undefined && input.time !== "" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) throw badRequest("Time must be HH:MM.");
     if (!input.path || input.path.length > 40_000 || !PATH_RE.test(input.path)) throw badRequest("Invalid signature.");
     const existing = s.signatures.find((sig) => sig.checkId === input.checkId);
     // Re-sending the same user's signature (a retried request) just overwrites it; someone else's
@@ -169,7 +195,7 @@ export class SignoffService {
     if (s.template.distinctSigners && s.signatures.some((sig) => sig.checkId !== input.checkId && sig.userId === actor.userId)) {
       throw conflict("SAME_SIGNER", "You already signed another check on this sign-off — this one needs a different person.");
     }
-    await this.store.signoffs.upsertSignature(id, { checkId: input.checkId, userId: actor.userId, name: actor.name, path: input.path, date: input.date, at: new Date().toISOString() });
+    await this.store.signoffs.upsertSignature(id, { checkId: input.checkId, userId: actor.userId, name: actor.name, path: input.path, date: input.date, time: input.time ?? "", at: new Date().toISOString() });
     return this.refresh(id);
   }
 

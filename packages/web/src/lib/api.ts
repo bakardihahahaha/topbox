@@ -1,4 +1,4 @@
-import type { DocumentSettings, MarkValue, Part, PartInput, Signoff, SignoffMode, SignoffSummary, Template, TemplateInput } from "@biosite-signoff/shared";
+import type { DocumentSettings, MechanismSummary, MarkValue, Part, PartInput, Signoff, SignoffMode, SignoffSummary, Template, TemplateInput } from "@biosite-signoff/shared";
 import { getJson, getJsonCached, sendJson } from "./client.js";
 
 export const listTemplates = () => getJsonCached<Template[]>("/api/templates");
@@ -30,12 +30,16 @@ export function listSignoffs(f: SignoffFilter) {
 }
 export const getSignoff = (id: string) => getJson<Signoff>(`/api/signoffs/${id}`);
 export const getSignoffs = (ids: string[]) => sendJson<Signoff[]>("POST", "/api/signoffs/batch", { ids });
-export const createSignoff = (input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode }) => sendJson<Signoff>("POST", "/api/signoffs", input);
-export const updateSignoffHeader = (id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode }) => sendJson<Signoff>("PATCH", `/api/signoffs/${id}`, patch);
+export const createSignoff = (input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }) => sendJson<Signoff>("POST", "/api/signoffs", input);
+export const updateSignoffHeader = (id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }) => sendJson<Signoff>("PATCH", `/api/signoffs/${id}`, patch);
 export const deleteSignoff = (id: string) => sendJson("DELETE", `/api/signoffs/${id}`);
 export const setMark = (id: string, rowId: string, checkId: string, value: MarkValue | null) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/marks`, { rowId, checkId, value });
 export const fillCheck = (id: string, checkId: string, value: MarkValue) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/fill`, { checkId, value });
-export const signCheck = (id: string, checkId: string, path: string, date: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/signatures/${checkId}`, { path, date });
+export const signCheck = (id: string, checkId: string, path: string, date: string, time?: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/signatures/${checkId}`, { path, date, time });
+export const clearCheck = (id: string, checkId: string) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/clear`, { checkId });
+export const listMechanisms = (q?: string) => getJsonCached<MechanismSummary[]>(`/api/mechanisms${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+export const getStock = (typeId: string) => getJsonCached<SignoffSummary[]>(`/api/stock/${encodeURIComponent(typeId)}`);
+export const getVisits = (serial: string) => getJsonCached<Signoff[]>(`/api/mechanisms/${encodeURIComponent(serial)}/visits`);
 export const unsignCheck = (id: string, checkId: string) => sendJson<Signoff>("DELETE", `/api/signoffs/${id}/signatures/${checkId}`);
 export const setPartLine = (id: string, lineId: string, partId: string, qty: number, note: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/parts/${lineId}`, { partId, qty, note });
 export const removePartLine = (id: string, lineId: string) => sendJson<Signoff>("DELETE", `/api/signoffs/${id}/parts/${lineId}`);

@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable, { type CellHookData } from "jspdf-autotable";
-import { DEFAULT_DOCUMENT_SETTINGS, SIGNATURE_BOX, typeNameOf, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
+import { DEFAULT_DOCUMENT_SETTINGS, SIGNATURE_BOX, departedAt, typeNameOf, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
 import { parseSignaturePath } from "./signaturePath.js";
 
 // The PDF is built entirely in the browser (jsPDF) on whatever device presses the button — the
@@ -178,7 +178,7 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
           while (t.length > 3 && doc.getTextWidth(t) > w - 1.5) t = t.slice(0, -1);
           return t === text ? t : `${t.slice(0, -1)}.`;
         };
-        doc.text(sig.date.split("-").reverse().join("/"), x + w / 2, y + h - 3.6, { align: "center" });
+        doc.text(`${sig.date.split("-").reverse().join("/")}${sig.time ? ` ${sig.time}` : ""}`, x + w / 2, y + h - 3.6, { align: "center" });
         doc.text(fit(pdfText(sig.name)), x + w / 2, y + h - 1.1, { align: "center" });
       }
     },
@@ -189,7 +189,12 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
   doc.setFontSize(7);
   doc.setTextColor(...GREY);
   doc.setFont("helvetica", "normal");
-  doc.text(pdfText(`${s.number}  ·  ${typeNameOf(s)}  ·  started by ${s.createdByName} on ${s.createdAt.slice(0, 10)}`), PAGE.margin, y + 1);
+  const left = departedAt(s);
+  const arrived = new Date(s.arrivedAt);
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const arrivedText = `${p2(arrived.getDate())}/${p2(arrived.getMonth() + 1)}/${arrived.getFullYear()} ${p2(arrived.getHours())}:${p2(arrived.getMinutes())}`;
+  const leftText = left ? `  ·  left ${left.slice(0, 10).split("-").reverse().join("/")}${left.slice(10)}` : "";
+  doc.text(pdfText(`${s.number}  ·  ${typeNameOf(s)}  ·  arrived ${arrivedText}${leftText}  ·  started by ${s.createdByName}`), PAGE.margin, y + 1);
   y += 3;
 
   if (s.mode === "service" && s.parts.length > 0) {

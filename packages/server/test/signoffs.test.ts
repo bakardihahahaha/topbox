@@ -156,3 +156,76 @@ describe("parts available on a service sign-off", () => {
     expect((await call("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: b.id, qty: 1 })).statusCode).toBe(400);
   });
 });
+
+describe("mechanism history (rotating serial numbers)", () => {
+  it("keeps every visit of a serial with arrival, per-check date + time, departure; ✕ all clears a column", async () => {
+    const t = await setup();
+    const admin = await t.login("admin", "1111");
+    const op2 = await t.login("op2", "3333");
+    const [c1, c2] = t.template.checks;
+
+    async function visit(arrivedAt: string, d1: [string, string], d2: [string, string] | null) {
+      const id = randomUUID();
+      await t.as(admin.token)("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "MX-77", typeId: "service", arrivedAt });
+      await t.as(admin.token)("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c1!.id, value: "pass" });
+      await t.as(admin.token)("PUT", `/api/signoffs/${id}/signatures/${c1!.id}`, { path: SIG, date: d1[0], time: d1[1] });
+      if (d2) {
+        await t.as(op2.token)("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c2!.id, value: "pass" });
+        await t.as(op2.token)("PUT", `/api/signoffs/${id}/signatures/${c2!.id}`, { path: SIG, date: d2[0], time: d2[1] });
+      }
+      return id;
+    }
+    await visit("2026-08-01T07:00:00.000Z", ["2026-08-01", "09:15"], ["2026-08-01", "14:40"]);
+    const second = await visit("2026-09-02T07:30:00.000Z", ["2026-09-02", "10:05"], null);
+
+    // "✕ all" on the unsigned 2nd check: tick all, then clear all.
+    await t.as(admin.token)("POST", `/api/signoffs/${second}/marks/fill`, { checkId: c2!.id, value: "pass" });
+    const cleared = (await t.as(admin.token)("POST", `/api/signoffs/${second}/marks/clear`, { checkId: c2!.id })).json() as Signoff;
+    expect(cleared.marks.filter((m) => m.checkId === c2!.id)).toHaveLength(0);
+    // …but a signed column can't be cleared.
+    expect((await t.as(admin.token)("POST", `/api/signoffs/${second}/marks/clear`, { checkId: c1!.id })).json().error).toBe("CHECK_SIGNED");
+
+    const visits = (await t.as(admin.token)("GET", "/api/mechanisms/mx-77/visits")).json() as Signoff[];
+    expect(visits.map((v) => v.arrivedAt)).toEqual(["2026-08-01T07:00:00.000Z", "2026-09-02T07:30:00.000Z"]);
+    expect(visits[0]!.signatures.map((s) => `${s.date} ${s.time}`)).toEqual(expect.arrayContaining(["2026-08-01 09:15", "2026-08-01 14:40"]));
+
+    const mechs = (await t.as(admin.token)("GET", "/api/mechanisms?q=MX-77")).json();
+    expect(mechs).toMatchObject([{ serialNumber: "MX-77", visits: 2, atClient: false, last: { id: second, departedAt: null } }]);
+    const list = (await t.as(admin.token)("GET", "/api/signoffs?q=MX-77&status=complete")).json();
+    expect(list.items[0].departedAt).toBe("2026-08-01 14:40");
+  });
+});
+
+describe("home screen stock tabs", () => {
+  it("shows only first-check-done, not-yet-complete sign-offs per type, sorted as asked", async () => {
+    const t = await setup();
+    const admin = await t.login("admin", "1111");
+    const call = t.as(admin.token);
+    const [c1, c2] = t.template.checks;
+    async function make(serial: string, typeId: string, firstAt: [string, string] | null, secondToo = false) {
+      const id = randomUUID();
+      await call("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: serial, typeId });
+      if (firstAt) {
+        await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c1!.id, value: "pass" });
+        await call("PUT", `/api/signoffs/${id}/signatures/${c1!.id}`, { path: SIG, date: firstAt[0], time: firstAt[1] });
+      }
+      if (secondToo) {
+        await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c2!.id, value: "pass" });
+        await call("PUT", `/api/signoffs/${id}/signatures/${c2!.id}`, { path: SIG, date: firstAt![0], time: "23:00" });
+      }
+    }
+    await make("TB-9", "new-uk", ["2026-09-01", "08:00"]);
+    await make("TB-10", "new-uk", ["2026-09-01", "09:00"]);
+    await make("TB-11", "new-uk", null); // no first check yet -> not in stock
+    await make("TB-12", "new-uk", ["2026-09-01", "10:00"], true); // second check done -> gone
+    await make("SV-1", "service", ["2026-09-03", "07:00"]);
+    await make("SV-2", "service", ["2026-09-05", "07:00"]);
+    await make("SV-3", "service", ["2026-09-04", "07:00"]);
+
+    expect(((await call("GET", "/api/stock/new-uk")).json() as { serialNumber: string }[]).map((s) => s.serialNumber)).toEqual(["TB-10", "TB-9"]);
+    const svc = (await call("GET", "/api/stock/service")).json() as { serialNumber: string; firstCheckAt: string }[];
+    expect(svc.map((s) => s.serialNumber)).toEqual(["SV-2", "SV-3", "SV-1"]);
+    expect(svc[0]!.firstCheckAt).toBe("2026-09-05 07:00");
+    expect((await call("GET", "/api/stock/new-usa")).json()).toEqual([]);
+  });
+});

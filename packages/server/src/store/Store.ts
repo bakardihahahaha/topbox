@@ -64,6 +64,10 @@ export interface SignoffListFilter {
   status?: SignoffStatus;
   mode?: SignoffMode;
   typeId?: string;
+  /** Exact serial number (case-insensitive) — one mechanism's visits. */
+  serial?: string;
+  /** Default newest first; "arrived_asc" = a mechanism's history in order. */
+  order?: "created_desc" | "arrived_asc";
   limit: number;
   offset: number;
 }
@@ -129,13 +133,17 @@ export interface SignoffsRepo {
   list(filter: SignoffListFilter): Promise<{ items: (Signoff & { status: SignoffStatus })[]; total: number }>;
   /** Next free running number, e.g. 124 — the service formats it. */
   nextNumber(): Promise<number>;
-  updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: SignoffMode; typeId?: string; typeName?: string }, at: string): Promise<void>;
+  updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: SignoffMode; typeId?: string; typeName?: string; arrivedAt?: string }, at: string): Promise<void>;
+  /** Serial numbers with their visit count and latest sign-off id, most recently active first. */
+  serials(search: string | undefined, limit: number): Promise<{ serialNumber: string; visits: number; lastId: string }[]>;
   setStatus(id: string, status: SignoffStatus, at: string): Promise<void>;
   softDelete(id: string, at: string): Promise<void>;
 
   upsertMark(signoffId: string, mark: Mark): Promise<void>;
   clearMark(signoffId: string, rowId: string, checkId: string, at: string): Promise<void>;
   upsertMarks(signoffId: string, marks: Mark[]): Promise<void>;
+  /** Clears every mark in one check column. */
+  clearMarks(signoffId: string, checkId: string, at: string): Promise<void>;
 
   upsertSignature(signoffId: string, signature: Signature): Promise<void>;
   clearSignature(signoffId: string, checkId: string, at: string): Promise<void>;

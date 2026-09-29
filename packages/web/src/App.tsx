@@ -8,7 +8,9 @@ import { useTheme } from "./theme/ThemeContext.js";
 import { cycleTouchSize, useTouchSizeLabel } from "./lib/touchSize.js";
 import { SavingIndicator } from "./components/SavingIndicator.js";
 import { SignInPage } from "./pages/SignInPage.js";
-import { SignoffsListPage } from "./pages/SignoffsListPage.js";
+import { HomePage } from "./pages/HomePage.js";
+import { MechanismsPage } from "./pages/MechanismsPage.js";
+import { MechanismHistoryPage } from "./pages/MechanismHistoryPage.js";
 import { NewSignoffPage } from "./pages/NewSignoffPage.js";
 import { SignoffPage } from "./pages/SignoffPage.js";
 import { SetupTemplatesPage } from "./pages/SetupTemplatesPage.js";
@@ -88,6 +90,7 @@ export function App() {
         <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border-soft)", flex: "none", overflowX: "auto" }}>
           <div style={{ display: "flex", gap: 16, alignItems: "center", flex: "none" }}>
             <NavTab to="/signoffs" label="Sign-offs" />
+            <NavTab to="/mechanisms" label="Mechanisms" />
             <NavTab to={isAdmin ? "/setup/templates" : "/setup/account"} label="Setup" match="/setup" />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none", marginLeft: 16 }}>
@@ -118,7 +121,9 @@ export function App() {
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
           <Routes>
             <Route path="/" element={<Navigate to="/signoffs" replace />} />
-            <Route path="/signoffs" element={<SignoffsListPage />} />
+            <Route path="/signoffs" element={<HomePage />} />
+            <Route path="/mechanisms" element={<MechanismsPage />} />
+            <Route path="/mechanisms/:serial" element={<MechanismHistoryPage />} />
             <Route path="/signoffs/new" element={<NewSignoffPage />} />
             <Route path="/signoffs/:id" element={<SignoffPage />} />
             <Route path="/setup/account" element={<AccountPage />} />

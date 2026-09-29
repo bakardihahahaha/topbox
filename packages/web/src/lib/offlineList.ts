@@ -1,4 +1,4 @@
-import { signoffProgress, signoffStatus, typeNameOf, type SignoffSummary } from "@biosite-signoff/shared";
+import { summarize, type SignoffSummary } from "@biosite-signoff/shared";
 import { listSignoffs, type SignoffFilter } from "./api.js";
 import { listQueue } from "./offlineQueue.js";
 import { cachedSignoff } from "./signoffCache.js";
@@ -15,21 +15,7 @@ async function pendingCreates(): Promise<SignoffSummary[]> {
     if (e.action.kind !== "createSignoff") continue;
     const s = cachedSignoff(e.action.input.id);
     if (!s) continue;
-    const { done, total } = signoffProgress(s);
-    out.push({
-      id: s.id,
-      number: s.number,
-      templateId: s.templateId,
-      templateName: s.template.name,
-      serialNumber: s.serialNumber,
-      mode: s.mode,
-      typeName: typeNameOf(s),
-      status: signoffStatus(s),
-      progress: `${done}/${total}`,
-      createdByName: s.createdByName,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-    });
+    out.push(summarize(s));
   }
   return out.reverse();
 }

@@ -158,6 +158,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE signoffs ADD COLUMN type_id TEXT NOT NULL DEFAULT '';
   ALTER TABLE signoffs ADD COLUMN type_name TEXT NOT NULL DEFAULT '';
   `,
+  // 4: mechanism history — arrival time per visit, signing time next to the date.
+  `
+  ALTER TABLE signoffs ADD COLUMN arrived_at TEXT NOT NULL DEFAULT '';
+  UPDATE signoffs SET arrived_at = created_at WHERE arrived_at = '';
+  CREATE INDEX signoffs_serial_arrived ON signoffs(serial_number COLLATE NOCASE, arrived_at);
+  ALTER TABLE signoff_signatures ADD COLUMN time TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

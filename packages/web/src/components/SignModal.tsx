@@ -8,10 +8,16 @@ const todayLocal = () => {
 };
 
 /** "Sign and date here" for one check column — the signature and date land in that column only. */
-export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: string; name: string; onCancel: () => void; onSave: (path: string, date: string) => void }) {
+const nowTime = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: string; name: string; onCancel: () => void; onSave: (path: string, date: string, time: string) => void }) {
   const pad = useRef<SignaturePadHandle>(null);
   const [path, setPath] = useState<string | null>(null);
   const [date, setDate] = useState(todayLocal());
+  const [time, setTime] = useState(nowTime());
 
   return (
     <div role="dialog" aria-modal="true" onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,.55)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -21,12 +27,20 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
           Signing as <strong style={{ color: "var(--text)" }}>{name}</strong>. Once signed, this check's marks are locked.
         </div>
         <SignaturePad ref={pad} onChange={setPath} />
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span className="mono" style={label}>
-            Date
-          </span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
-        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 8 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="mono" style={label}>
+              Date
+            </span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="mono" style={label}>
+              Time
+            </span>
+            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={input} />
+          </label>
+        </div>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <button style={ghost} onClick={() => pad.current?.clear()}>
             Clear
@@ -35,7 +49,7 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
             <button style={ghost} onClick={onCancel}>
               Cancel
             </button>
-            <button style={{ ...primary, height: 38, opacity: path && date ? 1 : 0.5 }} disabled={!path || !date} onClick={() => path && onSave(path, date)}>
+            <button style={{ ...primary, height: 38, opacity: path && date ? 1 : 0.5 }} disabled={!path || !date} onClick={() => path && onSave(path, date, time)}>
               Sign
             </button>
           </div>

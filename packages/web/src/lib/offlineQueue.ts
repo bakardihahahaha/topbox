@@ -17,11 +17,12 @@ import * as api from "./api.js";
 
 export type QueuedAction =
   // `mode` only on entries queued before sign-off types existed — the server still accepts it.
-  | { kind: "createSignoff"; input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode } }
-  | { kind: "updateHeader"; id: string; patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode } }
+  | { kind: "createSignoff"; input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string } }
+  | { kind: "updateHeader"; id: string; patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string } }
   | { kind: "setMark"; id: string; rowId: string; checkId: string; value: MarkValue | null }
   | { kind: "fillCheck"; id: string; checkId: string; value: MarkValue }
-  | { kind: "sign"; id: string; checkId: string; path: string; date: string }
+  | { kind: "clearCheck"; id: string; checkId: string }
+  | { kind: "sign"; id: string; checkId: string; path: string; date: string; time?: string }
   | { kind: "unsign"; id: string; checkId: string }
   | { kind: "setPart"; id: string; lineId: string; partId: string; qty: number; note: string }
   | { kind: "removePart"; id: string; lineId: string }
@@ -45,6 +46,8 @@ function describe(a: QueuedAction): string {
       return "Change a check mark";
     case "fillCheck":
       return "Tick a whole check column";
+    case "clearCheck":
+      return "Untick a whole check column";
     case "sign":
       return "Sign a check";
     case "unsign":
@@ -84,8 +87,10 @@ async function apply(a: QueuedAction): Promise<unknown> {
       return api.setMark(a.id, a.rowId, a.checkId, a.value);
     case "fillCheck":
       return api.fillCheck(a.id, a.checkId, a.value);
+    case "clearCheck":
+      return api.clearCheck(a.id, a.checkId);
     case "sign":
-      return api.signCheck(a.id, a.checkId, a.path, a.date);
+      return api.signCheck(a.id, a.checkId, a.path, a.date, a.time);
     case "unsign":
       return api.unsignCheck(a.id, a.checkId);
     case "setPart":

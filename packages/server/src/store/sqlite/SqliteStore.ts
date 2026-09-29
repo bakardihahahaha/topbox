@@ -418,6 +418,7 @@ interface SignoffRow {
   template_id: string;
   template_json: string;
   serial_number: string;
+  arrived_at: string;
   mode: "new" | "service";
   type_id: string;
   type_name: string;
@@ -446,6 +447,7 @@ interface SignatureRow {
   name: string;
   path: string;
   date: string;
+  time: string;
   at: string;
 }
 
@@ -480,10 +482,10 @@ class SqliteSignoffs implements SignoffsRepo {
     return this.tx(() => {
       const res = this.db
         .prepare(
-          `INSERT OR IGNORE INTO signoffs (id, number, template_id, template_json, serial_number, mode, type_id, type_name, status, notes, created_by, created_by_name, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO signoffs (id, number, template_id, template_json, serial_number, arrived_at, mode, type_id, type_name, status, notes, created_by, created_by_name, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(s.id, s.number, s.templateId, JSON.stringify(s.template), s.serialNumber, s.mode, s.typeId, s.typeName, s.status, s.notes, s.createdBy, s.createdByName, s.createdAt, s.updatedAt);
+        .run(s.id, s.number, s.templateId, JSON.stringify(s.template), s.serialNumber, s.arrivedAt, s.mode, s.typeId, s.typeName, s.status, s.notes, s.createdBy, s.createdByName, s.createdAt, s.updatedAt);
       if (res.changes === 0) return false;
       this.enqueue("signoffs", s.id);
       return true;
@@ -503,6 +505,7 @@ class SqliteSignoffs implements SignoffsRepo {
       templateId: r.template_id,
       template: JSON.parse(r.template_json),
       serialNumber: r.serial_number,
+      arrivedAt: r.arrived_at || r.created_at,
       mode: r.mode,
       typeId: r.type_id,
       typeName: r.type_name,
@@ -515,7 +518,7 @@ class SqliteSignoffs implements SignoffsRepo {
       marks: marks
         .filter((m) => m.signoff_id === r.id)
         .map((m) => ({ rowId: m.row_id, checkId: m.check_id, value: m.value, byUserId: m.by_user_id, byName: m.by_name, at: m.at })),
-      signatures: sigs.filter((s) => s.signoff_id === r.id).map((s) => ({ checkId: s.check_id, userId: s.user_id, name: s.name, path: s.path, date: s.date, at: s.at })),
+      signatures: sigs.filter((s) => s.signoff_id === r.id).map((s) => ({ checkId: s.check_id, userId: s.user_id, name: s.name, path: s.path, date: s.date, time: s.time, at: s.at })),
       parts: parts.filter((p) => p.signoff_id === r.id).map((p) => ({ id: p.id, partId: p.part_id, partNumber: p.part_number, name: p.name, qty: Number(p.qty) || 1, note: p.note })),
     }));
   }
@@ -548,9 +551,13 @@ class SqliteSignoffs implements SignoffsRepo {
       where.push("type_id = ?");
       params.push(f.typeId);
     }
+    if (f.serial) {
+      where.push("serial_number = ? COLLATE NOCASE");
+      params.push(f.serial);
+    }
     const clause = where.join(" AND ");
     const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM signoffs WHERE ${clause}`).get(...params) as { n: number }).n;
-    const rows = this.db.prepare(`SELECT * FROM signoffs WHERE ${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, f.limit, f.offset) as SignoffRow[];
+    const rows = this.db.prepare(`SELECT * FROM signoffs WHERE ${clause} ORDER BY ${f.order === "arrived_asc" ? "arrived_at ASC, created_at ASC" : "created_at DESC"} LIMIT ? OFFSET ?`).all(...params, f.limit, f.offset) as SignoffRow[];
     return { items: this.hydrate(rows), total };
   }
 
@@ -559,13 +566,14 @@ class SqliteSignoffs implements SignoffsRepo {
     return (r.n ?? 0) + 1;
   }
 
-  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: "new" | "service"; typeId?: string; typeName?: string }, at: string) {
+  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: "new" | "service"; typeId?: string; typeName?: string; arrivedAt?: string }, at: string) {
     const cols: Record<string, unknown> = {};
     if (patch.serialNumber !== undefined) cols.serial_number = patch.serialNumber;
     if (patch.notes !== undefined) cols.notes = patch.notes;
     if (patch.mode !== undefined) cols.mode = patch.mode;
     if (patch.typeId !== undefined) cols.type_id = patch.typeId;
     if (patch.typeName !== undefined) cols.type_name = patch.typeName;
+    if (patch.arrivedAt !== undefined) cols.arrived_at = patch.arrivedAt;
     const keys = Object.keys(cols);
     if (keys.length === 0) return;
     this.tx(() => {
@@ -616,6 +624,30 @@ class SqliteSignoffs implements SignoffsRepo {
     });
   }
 
+  async clearMarks(signoffId: string, checkId: string, at: string) {
+    this.tx(() => {
+      const ids = this.db.prepare("SELECT id FROM signoff_marks WHERE signoff_id = ? AND check_id = ? AND deleted_at = ''").all(signoffId, checkId) as { id: string }[];
+      const del = this.db.prepare("UPDATE signoff_marks SET deleted_at = ?, updated_at = ? WHERE id = ?");
+      for (const { id } of ids) {
+        del.run(at, at, id);
+        this.enqueue("signoff_marks", id);
+      }
+      this.touch(signoffId, at);
+    });
+  }
+
+  async serials(search: string | undefined, limit: number) {
+    const where = search ? "AND serial_number LIKE ?" : "";
+    const rows = this.db
+      .prepare(
+        `SELECT serial_number AS serialNumber, COUNT(*) AS visits, MAX(arrived_at || '|' || created_at || '|' || id) AS lastKey
+         FROM signoffs WHERE deleted_at = '' ${where}
+         GROUP BY serial_number COLLATE NOCASE ORDER BY MAX(updated_at) DESC LIMIT ?`,
+      )
+      .all(...(search ? [`%${search}%`, limit] : [limit])) as { serialNumber: string; visits: number; lastKey: string }[];
+    return rows.map((r) => ({ serialNumber: r.serialNumber, visits: r.visits, lastId: r.lastKey.split("|").pop()! }));
+  }
+
   async clearMark(signoffId: string, rowId: string, checkId: string, at: string) {
     const id = markId(signoffId, rowId, checkId);
     this.tx(() => {
@@ -630,12 +662,12 @@ class SqliteSignoffs implements SignoffsRepo {
     this.tx(() => {
       this.db
         .prepare(
-          `INSERT INTO signoff_signatures (id, signoff_id, check_id, user_id, name, path, date, at, updated_at, deleted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '')
-           ON CONFLICT (id) DO UPDATE SET user_id = excluded.user_id, name = excluded.name, path = excluded.path, date = excluded.date,
+          `INSERT INTO signoff_signatures (id, signoff_id, check_id, user_id, name, path, date, time, at, updated_at, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')
+           ON CONFLICT (id) DO UPDATE SET user_id = excluded.user_id, name = excluded.name, path = excluded.path, date = excluded.date, time = excluded.time,
              at = excluded.at, updated_at = excluded.updated_at, deleted_at = ''`,
         )
-        .run(id, signoffId, s.checkId, s.userId, s.name, s.path, s.date, s.at, s.at);
+        .run(id, signoffId, s.checkId, s.userId, s.name, s.path, s.date, s.time, s.at, s.at);
       this.enqueue("signoff_signatures", id);
       this.touch(signoffId, s.at);
     });
