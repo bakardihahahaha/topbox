@@ -1,6 +1,5 @@
 import { signoffStatus, typeNameOf, type Signoff } from "@biosite-signoff/shared";
 import { getVisits } from "./api.js";
-import { localStamp } from "./format.js";
 
 /** Which visits of each TopBox go into a batch PDF. */
 export type PdfScope = "latest" | "all";
@@ -32,7 +31,7 @@ export async function planMechanismPdf(serials: string[], scope: PdfScope): Prom
     }
     plan.signoffs.push(...(scope === "latest" ? [done[done.length - 1]!] : done));
     if (current && signoffStatus(current) !== "complete") {
-      plan.notes.push(`${current.serialNumber}: the current visit (${typeNameOf(current)}, arrived ${localStamp(current.arrivedAt)}) isn't finished yet, so it's not in the PDF.`);
+      plan.notes.push(`${current.serialNumber}: the current visit (${typeNameOf(current)}) isn't finished yet, so it's not in the PDF.`);
     }
   }
   return plan;

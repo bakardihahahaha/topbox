@@ -5,7 +5,7 @@ import { getStock } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { useMe } from "../lib/meContext.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
-import { stamp, localStamp, topboxUrl } from "../lib/format.js";
+import { stamp, topboxUrl } from "../lib/format.js";
 import { SignoffsListPage } from "./SignoffsListPage.js";
 import { card, chip, errorBox, page, primary } from "../lib/ui.js";
 
@@ -100,9 +100,6 @@ function StockTab({ typeId, typeName, service }: { typeId: string; typeName: str
             <div style={{ fontSize: 13, color: "var(--text-2)" }}>
               1st check: <b>{stamp(s.firstCheckAt)}</b>
               {s.firstCheckBy ? ` · ${s.firstCheckBy}` : ""}
-            </div>
-            <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-              arrived {localStamp(s.arrivedAt)}
             </div>
           </Link>
         ))}

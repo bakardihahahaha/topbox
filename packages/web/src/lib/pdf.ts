@@ -254,11 +254,8 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
   doc.setTextColor(...GREY);
   doc.setFont("helvetica", "normal");
   const left = departedAt(s);
-  const arrived = new Date(s.arrivedAt);
-  const p2 = (n: number) => String(n).padStart(2, "0");
-  const arrivedText = `${p2(arrived.getDate())}/${p2(arrived.getMonth() + 1)}/${arrived.getFullYear()} ${p2(arrived.getHours())}:${p2(arrived.getMinutes())}`;
   const leftText = left ? `  ·  left ${left.slice(0, 10).split("-").reverse().join("/")}${left.slice(10)}` : "";
-  doc.text(pdfText(`${typeNameOf(s)}  ·  arrived ${arrivedText}${leftText}  ·  started by ${s.createdByName}`), PAGE.margin, y + 1);
+  doc.text(pdfText(`${typeNameOf(s)}${leftText}  ·  started by ${s.createdByName}`), PAGE.margin, y + 1);
   y += 3;
 
   if (s.mode === "service" && s.parts.length > 0) {
@@ -327,7 +324,7 @@ export function buildSignoffsPdf(signoffs: Signoff[], branding: PdfBranding = { 
 export function pdfFileName(signoffs: Signoff[]): string {
   if (signoffs.length === 1) {
     const s = signoffs[0]!;
-    return `TopBox ${s.serialNumber} ${typeNameOf(s)} ${s.arrivedAt.slice(0, 10)}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
+    return `TopBox ${s.serialNumber} ${typeNameOf(s)} ${(departedAt(s) ?? s.createdAt).slice(0, 10)}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
   }
   return `Sign-offs ${new Date().toISOString().slice(0, 10)} (${signoffs.length}).pdf`;
 }

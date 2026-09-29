@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { MechanismSummary } from "@biosite-signoff/shared";
 import { listMechanisms } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
-import { daysBetween, localStamp, stamp, topboxUrl } from "../lib/format.js";
+import { daysBetween, stamp, topboxUrl } from "../lib/format.js";
 import { card, chip, errorBox, errorMessage, ghost, h1, hint, infoBox, input, page, primary } from "../lib/ui.js";
 import { planMechanismPdf, type PdfScope } from "../lib/mechanismPdf.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
@@ -53,7 +53,7 @@ export function MechanismsPage() {
   return (
     <div style={page}>
       <h1 style={h1}>Mechanisms</h1>
-      <p style={hint}>Each serial number with all its visits: when it arrived, when each check was done and when it left again. Tap one for its full history.</p>
+      <p style={hint}>Each serial number with all its visits: when each check was done and when it left again. Tap one for its full history.</p>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search serial number" style={{ ...input, height: 52, fontSize: 16, marginBottom: 12 }} />
       {selected.size > 0 && (
         <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, position: "sticky", top: 0, zIndex: 5, flexWrap: "wrap" }}>
@@ -104,7 +104,7 @@ export function MechanismsPage() {
                 {m.serialNumber}
               </div>
               <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 4 }}>
-                {m.visits} visit{m.visits === 1 ? "" : "s"} ({m.completedVisits ?? 0} finished) · last arrived {localStamp(m.last.arrivedAt)} · {m.last.typeName}
+                {m.visits} visit{m.visits === 1 ? "" : "s"} ({m.completedVisits ?? 0} finished) · latest: {m.last.typeName}{m.last.firstCheckAt ? ` · 1st check ${stamp(m.last.firstCheckAt)}` : ""}
               </div>
             </div>
             {m.atClient ? (

@@ -3,7 +3,7 @@ import { checkDoneAt, departedAt, signoffStatus, typeNameOf, type Signoff } from
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { getVisits } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
-import { daysBetween, localStamp, stamp } from "../lib/format.js";
+import { stamp } from "../lib/format.js";
 import { SignoffPage } from "./SignoffPage.js";
 import { useMe } from "../lib/meContext.js";
 import { card, chip, errorBox, ghost, h1, page, primary } from "../lib/ui.js";
@@ -102,8 +102,6 @@ export function MechanismHistoryPage() {
           <div style={{ display: "flex", flexDirection: "column-reverse", gap: 10 }}>
             {list.map((v, i) => {
               const left = departedAt(v);
-              const prev = list[i - 1];
-              const prevLeft = prev ? departedAt(prev) : null;
               return (
                 <Link key={v.id} to={`?id=${v.id}`} replace style={{ ...card, color: "inherit", textDecoration: "none", padding: 16, borderColor: v.id === selectedId ? "var(--accent)" : "var(--border-soft)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
@@ -116,7 +114,6 @@ export function MechanismHistoryPage() {
                     {left ? <span style={chip("accent")}>Left {stamp(left)}</span> : <span style={chip("warn")}>In workshop</span>}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
-                    <Step label="Arrived" value={localStamp(v.arrivedAt)} sub={prevLeft ? `${daysBetween(prevLeft.replace(" ", "T"), new Date(v.arrivedAt))} days at client before` : undefined} />
                     {v.template.checks.map((c) => {
                       const done = checkDoneAt(v, c.id);
                       return <Step key={c.id} label={c.label} value={done ? stamp(done.at) : "not done"} sub={done?.by} muted={!done} />;

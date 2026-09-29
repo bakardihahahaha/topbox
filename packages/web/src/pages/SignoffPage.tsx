@@ -15,7 +15,7 @@ import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount, usePermissions } from "../lib/permissions.js";
-import { localStamp, stamp } from "../lib/format.js";
+import { stamp } from "../lib/format.js";
 import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
 import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
 import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
@@ -285,28 +285,13 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
             {!currentTypeId && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Recorded as: {typeNameOf(s)}</span>}
             {typeFixed && !closed && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Fixed after the first check. When it comes back, start a new visit (e.g. as Service).</span>}
           </div>
-          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span className="mono" style={label}>
-              Arrived
-            </span>
-            <LockedField
-              display={localStamp(s.arrivedAt)}
-              initial={toLocalInput(s.arrivedAt)}
-              inputType="datetime-local"
-              canEdit={isAdmin}
-              onSave={(v) => {
-                const t = Date.parse(v);
-                if (Number.isNaN(t)) return;
-                const arrivedAt = new Date(t).toISOString();
-                if (toLocalInput(arrivedAt) !== toLocalInput(s.arrivedAt)) void mutate({ kind: "updateHeader", id, patch: { arrivedAt } }, () => api.updateSignoffHeader(id, { arrivedAt }));
-              }}
-            />
+          <div style={{ display: "flex", alignItems: "flex-end" }}>
             {!embedded && (
               <Link to={`/signoff/${encodeURIComponent(s.serialNumber)}?id=${s.id}`} style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600 }}>
                 History of {s.serialNumber} →
               </Link>
             )}
-          </label>
+          </div>
         </div>
       </div>
 
@@ -577,13 +562,6 @@ function MarkCell({ value, locked, onTap }: { value: MarkValue | undefined; lock
     </button>
   );
 }
-
-/** ISO <-> the local "YYYY-MM-DDTHH:MM" a datetime-local input wants. */
-const toLocalInput = (iso: string) => {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-};
 
 /** A value that's fixed once the sign-off is started. Operators only see it; an admin taps the
  * pencil first, then edits and saves (or cancels) — never an accidental edit. */
