@@ -4,6 +4,7 @@ import { useTheme } from "../theme/ThemeContext.js";
 import { fetchLoginUsers, login } from "../lib/client.js";
 import { APP_VERSION, clearCacheAndCookies } from "../lib/clearCache.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
+import { cycleTouchSize, useTouchSizeLabel } from "../lib/touchSize.js";
 
 // Tap your name, type your PIN — the whole sign-in. Every active user is a tile on the first
 // screen so nobody types a username. Same card/colour language as decom's sign-in screen.
@@ -39,6 +40,7 @@ const initials = (name: string) =>
 
 export function SignInPage({ onSignedIn, message }: SignInPageProps) {
   const { themeLabel, cycleTheme } = useTheme();
+  const sizeLabel = useTouchSizeLabel();
   const [users, setUsers] = useState<LoginUser[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<LoginUser | null>(null);
@@ -72,9 +74,14 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
       <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 8 }}>
           <div style={{ fontSize: 24, fontWeight: 700 }}>Biosite Sign-off</div>
-          <button type="button" onClick={cycleTheme} className="mono" style={smallButton}>
-            {themeLabel}
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={cycleTouchSize} className="mono" style={smallButton}>
+              {sizeLabel}
+            </button>
+            <button type="button" onClick={cycleTheme} className="mono" style={smallButton}>
+              {themeLabel}
+            </button>
+          </div>
         </div>
 
         {message && <div style={infoBox}>{message}</div>}
@@ -101,7 +108,7 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
                 key={u.id}
                 onClick={() => setSelected(u)}
                 style={{
-                  minHeight: 92,
+                  minHeight: 110,
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -207,7 +214,7 @@ function PinPanel({ user, now, onClose, onLocked, onSignedIn }: { user: LoginUse
     <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,.6)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: "min(94vw, 340px)", background: "var(--bg-base)", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-card)", padding: 18, display: "flex", flexDirection: "column", gap: 14 }}
+        style={{ width: "min(94vw, 380px)", background: "var(--bg-base)", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-card)", padding: 18, display: "flex", flexDirection: "column", gap: 14 }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 17, fontWeight: 700 }}>{user.name}</div>
@@ -269,7 +276,8 @@ const smallButton: CSSProperties = {
   fontSize: 11,
   fontWeight: 700,
   letterSpacing: ".06em",
-  padding: "6px 10px",
+  padding: "0 12px",
+  height: 38,
   border: "1px solid var(--border)",
   borderRadius: "var(--radius-control)",
   color: "var(--text-2)",
@@ -278,7 +286,7 @@ const smallButton: CSSProperties = {
 };
 
 const key: CSSProperties = {
-  height: 58,
+  height: 68,
   borderRadius: "var(--radius-control)",
   border: "1px solid var(--border)",
   background: "var(--bg-deep)",

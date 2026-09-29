@@ -313,7 +313,7 @@ function Field({ label: text, value, onChange, placeholder }: { label: string; v
 function Toggle({ checked, onChange, text }: { checked: boolean; onChange: (v: boolean) => void; text: React.ReactNode }) {
   return (
     <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13.5, cursor: "pointer" }}>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ width: 18, height: 18, accentColor: "var(--accent)", flex: "none" }} />
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ width: 24, height: 24, accentColor: "var(--accent)", flex: "none" }} />
       <span>{text}</span>
     </label>
   );

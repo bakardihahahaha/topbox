@@ -197,7 +197,7 @@ export function SignoffPage() {
 
       {/* Checklist grid */}
       <div style={{ ...card, padding: 0, overflowX: "auto", marginBottom: 12 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 150 + t.checks.length * 58 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5, minWidth: 150 + t.checks.length * 80 }}>
           <thead>
             <tr style={{ background: "var(--head-row)" }}>
               <th style={{ ...th, ...stickyCol, background: "var(--head-row)", textAlign: "left" }}>Item</th>
@@ -205,13 +205,13 @@ export function SignoffPage() {
                 const sig = signedBy(c.id);
                 const full = isCheckFullyMarked(s, c.id);
                 return (
-                  <th key={c.id} style={{ ...th, width: 62 }}>
+                  <th key={c.id} style={{ ...th, width: 92 }}>
                     <div>{c.label}</div>
                     {!sig && !full && (
                       <button
                         onClick={() => void mutate({ kind: "fillCheck", id, checkId: c.id, value: "pass" }, () => api.fillCheck(id, c.id, "pass"))}
                         title="Tick every empty item in this check"
-                        style={{ ...ghost, height: 22, padding: "0 6px", fontSize: 10.5, marginTop: 4 }}
+                        style={{ ...ghost, height: 32, padding: "0 8px", fontSize: 11.5, marginTop: 4 }}
                       >
                         ✓ all
                       </button>
@@ -261,7 +261,7 @@ export function SignoffPage() {
                                   void mutate({ kind: "unsign", id, checkId: c.id }, () => api.unsignCheck(id, c.id));
                                 }
                               }}
-                              style={{ ...ghost, height: 20, padding: "0 6px", fontSize: 10 }}
+                              style={{ ...ghost, height: 30, padding: "0 8px", fontSize: 11 }}
                             >
                               remove
                             </button>
@@ -272,7 +272,7 @@ export function SignoffPage() {
                           disabled={!full}
                           title={full ? "Sign and date this check" : "Mark every item in this check first"}
                           onClick={() => setSigning(c)}
-                          style={{ ...primary, height: 44, width: "100%", padding: 0, fontSize: 12, opacity: full ? 1 : 0.35, cursor: full ? "pointer" : "not-allowed" }}
+                          style={{ ...primary, height: 56, width: "100%", padding: 0, fontSize: 13, opacity: full ? 1 : 0.35, cursor: full ? "pointer" : "not-allowed" }}
                         >
                           Sign
                         </button>
@@ -375,7 +375,7 @@ function MarkCell({ value, locked, onTap }: { value: MarkValue | undefined; lock
       aria-label={value ?? "not checked"}
       style={{
         width: "100%",
-        height: 40,
+        height: 52,
         borderRadius: "var(--radius-control)",
         border: `1px solid ${look.border}`,
         background: look.bg,
@@ -440,7 +440,7 @@ function PartRow(props: {
   return (
     <div style={{ border: `1px solid ${line ? "var(--accent)" : "var(--border-soft)"}`, background: line ? "var(--accent-wash)" : "transparent", borderRadius: "var(--radius-control)", padding: "8px 10px" }}>
       <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-        <input type="checkbox" checked={Boolean(line)} onChange={(e) => props.onToggle(e.target.checked)} style={{ width: 20, height: 20, accentColor: "var(--accent)", flex: "none" }} />
+        <input type="checkbox" checked={Boolean(line)} onChange={(e) => props.onToggle(e.target.checked)} style={{ width: 26, height: 26, accentColor: "var(--accent)", flex: "none" }} />
         <span style={{ minWidth: 0 }}>
           <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", marginRight: 8 }}>
             {props.number}
@@ -451,8 +451,8 @@ function PartRow(props: {
       </label>
       {line && (
         <div style={{ display: "flex", gap: 8, marginTop: 8, marginLeft: 30 }}>
-          <input value={qty} onChange={(e) => setQty(e.target.value)} onBlur={commit} inputMode="numeric" aria-label="Quantity" style={{ ...input, width: 70, height: 34 }} />
-          <input value={note} onChange={(e) => setNote(e.target.value)} onBlur={commit} placeholder="Note (optional)" style={{ ...input, height: 34 }} />
+          <input value={qty} onChange={(e) => setQty(e.target.value)} onBlur={commit} inputMode="numeric" aria-label="Quantity" style={{ ...input, width: 80, height: 42 }} />
+          <input value={note} onChange={(e) => setNote(e.target.value)} onBlur={commit} placeholder="Note (optional)" style={{ ...input, height: 42 }} />
         </div>
       )}
     </div>

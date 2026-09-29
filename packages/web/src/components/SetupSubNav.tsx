@@ -21,7 +21,7 @@ export function SetupSubNav() {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", rowGap: 10, columnGap: 14, marginBottom: 16, borderBottom: "1px solid var(--border-soft)", paddingBottom: 10 }}>
       {tabs.map((t) => (
-        <NavLink key={t.to} to={t.to} style={({ isActive }) => ({ fontSize: 12.5, fontWeight: 700, color: isActive ? "var(--accent)" : "var(--text-2)", textDecoration: "none" })}>
+        <NavLink key={t.to} to={t.to} style={({ isActive }) => ({ fontSize: 13.5, fontWeight: 700, padding: "8px 4px", color: isActive ? "var(--accent)" : "var(--text-2)", textDecoration: "none" })}>
           {t.label}
         </NavLink>
       ))}

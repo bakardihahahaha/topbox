@@ -61,7 +61,7 @@ export function SetupTypesPage() {
             <input value={t.name} onChange={(e) => setAt(i, { name: e.target.value })} placeholder="Button name, e.g. New (UK)" style={{ ...input, flex: "1 1 160px", fontWeight: 700 }} />
             <input value={t.description} onChange={(e) => setAt(i, { description: e.target.value })} placeholder="Small line under it, e.g. Check only" style={{ ...input, flex: "2 1 200px" }} />
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, flex: "none", cursor: "pointer" }}>
-              <input type="checkbox" checked={t.allowsParts} onChange={(e) => setAt(i, { allowsParts: e.target.checked })} style={{ width: 18, height: 18, accentColor: "var(--accent)" }} />
+              <input type="checkbox" checked={t.allowsParts} onChange={(e) => setAt(i, { allowsParts: e.target.checked })} style={{ width: 24, height: 24, accentColor: "var(--accent)" }} />
               Replaced parts
             </label>
             <div style={{ display: "flex", gap: 4, flex: "none" }}>

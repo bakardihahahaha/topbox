@@ -35,7 +35,7 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
             <button style={ghost} onClick={onCancel}>
               Cancel
             </button>
-            <button style={{ ...primary, height: 32, opacity: path && date ? 1 : 0.5 }} disabled={!path || !date} onClick={() => path && onSave(path, date)}>
+            <button style={{ ...primary, height: 38, opacity: path && date ? 1 : 0.5 }} disabled={!path || !date} onClick={() => path && onSave(path, date)}>
               Sign
             </button>
           </div>

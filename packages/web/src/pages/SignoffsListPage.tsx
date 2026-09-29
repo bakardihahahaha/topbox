@@ -125,8 +125,8 @@ export function SignoffsListPage() {
 
 function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; onToggle: () => void }) {
   return (
-    <div style={{ ...card, padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, borderColor: selected ? "var(--accent)" : "var(--border-soft)" }}>
-      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.number}`} style={{ width: 18, height: 18, accentColor: "var(--accent)", flex: "none" }} />
+    <div style={{ ...card, padding: "14px 14px", display: "flex", alignItems: "center", gap: 14, borderColor: selected ? "var(--accent)" : "var(--border-soft)" }}>
+      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.number}`} style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none" }} />
       <Link to={`/signoffs/${s.id}`} style={{ flex: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>{s.serialNumber}</span>

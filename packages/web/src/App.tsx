@@ -5,6 +5,7 @@ import { MeContext } from "./lib/meContext.js";
 import { useIdleLogout } from "./lib/idleLogout.js";
 import { connectLiveEvents, disconnectLiveEvents } from "./lib/liveEvents.js";
 import { useTheme } from "./theme/ThemeContext.js";
+import { cycleTouchSize, useTouchSizeLabel } from "./lib/touchSize.js";
 import { SavingIndicator } from "./components/SavingIndicator.js";
 import { SignInPage } from "./pages/SignInPage.js";
 import { SignoffsListPage } from "./pages/SignoffsListPage.js";
@@ -31,6 +32,7 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null);
   const navigate = useNavigate();
   const { themeLabel, cycleTheme } = useTheme();
+  const sizeLabel = useTouchSizeLabel();
 
   async function checkSession() {
     const user = await fetchMe();
@@ -90,6 +92,9 @@ export function App() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none", marginLeft: 16 }}>
             <SavingIndicator />
+            <button onClick={cycleTouchSize} className="mono" style={navButton}>
+              {sizeLabel}
+            </button>
             <button onClick={cycleTheme} className="mono" style={navButton}>
               {themeLabel}
             </button>
@@ -143,8 +148,9 @@ const navButton = {
   border: "1px solid var(--border)",
   color: "var(--text-2)",
   borderRadius: "var(--radius-control)",
-  padding: "5px 10px",
-  fontSize: 11,
+  padding: "0 12px",
+  height: 36,
+  fontSize: 11.5,
   fontWeight: 700,
   cursor: "pointer",
 } as const;
@@ -154,8 +160,9 @@ function NavTab({ to, label, match }: { to: string; label: string; match?: strin
     <NavLink
       to={to}
       style={({ isActive }) => ({
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: 700,
+        padding: "10px 6px",
         color: isActive || (match && window.location.pathname.startsWith(match)) ? "var(--accent)" : "var(--text-2)",
         textDecoration: "none",
       })}

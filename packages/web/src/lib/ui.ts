@@ -10,7 +10,7 @@ export const card: CSSProperties = { background: "var(--bg-base)", border: "1px 
 export const label: CSSProperties = { fontSize: 9.5, fontWeight: 700, letterSpacing: ".09em", color: "var(--text-3)", textTransform: "uppercase" };
 export const input: CSSProperties = {
   width: "100%",
-  height: 38,
+  height: 44,
   borderRadius: "var(--radius-control)",
   background: "var(--bg-deep)",
   border: "1px solid var(--border)",
@@ -23,8 +23,8 @@ export const primary: CSSProperties = {
   color: "var(--bg-deep)",
   border: "none",
   borderRadius: "var(--radius-control)",
-  padding: "0 16px",
-  height: 38,
+  padding: "0 18px",
+  height: 44,
   fontWeight: 700,
   fontSize: 13,
   cursor: "pointer",
@@ -34,14 +34,14 @@ export const ghost: CSSProperties = {
   color: "var(--text-2)",
   border: "1px solid var(--border)",
   borderRadius: "var(--radius-control)",
-  padding: "0 12px",
-  height: 32,
+  padding: "0 14px",
+  height: 38,
   fontWeight: 700,
-  fontSize: 12,
+  fontSize: 12.5,
   cursor: "pointer",
 };
 export const danger: CSSProperties = { ...ghost, color: "var(--danger)", borderColor: "var(--danger-border)" };
-export const iconButton: CSSProperties = { ...ghost, width: 28, height: 28, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13 };
+export const iconButton: CSSProperties = { ...ghost, width: 38, height: 38, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 15 };
 export const errorBox: CSSProperties = {
   background: "var(--danger-wash)",
   borderLeft: "3px solid var(--danger)",

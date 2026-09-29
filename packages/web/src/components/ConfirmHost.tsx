@@ -52,9 +52,10 @@ export function ConfirmHost() {
                 color: "var(--text-2)",
                 border: "1px solid var(--border)",
                 borderRadius: "var(--radius-control)",
-                padding: "8px 16px",
+                padding: "0 20px",
+                height: 48,
                 fontWeight: 700,
-                fontSize: 13,
+                fontSize: 14,
                 cursor: "pointer",
               }}
             >
@@ -71,9 +72,10 @@ export function ConfirmHost() {
               color: "var(--bg-deep)",
               border: "none",
               borderRadius: "var(--radius-control)",
-              padding: "8px 16px",
+              padding: "0 20px",
+              height: 48,
               fontWeight: 700,
-              fontSize: 13,
+              fontSize: 14,
               cursor: "pointer",
             }}
           >

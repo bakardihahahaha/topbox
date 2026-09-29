@@ -74,7 +74,7 @@ export function NewSignoffPage() {
                 type="button"
                 onClick={() => setTypeId(t.id)}
                 style={{
-                  minHeight: 58,
+                  minHeight: 72,
                   borderRadius: "var(--radius-control)",
                   border: `1px solid ${type?.id === t.id ? "var(--accent)" : "var(--border)"}`,
                   background: type?.id === t.id ? "var(--accent-wash)" : "var(--bg-deep)",
@@ -98,10 +98,10 @@ export function NewSignoffPage() {
           <span className="mono" style={label}>
             {chosen?.serialLabel ?? "Serial Number"}
           </span>
-          <input value={serial} onChange={(e) => setSerial(e.target.value)} autoFocus style={{ ...input, height: 46, fontSize: 16 }} className="mono" autoCapitalize="characters" />
+          <input value={serial} onChange={(e) => setSerial(e.target.value)} autoFocus style={{ ...input, height: 56, fontSize: 18 }} className="mono" autoCapitalize="characters" />
         </label>
 
-        <button type="submit" disabled={busy || !chosen || !serial.trim()} style={{ ...primary, height: 46, opacity: busy || !chosen || !serial.trim() ? 0.6 : 1 }}>
+        <button type="submit" disabled={busy || !chosen || !serial.trim()} style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !serial.trim() ? 0.6 : 1 }}>
           {busy ? "Creating…" : "Start sign-off"}
         </button>
       </form>

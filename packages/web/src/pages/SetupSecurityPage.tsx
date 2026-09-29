@@ -40,7 +40,7 @@ export function SetupSecurityPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={card}>
             <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
-              <input type="checkbox" checked={s.singleIp} onChange={(e) => void save({ singleIp: e.target.checked })} style={{ width: 20, height: 20, accentColor: "var(--accent)", marginTop: 2 }} />
+              <input type="checkbox" checked={s.singleIp} onChange={(e) => void save({ singleIp: e.target.checked })} style={{ width: 24, height: 24, accentColor: "var(--accent)", marginTop: 2 }} />
               <span>
                 <div style={{ fontWeight: 700 }}>One network (IP) per account</div>
                 <div style={{ ...hint, margin: "4px 0 0" }}>
