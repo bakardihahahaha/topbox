@@ -19,9 +19,9 @@ services:
       # Optional — can also be set (and changed) later in Setup > Backup. Paste just the ID from
       # https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit
       SPREADSHEET_ID: ""
-      BOOTSTRAP_ADMIN_USERNAME: admin
-      # Leave empty to get a random password printed once in the container log on first start.
-      BOOTSTRAP_ADMIN_PASSWORD: ""
+      # First admin ("Administrator" tile) on an empty database. Leave empty to get a random 6-digit
+      # PIN printed once in the container log on first start.
+      BOOTSTRAP_ADMIN_PIN: ""
     ports:
       - "127.0.0.1:8084:8080" # DSM reverse proxy destination: http://127.0.0.1:8084
     volumes:

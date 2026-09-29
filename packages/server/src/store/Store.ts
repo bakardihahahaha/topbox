@@ -21,9 +21,16 @@ export interface UserRecord {
   id: string;
   username: string;
   name: string;
-  passwordHash: string;
+  /** bcrypt hash of the user's PIN. */
+  pinHash: string;
   role: Role;
+  /** Wrong PINs since the last lockout/success. */
   failedAttempts: number;
+  /** Temporary lockouts in a row without a successful sign-in (escalates to a hard lock). */
+  lockouts: number;
+  /** ISO time until which sign-in is refused ('' = not temporarily locked). */
+  lockedUntil: string;
+  /** Hard lock — only an admin can lift it. */
   locked: boolean;
   createdAt: string;
   updatedAt: string;
@@ -67,6 +74,13 @@ export interface UsersRepo {
   getByUsername(username: string): Promise<UserRecord | null>;
   create(user: UserRecord): Promise<void>;
   update(id: string, patch: Partial<Omit<UserRecord, "id" | "createdAt">>): Promise<void>;
+  softDelete(id: string, at: string): Promise<void>;
+}
+
+/** Mirrored key/value settings (value = JSON) — see schema.ts app_settings. */
+export interface AppSettingsRepo {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
 }
 
 export interface SessionsRepo {
@@ -152,6 +166,7 @@ export interface Store {
   sessions: SessionsRepo;
   audit: AuditRepo;
   settings: SettingsRepo;
+  appSettings: AppSettingsRepo;
   parts: PartsRepo;
   templates: TemplatesRepo;
   signoffs: SignoffsRepo;

@@ -114,7 +114,7 @@ export function SetupBackupPage() {
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Restore from the sheet</div>
         <p style={{ ...hint, margin: "0 0 10px" }}>
           Only for disaster recovery on a <b>fresh</b> NAS database: pulls every template, part, sign-off and user back from the sheet. Restored users come back locked and need a
-          password reset (passwords are never stored in the sheet).
+          new PIN (PINs are never stored in the sheet).
         </p>
         <button
           style={danger}

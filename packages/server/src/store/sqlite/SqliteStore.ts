@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import type { Mark, Part, ReplacedPart, Signature, Signoff, SignoffStatus, Template } from "@biosite-signoff/shared";
 import type {
+  AppSettingsRepo,
   AuditEntry,
   AuditRepo,
   OutboxRepo,
@@ -30,6 +31,7 @@ export class SqliteStore implements Store {
   sessions: SessionsRepo;
   audit: AuditRepo;
   settings: SettingsRepo;
+  appSettings: AppSettingsRepo;
   parts: PartsRepo;
   templates: TemplatesRepo;
   signoffs: SignoffsRepo;
@@ -53,6 +55,7 @@ export class SqliteStore implements Store {
     this.sessions = new SqliteSessions(db);
     this.audit = new SqliteAudit(db);
     this.settings = new SqliteSettings(db);
+    this.appSettings = new SqliteAppSettings(db, enqueue);
     this.parts = new SqliteParts(db, enqueue, tx);
     this.templates = new SqliteTemplates(db, enqueue, tx);
     this.signoffs = new SqliteSignoffs(db, enqueue, tx);
@@ -78,6 +81,8 @@ interface UserRow {
   password_hash: string;
   role: "admin" | "operator";
   failed_attempts: number;
+  lockouts: number;
+  locked_until: string;
   locked: number;
   created_at: string;
   updated_at: string;
@@ -88,9 +93,11 @@ function toUser(r: UserRow): UserRecord {
     id: r.id,
     username: r.username,
     name: r.name,
-    passwordHash: r.password_hash,
+    pinHash: r.password_hash,
     role: r.role,
     failedAttempts: r.failed_attempts,
+    lockouts: r.lockouts,
+    lockedUntil: r.locked_until,
     locked: Boolean(r.locked),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -121,8 +128,8 @@ class SqliteUsers implements UsersRepo {
   async create(u: UserRecord) {
     this.tx(() => {
       this.db
-        .prepare("INSERT INTO users (id, username, name, password_hash, role, failed_attempts, locked, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(u.id, u.username, u.name, u.passwordHash, u.role, u.failedAttempts, u.locked ? 1 : 0, u.createdAt, u.updatedAt);
+        .prepare("INSERT INTO users (id, username, name, password_hash, role, failed_attempts, lockouts, locked_until, locked, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(u.id, u.username, u.name, u.pinHash, u.role, u.failedAttempts, u.lockouts, u.lockedUntil, u.locked ? 1 : 0, u.createdAt, u.updatedAt);
       this.enqueue("users", u.id);
     });
   }
@@ -130,7 +137,9 @@ class SqliteUsers implements UsersRepo {
     const cols: Record<string, unknown> = {};
     if (patch.username !== undefined) cols.username = patch.username;
     if (patch.name !== undefined) cols.name = patch.name;
-    if (patch.passwordHash !== undefined) cols.password_hash = patch.passwordHash;
+    if (patch.pinHash !== undefined) cols.password_hash = patch.pinHash;
+    if (patch.lockouts !== undefined) cols.lockouts = patch.lockouts;
+    if (patch.lockedUntil !== undefined) cols.locked_until = patch.lockedUntil;
     if (patch.role !== undefined) cols.role = patch.role;
     if (patch.failedAttempts !== undefined) cols.failed_attempts = patch.failedAttempts;
     if (patch.locked !== undefined) cols.locked = patch.locked ? 1 : 0;
@@ -140,6 +149,32 @@ class SqliteUsers implements UsersRepo {
       this.db.prepare(`UPDATE users SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`).run(...keys.map((k) => cols[k]), id);
       this.enqueue("users", id);
     });
+  }
+  async softDelete(id: string, at: string) {
+    this.tx(() => {
+      // The username gets a suffix so the name can be reused for a new account later.
+      this.db.prepare("UPDATE users SET deleted_at = ?, updated_at = ?, username = username || '#' || ? WHERE id = ?").run(at, at, id.slice(0, 8), id);
+      this.enqueue("users", id);
+    });
+  }
+}
+
+class SqliteAppSettings implements AppSettingsRepo {
+  constructor(
+    private db: Database.Database,
+    private enqueue: Enqueue,
+  ) {}
+  async get(key: string) {
+    const r = this.db.prepare("SELECT value FROM app_settings WHERE id = ? AND deleted_at = ''").get(key) as { value: string } | undefined;
+    return r?.value ?? null;
+  }
+  async set(key: string, value: string) {
+    this.db.transaction(() => {
+      this.db
+        .prepare("INSERT INTO app_settings (id, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, deleted_at = ''")
+        .run(key, value, new Date().toISOString());
+      this.enqueue("app_settings", key);
+    })();
   }
 }
 
@@ -288,6 +323,7 @@ interface TemplateRow {
   document_ref: string;
   document_id: string;
   serial_label: string;
+  item_label: string;
   checks_json: string;
   rows_json: string;
   sign_row_enabled: string;
@@ -304,6 +340,7 @@ const toTemplate = (r: TemplateRow): Template => ({
   documentRef: r.document_ref,
   documentId: r.document_id,
   serialLabel: r.serial_label,
+  itemLabel: r.item_label || "Item",
   checks: JSON.parse(r.checks_json),
   rows: JSON.parse(r.rows_json),
   signRowEnabled: r.sign_row_enabled === "1",
@@ -333,6 +370,7 @@ class SqliteTemplates implements TemplatesRepo {
       t.documentRef,
       t.documentId,
       t.serialLabel,
+      t.itemLabel,
       JSON.stringify(t.checks),
       JSON.stringify(t.rows),
       t.signRowEnabled ? "1" : "0",
@@ -345,8 +383,8 @@ class SqliteTemplates implements TemplatesRepo {
     this.tx(() => {
       this.db
         .prepare(
-          `INSERT INTO templates (name, document_ref, document_id, serial_label, checks_json, rows_json, sign_row_enabled, sign_row_label, distinct_signers, part_ids_json, id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO templates (name, document_ref, document_id, serial_label, item_label, checks_json, rows_json, sign_row_enabled, sign_row_label, distinct_signers, part_ids_json, id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(...this.params(t), t.id, t.createdAt, t.updatedAt);
       this.enqueue("templates", t.id);
@@ -356,7 +394,7 @@ class SqliteTemplates implements TemplatesRepo {
     this.tx(() => {
       this.db
         .prepare(
-          `UPDATE templates SET name = ?, document_ref = ?, document_id = ?, serial_label = ?, checks_json = ?, rows_json = ?, sign_row_enabled = ?,
+          `UPDATE templates SET name = ?, document_ref = ?, document_id = ?, serial_label = ?, item_label = ?, checks_json = ?, rows_json = ?, sign_row_enabled = ?,
              sign_row_label = ?, distinct_signers = ?, part_ids_json = ?, updated_at = ? WHERE id = ?`,
         )
         .run(...this.params(t), t.updatedAt, t.id);
@@ -678,8 +716,8 @@ class SqliteTables implements TableAccess {
 
   async importRows(table: MirroredTable, rows: Row[]) {
     const spec = tableSpec(table);
-    // users carry two local-only columns the mirror deliberately never has: a restored account
-    // gets an unusable password hash and stays locked until an admin resets it.
+    // users carry local-only columns the mirror deliberately never has: a restored account gets
+    // an unusable PIN hash and stays locked until an admin sets a new PIN.
     const extra = table === "users" ? ["password_hash", "failed_attempts"] : [];
     const cols = [...spec.columns, ...extra];
     const stmt = this.db.prepare(

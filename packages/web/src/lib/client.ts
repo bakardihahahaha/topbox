@@ -1,3 +1,5 @@
+import type { LoginUser } from "@biosite-signoff/shared";
+
 const TOKEN_KEY = "biosite-signoff.token";
 
 export function getToken(): string | null {
@@ -73,30 +75,42 @@ export async function sendJson<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", p
 
 export interface Me {
   userId: string;
-  username: string;
   name: string;
   role: "admin" | "operator";
   idleTimeoutMinutes: number;
 }
 
+export async function fetchLoginUsers(): Promise<LoginUser[]> {
+  const res = await fetch("/api/auth/users");
+  if (!res.ok) throw new Error(res.status === 429 ? "Too many requests — wait a minute." : `Couldn't load the user list (${res.status}).`);
+  return (await res.json()) as LoginUser[];
+}
+
+export type LoginOutcome =
+  | { ok: true }
+  | { ok: false; code: string; error: string; attemptsLeft?: number; retryAt?: string };
+
 const LOGIN_ERROR_LABEL: Record<string, string> = {
-  INVALID_CREDENTIALS: "Incorrect username or password.",
-  LOCKED_OUT: "Account locked after 3 failed attempts — ask an administrator for a new password.",
-  ACTIVE_ON_ANOTHER_IP:
-    "This account is already signed in from another network. Log out there first (or wait for it to time out), or ask an administrator to end that session.",
+  INVALID_PIN: "Wrong PIN.",
+  TEMP_LOCKED: "Too many wrong PINs — this account is locked for 5 minutes.",
+  IP_BLOCKED: "Too many wrong PINs from this network — sign-in is paused for a while.",
+  LOCKED_OUT: "This account is locked — ask an administrator to unlock it.",
+  NO_SUCH_USER: "This user no longer exists.",
+  TOO_MANY_REQUESTS: "Too many attempts — wait a minute and try again.",
+  ACTIVE_ON_ANOTHER_IP: "You're still signed in on another network. Log out there first (or wait for it to time out), or ask an administrator to end that session.",
 };
 
-export async function login(username: string, password: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function login(userId: string, pin: string): Promise<LoginOutcome> {
   let res: Response;
   try {
-    res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
+    res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, pin }) });
   } catch {
-    return { ok: false, error: "Can't reach the server — check your connection." };
+    return { ok: false, code: "OFFLINE", error: "Can't reach the server — check your connection." };
   }
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string };
-    if (res.status === 429) return { ok: false, error: "Too many sign-in attempts — wait a minute and try again." };
-    return { ok: false, error: LOGIN_ERROR_LABEL[body.error ?? ""] ?? "Sign-in failed." };
+    const body = (await res.json().catch(() => ({}))) as { error?: string; attemptsLeft?: number; retryAt?: string };
+    const code = body.error ?? "";
+    return { ok: false, code, error: LOGIN_ERROR_LABEL[code] ?? "Sign-in failed.", attemptsLeft: body.attemptsLeft, retryAt: body.retryAt };
   }
   setToken(((await res.json()) as { token: string }).token);
   return { ok: true };

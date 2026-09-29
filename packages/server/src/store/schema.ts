@@ -16,12 +16,15 @@ export interface TableSpec {
   columns: readonly string[];
 }
 
-export type MirroredTable = "users" | "parts" | "templates" | "signoffs" | "signoff_marks" | "signoff_signatures" | "signoff_parts";
+export type MirroredTable = "app_settings" | "users" | "parts" | "templates" | "signoffs" | "signoff_marks" | "signoff_signatures" | "signoff_parts";
 
 /** In dependency order — restore imports them in exactly this order. */
 export const TABLES: readonly TableSpec[] = [
-  // Deliberately without password_hash / failed_attempts: the backup sheet is not a credential
-  // store. A restored user comes back locked and needs a password reset from an admin.
+  // Settings that belong to the business, not the server — the printed document's company header,
+  // address, footer and logo. One row per key, value = JSON.
+  { name: "app_settings", columns: ["id", "value", "updated_at", "deleted_at"] },
+  // Deliberately without password_hash (the PIN hash) or any lockout counters: the backup sheet is
+  // not a credential store. A restored user comes back locked and needs a new PIN from an admin.
   { name: "users", columns: ["id", "username", "name", "role", "locked", "created_at", "updated_at", "deleted_at"] },
   { name: "parts", columns: ["id", "part_number", "name", "description", "created_at", "updated_at", "deleted_at"] },
   {
@@ -32,6 +35,7 @@ export const TABLES: readonly TableSpec[] = [
       "document_ref",
       "document_id",
       "serial_label",
+      "item_label",
       "checks_json",
       "rows_json",
       "sign_row_enabled",

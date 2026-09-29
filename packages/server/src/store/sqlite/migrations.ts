@@ -138,6 +138,20 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (tbl, row_id)
   );
   `,
+  // 2: PIN sign-in with temporary lockouts, per-template item column label, mirrored app settings
+  //    (document header/footer/logo). password_hash now holds the bcrypt hash of the PIN.
+  `
+  ALTER TABLE users ADD COLUMN locked_until TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN lockouts INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE templates ADD COLUMN item_label TEXT NOT NULL DEFAULT 'Item';
+
+  CREATE TABLE app_settings (
+    id TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT NOT NULL DEFAULT ''
+  );
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

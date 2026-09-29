@@ -35,6 +35,8 @@ export interface Template {
   documentId: string;
   /** Label of the identifier box at the top of the table — "Serial Number" by default. */
   serialLabel: string;
+  /** Heading of the item column — "Item" by default. */
+  itemLabel: string;
   checks: TemplateCheck[];
   rows: TemplateRow[];
   /** "Sign and date here" row — when on, every check column gets its own signature + date. */
@@ -140,3 +142,40 @@ export interface SignoffSummary {
 export type SignoffStatus = "draft" | "complete";
 
 export type Role = "admin" | "operator";
+
+/** Company details printed on every PDF page — edited in Setup → Document, shared by all
+ * templates (each template keeps its own title, document reference and id). */
+export interface DocumentSettings {
+  /** Two-tone wordmark shown when no logo image is uploaded: "BIO" (accent) + "SITE". */
+  logoTextAccent: string;
+  logoText: string;
+  /** PNG/JPEG data URL; replaces the wordmark when set. */
+  logoDataUrl: string;
+  companyName: string;
+  /** Top-right address block, one line per line (street, city, postcode, tel, web…). */
+  address: string;
+  /** Centred line at the very bottom (registration details). */
+  footerText: string;
+  /** Printed before the template's document id in the footer. */
+  documentIdLabel: string;
+}
+
+export const DEFAULT_DOCUMENT_SETTINGS: DocumentSettings = {
+  logoTextAccent: "BIO",
+  logoText: "SITE",
+  logoDataUrl: "",
+  companyName: "Biosite Systems Ltd.",
+  address: "Lancaster House\nDrayton Road, Solihull, UK\nB90 4NG\nTel: +44(0)121 374 2939\nwww.biositesystems.com",
+  footerText: "Biosite Systems Ltd, registered in England and Wales. Reg. No. 7308880",
+  documentIdLabel: "Document Identifier:",
+};
+
+/** One tile on the sign-in screen. */
+export interface LoginUser {
+  id: string;
+  name: string;
+  /** Set while a temporary lockout (3 wrong PINs) is running. */
+  lockedUntil: string | null;
+}
+
+export const PIN_PATTERN = /^\d{4,8}$/;

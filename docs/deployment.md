@@ -52,13 +52,16 @@ Reuse the service account from Decom/KPI if you have one, or:
    and the JSON key next to it as `service-account.json`.
 3. **Container Manager → Project → Create** → path `/volume1/docker/signoff` → it reads the compose
    file, pulls `ghcr.io/bakardihahahaha/signoff-server:latest`, starts it.
-4. Container → **Log**: copy the one-time admin password (or set `BOOTSTRAP_ADMIN_PASSWORD` in the
-   compose file before the first start).
-5. Open `https://topbox.duckdns.org`, sign in as `admin`, then:
+4. Container → **Log**: copy the one-time admin PIN (or set `BOOTSTRAP_ADMIN_PIN` in the compose
+   file before the first start).
+5. Open `https://topbox.duckdns.org`, tap **Administrator**, enter the PIN, then:
    - **Setup → Backup**: paste the Google Sheet URL → "Use this sheet". Everything is copied over;
      the status shows "Up to date" when done.
-   - **Setup → Users**: create accounts (the full name is what's printed next to signatures).
-   - **Setup → Parts**, then **Setup → Templates**: tick which parts each template allows.
+   - **Setup → Users**: add everyone with a PIN — each person becomes a tile on the sign-in
+     screen; the name is also what's printed next to their signature.
+   - **Setup → Document**: company name, address, footer, logo printed on every PDF.
+   - **Setup → Parts**, then **Setup → Templates**: number of checks, items, and which parts each
+     template allows.
 
 **Updates**: Container Manager → Project → signoff → **Action → Update** (or `./deploy.sh`).
 
@@ -66,11 +69,10 @@ Reuse the service account from Decom/KPI if you have one, or:
 
 - `/volume1/docker/signoff/data/signoff.db` (+ `-wal`/`-shm` files) — the whole database. Include
   the folder in Hyper Backup if you use it; the Google Sheet is the off-NAS copy.
-- To start from zero: stop the container, delete `data/`, start again (new admin password in the
-  log).
+- To start from zero: stop the container, delete `data/`, start again (new admin PIN in the log).
 
 ## Disaster recovery (NAS died)
 
 1. New NAS/disk → steps 1–4 above (the new, empty database gets a fresh admin).
 2. Setup → Backup → paste the same sheet URL → **Restore from sheet…**
-3. Setup → Users → **Reset password** for each restored (locked) user.
+3. Setup → Users → **Edit name / PIN** (or **Random PIN**) for each restored (locked) user.

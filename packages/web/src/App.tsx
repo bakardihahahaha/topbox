@@ -18,6 +18,7 @@ import { SetupSecurityPage } from "./pages/SetupSecurityPage.js";
 import { SetupBackupPage } from "./pages/SetupBackupPage.js";
 import { SetupAuditPage } from "./pages/SetupAuditPage.js";
 import { AccountPage } from "./pages/AccountPage.js";
+import { SetupDocumentPage } from "./pages/SetupDocumentPage.js";
 // Side effect: flushes the offline queue on load and whenever the device comes back online.
 import "./lib/offlineQueue.js";
 
@@ -120,6 +121,7 @@ export function App() {
                 <Route path="/setup/templates" element={<SetupTemplatesPage />} />
                 <Route path="/setup/templates/:id" element={<TemplateEditorPage />} />
                 <Route path="/setup/parts" element={<SetupPartsPage />} />
+                <Route path="/setup/document" element={<SetupDocumentPage />} />
                 <Route path="/setup/users" element={<SetupUsersPage />} />
                 <Route path="/setup/security" element={<SetupSecurityPage />} />
                 <Route path="/setup/backup" element={<SetupBackupPage />} />

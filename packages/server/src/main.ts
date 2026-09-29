@@ -22,13 +22,13 @@ async function main() {
   // The one line that picks the storage engine — everything else only knows the Store interface.
   const store = new SqliteStore(DB_PATH);
 
-  const auth = new AuthService(store);
+  const auth = new AuthService(store, { failureDelayMs: 1000 });
   const catalog = new CatalogService(store);
   const signoffs = new SignoffService(store);
 
-  const bootstrap = await auth.ensureBootstrapAdmin(process.env.BOOTSTRAP_ADMIN_USERNAME ?? "admin", process.env.BOOTSTRAP_ADMIN_PASSWORD || undefined);
+  const bootstrap = await auth.ensureBootstrapAdmin(process.env.BOOTSTRAP_ADMIN_PIN || undefined);
   if (bootstrap) {
-    console.log(`\nBOOTSTRAP ADMIN CREATED — shown once, save it now:\n  username: ${bootstrap.username}\n  password: ${bootstrap.password}\n`);
+    console.log(`\nBOOTSTRAP ADMIN CREATED — shown once, save it now:\n  tap: ${bootstrap.name}\n  PIN: ${bootstrap.pin}\n`);
     if ((await catalog.listTemplates()).length === 0) {
       const seed = await catalog.createTemplate(mechanismChecklistSeed());
       // Remembered so a disaster-recovery restore can drop it again if it was never used.

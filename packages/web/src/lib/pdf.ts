@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable, { type CellHookData } from "jspdf-autotable";
-import { SIGNATURE_BOX, type Signoff } from "@biosite-signoff/shared";
+import { DEFAULT_DOCUMENT_SETTINGS, SIGNATURE_BOX, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
 import { parseSignaturePath } from "./signaturePath.js";
 
 // The PDF is built entirely in the browser (jsPDF) on whatever device presses the button — the
@@ -9,11 +9,11 @@ import { parseSignaturePath } from "./signaturePath.js";
 // sign-offs stacked per A4 page (two of the standard mechanism checklist fit on one), each
 // separated by a hairline — exactly like the printed original.
 
-const COMPANY = {
-  name: "Biosite Systems Ltd.",
-  address: ["Lancaster House", "Drayton Road, Solihull, UK", "B90 4NG", "Tel: +44(0)121 374 2939", "www.biositesystems.com"],
-  footer: "Biosite Systems Ltd, registered in England and Wales. Reg. No. 7308880",
-};
+/** Company header/footer (Setup → Document) plus the uploaded logo's pixel size, if any. */
+export interface PdfBranding {
+  settings: DocumentSettings;
+  logo?: { dataUrl: string; width: number; height: number };
+}
 
 const PAGE = { w: 210, h: 297, margin: 14, top: 34, bottom: 24 };
 const INK: [number, number, number] = [16, 18, 21];
@@ -33,13 +33,22 @@ function pdfText(s: string): string {
     .replace(/[^\x20-\x7E\xA0-\xFF\n]/g, "");
 }
 
-function drawMasthead(doc: jsPDF, documentRef: string) {
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.setTextColor(...RED);
-  doc.text("BIO", PAGE.margin, 22);
-  doc.setTextColor(60, 60, 60);
-  doc.text("SITE", PAGE.margin + doc.getTextWidth("BIO"), 22);
+function drawMasthead(doc: jsPDF, documentRef: string, b: PdfBranding) {
+  const c = b.settings;
+  if (b.logo) {
+    // Fit inside 60 x 14 mm, keeping the aspect ratio.
+    const scale = Math.min(60 / b.logo.width, 14 / b.logo.height);
+    const w = b.logo.width * scale;
+    const h = b.logo.height * scale;
+    doc.addImage(b.logo.dataUrl, b.logo.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG", PAGE.margin, 24 - h, w, h);
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(...RED);
+    doc.text(pdfText(c.logoTextAccent), PAGE.margin, 22);
+    doc.setTextColor(60, 60, 60);
+    doc.text(pdfText(c.logoText), PAGE.margin + doc.getTextWidth(pdfText(c.logoTextAccent)), 22);
+  }
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -47,14 +56,14 @@ function drawMasthead(doc: jsPDF, documentRef: string) {
   if (documentRef) doc.text(pdfText(documentRef), PAGE.w / 2 + 8, 26, { align: "center" });
 
   doc.setFontSize(7);
-  const lines = [COMPANY.name, ...COMPANY.address];
-  lines.forEach((l, i) => doc.text(l, PAGE.w - PAGE.margin, 11 + i * 3.2, { align: "right" }));
+  const lines = [c.companyName, ...c.address.split("\n")].map((l) => pdfText(l.trim())).filter(Boolean).slice(0, 7);
+  lines.forEach((l, i) => doc.text(l, PAGE.w - PAGE.margin, 8 + i * 3.1, { align: "right" }));
   doc.setDrawColor(...GREY);
   doc.setLineWidth(0.2);
   doc.line(PAGE.margin, 29, PAGE.w - PAGE.margin, 29);
 }
 
-function drawFooter(doc: jsPDF, documentId: string, page: number, pages: number) {
+function drawFooter(doc: jsPDF, documentId: string, page: number, pages: number, c: DocumentSettings) {
   const y = PAGE.h - 16;
   doc.setDrawColor(...GREY);
   doc.setLineWidth(0.2);
@@ -62,10 +71,10 @@ function drawFooter(doc: jsPDF, documentId: string, page: number, pages: number)
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(...INK);
-  if (documentId) doc.text(`Document Identifier: ${pdfText(documentId)}`, PAGE.margin, y);
+  if (documentId) doc.text(pdfText(`${c.documentIdLabel} ${documentId}`.trim()), PAGE.margin, y);
   doc.text(`Page ${page} of ${pages}`, PAGE.w - PAGE.margin, y, { align: "right" });
   doc.setFontSize(8);
-  doc.text(COMPANY.footer, PAGE.w / 2, y + 6, { align: "center" });
+  if (c.footerText) doc.text(pdfText(c.footerText), PAGE.w / 2, y + 6, { align: "center", maxWidth: PAGE.w - PAGE.margin * 2 });
 }
 
 function drawTick(doc: jsPDF, cx: number, cy: number) {
@@ -96,7 +105,7 @@ function drawSignature(doc: jsPDF, path: string, x: number, y: number, w: number
 
 /** Rough block height (mm) so a sign-off that won't fit starts on a fresh page instead of
  * splitting its table across two. */
-const checkColWidth = (checks: number) => (checks > 3 ? 20 : 24);
+const checkColWidth = (checks: number) => (checks > 4 ? 17 : checks > 3 ? 20 : 24);
 
 function estimateHeight(s: Signoff): number {
   const itemWidth = PAGE.w - PAGE.margin * 2 - s.template.checks.length * checkColWidth(s.template.checks.length) - 3;
@@ -126,7 +135,7 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
     { content: pdfText(t.serialLabel), styles: { fontStyle: "bold", fontSize: 10, minCellHeight: 9, valign: "middle" } },
     { content: pdfText(s.serialNumber), colSpan: t.checks.length, styles: { fontSize: 11, valign: "middle", halign: "center" } },
   ]);
-  body.push([{ content: "Item", styles: { fontStyle: "bold" } }, ...t.checks.map((c) => ({ content: pdfText(c.label), styles: { fontStyle: "bold" } }))]);
+  body.push([{ content: pdfText(t.itemLabel || "Item"), styles: { fontStyle: "bold" } }, ...t.checks.map((c) => ({ content: pdfText(c.label), styles: { fontStyle: "bold" } }))]);
   for (const r of t.rows) {
     const label = { content: `${r.indent ? "  " : ""}${pdfText(r.text)}`, styles: { fontStyle: r.bold ? "bold" : "normal" } };
     if (r.kind === "section") {
@@ -209,7 +218,7 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
   return y;
 }
 
-export function buildSignoffsPdf(signoffs: Signoff[]): jsPDF {
+export function buildSignoffsPdf(signoffs: Signoff[], branding: PdfBranding = { settings: DEFAULT_DOCUMENT_SETTINGS }): jsPDF {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   // Each page's masthead/footer belongs to the first sign-off drawn on it.
   const pageDocs: { ref: string; id: string }[] = [];
@@ -236,8 +245,8 @@ export function buildSignoffsPdf(signoffs: Signoff[]): jsPDF {
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p);
     const meta = pageDocs[p - 1] ?? pageDocs.filter(Boolean).at(-1) ?? { ref: "", id: "" };
-    drawMasthead(doc, meta.ref);
-    drawFooter(doc, meta.id, p, pages);
+    drawMasthead(doc, meta.ref, branding);
+    drawFooter(doc, meta.id, p, pages, branding.settings);
   }
   return doc;
 }
@@ -251,12 +260,11 @@ export function pdfFileName(signoffs: Signoff[]): string {
 }
 
 /** Builds and downloads the PDF on this device. */
-export function downloadSignoffsPdf(signoffs: Signoff[]): void {
-  buildSignoffsPdf(signoffs).save(pdfFileName(signoffs));
+export function downloadSignoffsPdf(signoffs: Signoff[], branding: PdfBranding): void {
+  buildSignoffsPdf(signoffs, branding).save(pdfFileName(signoffs));
 }
 
-/** Opens the PDF in a new tab (handy on desktops for printing straight away). */
-export function openSignoffsPdf(signoffs: Signoff[]): void {
-  const url = buildSignoffsPdf(signoffs).output("bloburl");
-  window.open(String(url), "_blank", "noopener");
+/** Blob URL of the PDF, for opening in a tab (handy on desktops for printing straight away). */
+export function signoffsPdfUrl(signoffs: Signoff[], branding: PdfBranding): string {
+  return String(buildSignoffsPdf(signoffs, branding).output("bloburl"));
 }

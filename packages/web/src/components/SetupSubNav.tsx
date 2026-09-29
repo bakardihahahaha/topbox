@@ -8,6 +8,7 @@ export function SetupSubNav() {
       ? [
           { to: "/setup/templates", label: "Templates" },
           { to: "/setup/parts", label: "Parts" },
+          { to: "/setup/document", label: "Document" },
           { to: "/setup/users", label: "Users" },
           { to: "/setup/security", label: "Security" },
           { to: "/setup/backup", label: "Backup" },

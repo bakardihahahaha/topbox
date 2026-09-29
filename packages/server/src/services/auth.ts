@@ -1,11 +1,30 @@
-import { randomBytes, randomUUID } from "node:crypto";
-import type { Role } from "@biosite-signoff/shared";
+import { randomBytes, randomInt, randomUUID } from "node:crypto";
+import { PIN_PATTERN, type LoginUser, type Role } from "@biosite-signoff/shared";
 import type { Store, UserRecord } from "../store/Store.js";
 import { audit } from "./audit.js";
 import { HttpError, badRequest, conflict, forbidden, notFound } from "./errors.js";
-import { generatePassword, hashPassword, verifyPassword } from "./password.js";
+import { hashPassword as hashPin, verifyPassword as verifyPin } from "./password.js";
 
-const MAX_FAILED_ATTEMPTS = 3;
+// Sign-in is "tap your name, type your PIN". The name list is public (that's the point — nobody
+// has time to type a username), so everything rests on the PIN plus the layers below:
+//
+//   1. 3 wrong PINs on an account -> that account is locked for 5 minutes.
+//   2. 5 such lockouts in a row without a successful sign-in (15 wrong PINs) -> hard lock that only
+//      an admin can lift. A bot patiently waiting out the 5 minutes gets ~15 guesses, not thousands.
+//   3. Per-IP guard across ALL accounts: 10 wrong PINs from one IP within 15 minutes blocks that IP
+//      for 15 minutes — stops a bot rotating through the name list to dodge rule 1.
+//   4. Every wrong PIN is answered only after a fixed delay, and the login route is rate limited
+//      per IP (routes/api.ts) — brute force is slow even before any lock kicks in.
+//   5. One network (IP) per account, and a session only works from the IP it was created on.
+//   6. Everything — including every blocked attempt, with its IP — lands in the audit log.
+
+export const PIN_ATTEMPTS = 3;
+export const TEMP_LOCK_MS = 5 * 60_000;
+export const HARD_LOCK_AFTER_LOCKOUTS = 5;
+const IP_MAX_FAILURES = 10;
+const IP_WINDOW_MS = 15 * 60_000;
+const IP_BLOCK_MS = 15 * 60_000;
+
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const TOUCH_THROTTLE_MS = 60_000;
 const DEFAULT_IDLE_MINUTES = 30;
@@ -16,27 +35,75 @@ export const SINGLE_IP_SETTING = "security.single_ip";
 export interface SecuritySettings {
   /** 0 = never. */
   idleTimeoutMinutes: number;
-  /** One account = one IP at a time. A session only works from the IP it was created on, and
-   * signing in from a second IP is refused while a live session exists on the first. */
+  /** One account = one IP at a time. */
   singleIp: boolean;
 }
 
 export interface UserSummary {
   id: string;
-  username: string;
   name: string;
   role: Role;
   locked: boolean;
+  lockedUntil: string | null;
   activeSessions: { ip: string; lastActivityAt: string }[];
   createdAt: string;
 }
 
 export type LoginResult =
   | { ok: true; token: string; userId: string; role: Role }
-  | { ok: false; reason: "INVALID_CREDENTIALS" | "LOCKED_OUT" | "ACTIVE_ON_ANOTHER_IP" };
+  | { ok: false; reason: "INVALID_PIN"; attemptsLeft: number }
+  | { ok: false; reason: "TEMP_LOCKED" | "IP_BLOCKED"; retryAt: string }
+  | { ok: false; reason: "LOCKED_OUT" | "NO_SUCH_USER" | "ACTIVE_ON_ANOTHER_IP" };
+
+/** In-memory per-IP failure counter (single server process — a restart simply forgives). */
+export class IpGuard {
+  private failures = new Map<string, number[]>();
+  private blocked = new Map<string, number>();
+
+  blockedUntil(ip: string, now = Date.now()): number | null {
+    const until = this.blocked.get(ip);
+    if (until && until > now) return until;
+    if (until) this.blocked.delete(ip);
+    return null;
+  }
+
+  /** Returns the block end if this failure tipped the IP over the limit. */
+  recordFailure(ip: string, now = Date.now()): number | null {
+    const recent = (this.failures.get(ip) ?? []).filter((t) => now - t < IP_WINDOW_MS);
+    recent.push(now);
+    this.failures.set(ip, recent);
+    if (recent.length >= IP_MAX_FAILURES) {
+      this.failures.delete(ip);
+      this.blocked.set(ip, now + IP_BLOCK_MS);
+      return now + IP_BLOCK_MS;
+    }
+    return null;
+  }
+
+  recordSuccess(ip: string): void {
+    this.failures.delete(ip);
+  }
+}
+
+const slug = (name: string) =>
+  name
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.|\.$/g, "") || "user";
 
 export class AuthService {
-  constructor(private readonly store: Store) {}
+  readonly ipGuard = new IpGuard();
+
+  constructor(
+    private readonly store: Store,
+    private readonly opts: { failureDelayMs?: number; now?: () => number } = {},
+  ) {}
+
+  private now(): number {
+    return this.opts.now?.() ?? Date.now();
+  }
 
   async securitySettings(): Promise<SecuritySettings> {
     const idle = await this.store.settings.get(IDLE_SETTING);
@@ -55,35 +122,79 @@ export class AuthService {
     return this.securitySettings();
   }
 
-  /** A session counts as live if it's neither past its 12h lifetime nor idle-expired. */
   private isLive(s: { expiresAt: string; lastActivityAt: string }, idleMinutes: number, now: number): boolean {
     if (new Date(s.expiresAt).getTime() < now) return false;
     return !(idleMinutes > 0 && now - new Date(s.lastActivityAt).getTime() > idleMinutes * 60_000);
   }
 
-  async login(username: string, password: string, ip: string): Promise<LoginResult> {
-    const user = await this.store.users.getByUsername(username.trim());
-    if (!user) {
-      await audit(this.store, { actorId: null, action: "AUTH_FAIL", entity: "user", entityId: username, detail: { reason: "no such user" }, ip });
-      return { ok: false, reason: "INVALID_CREDENTIALS" };
-    }
-    if (user.locked) {
-      await audit(this.store, { actorId: user.id, action: "AUTH_FAIL", entity: "user", entityId: user.id, detail: { reason: "locked" }, ip });
-      return { ok: false, reason: "LOCKED_OUT" };
-    }
-    if (!verifyPassword(password, user.passwordHash)) {
-      const attempts = user.failedAttempts + 1;
-      const locked = attempts >= MAX_FAILED_ATTEMPTS;
-      await this.store.users.update(user.id, { failedAttempts: attempts, locked });
-      if (locked) await this.store.sessions.deleteForUser(user.id);
-      await audit(this.store, { actorId: user.id, action: locked ? "AUTH_LOCKOUT" : "AUTH_FAIL", entity: "user", entityId: user.id, detail: { failedAttempts: attempts }, ip });
-      return { ok: false, reason: locked ? "LOCKED_OUT" : "INVALID_CREDENTIALS" };
+  private tempLockedUntil(u: UserRecord, now: number): string | null {
+    return u.lockedUntil && new Date(u.lockedUntil).getTime() > now ? u.lockedUntil : null;
+  }
+
+  /** The sign-in screen's tiles — every active account; hard-locked ones are left off. */
+  async loginUsers(): Promise<LoginUser[]> {
+    const now = this.now();
+    return (await this.store.users.list())
+      .filter((u) => !u.locked)
+      .map((u) => ({ id: u.id, name: u.name || u.username, lockedUntil: this.tempLockedUntil(u, now) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private async fail(ip: string): Promise<void> {
+    this.ipGuard.recordFailure(ip, this.now());
+    if (this.opts.failureDelayMs) await new Promise((r) => setTimeout(r, this.opts.failureDelayMs));
+  }
+
+  async login(userId: string, pin: string, ip: string): Promise<LoginResult> {
+    const now = this.now();
+    const ipBlock = this.ipGuard.blockedUntil(ip, now);
+    if (ipBlock) {
+      await audit(this.store, { actorId: null, action: "AUTH_BLOCKED_IP", entity: "user", entityId: userId, detail: { reason: "too many wrong PINs from this IP" }, ip });
+      return { ok: false, reason: "IP_BLOCKED", retryAt: new Date(ipBlock).toISOString() };
     }
 
-    // Only checked after the password is proven — an attacker guessing passwords learns nothing
-    // about where (or whether) the real user is signed in.
+    const user = await this.store.users.get(userId);
+    if (!user) {
+      await this.fail(ip);
+      return { ok: false, reason: "NO_SUCH_USER" };
+    }
+    // Hammering an already-locked account still counts against the IP — that's exactly what a
+    // bot rotating through the name list looks like.
+    if (user.locked) {
+      await this.fail(ip);
+      await audit(this.store, { actorId: user.id, action: "AUTH_FAIL", entity: "user", entityId: user.id, detail: { reason: "hard locked" }, ip });
+      return { ok: false, reason: "LOCKED_OUT" };
+    }
+    const temp = this.tempLockedUntil(user, now);
+    if (temp) {
+      await this.fail(ip);
+      await audit(this.store, { actorId: user.id, action: "AUTH_FAIL", entity: "user", entityId: user.id, detail: { reason: "temporarily locked" }, ip });
+      return { ok: false, reason: "TEMP_LOCKED", retryAt: temp };
+    }
+
+    if (!verifyPin(pin, user.pinHash)) {
+      const attempts = user.failedAttempts + 1;
+      await this.fail(ip);
+      if (attempts < PIN_ATTEMPTS) {
+        await this.store.users.update(user.id, { failedAttempts: attempts });
+        await audit(this.store, { actorId: user.id, action: "AUTH_FAIL", entity: "user", entityId: user.id, detail: { failedAttempts: attempts }, ip });
+        return { ok: false, reason: "INVALID_PIN", attemptsLeft: PIN_ATTEMPTS - attempts };
+      }
+      const lockouts = user.lockouts + 1;
+      if (lockouts >= HARD_LOCK_AFTER_LOCKOUTS) {
+        await this.store.users.update(user.id, { failedAttempts: 0, lockouts, locked: true, lockedUntil: "" });
+        await this.store.sessions.deleteForUser(user.id);
+        await audit(this.store, { actorId: user.id, action: "AUTH_LOCKOUT", entity: "user", entityId: user.id, detail: { hardLock: true, lockouts }, ip });
+        return { ok: false, reason: "LOCKED_OUT" };
+      }
+      const retryAt = new Date(now + TEMP_LOCK_MS).toISOString();
+      await this.store.users.update(user.id, { failedAttempts: 0, lockouts, lockedUntil: retryAt });
+      await audit(this.store, { actorId: user.id, action: "AUTH_LOCKOUT", entity: "user", entityId: user.id, detail: { minutes: TEMP_LOCK_MS / 60_000, lockouts }, ip });
+      return { ok: false, reason: "TEMP_LOCKED", retryAt };
+    }
+
+    // Only checked once the PIN is proven — a guesser learns nothing about where the user is.
     const { idleTimeoutMinutes, singleIp } = await this.securitySettings();
-    const now = Date.now();
     const sessions = await this.store.sessions.listForUser(user.id);
     for (const s of sessions) if (!this.isLive(s, idleTimeoutMinutes, now)) await this.store.sessions.delete(s.token);
     if (singleIp && sessions.some((s) => this.isLive(s, idleTimeoutMinutes, now) && s.ip !== ip)) {
@@ -91,7 +202,8 @@ export class AuthService {
       return { ok: false, reason: "ACTIVE_ON_ANOTHER_IP" };
     }
 
-    if (user.failedAttempts > 0) await this.store.users.update(user.id, { failedAttempts: 0 });
+    this.ipGuard.recordSuccess(ip);
+    if (user.failedAttempts || user.lockouts || user.lockedUntil) await this.store.users.update(user.id, { failedAttempts: 0, lockouts: 0, lockedUntil: "" });
     const token = randomBytes(32).toString("base64url");
     const at = new Date(now).toISOString();
     await this.store.sessions.create({ token, userId: user.id, ip, createdAt: at, expiresAt: new Date(now + SESSION_TTL_MS).toISOString(), lastActivityAt: at });
@@ -108,14 +220,11 @@ export class AuthService {
     const s = await this.store.sessions.get(token);
     if (!s) return null;
     const { idleTimeoutMinutes, singleIp } = await this.securitySettings();
-    const now = Date.now();
+    const now = this.now();
     if (!this.isLive(s, idleTimeoutMinutes, now)) {
       await this.store.sessions.delete(token);
       return null;
     }
-    // A token presented from a different IP than it was issued to is either a copied/stolen token
-    // or the device changed networks — either way the session ends and the user signs in again
-    // (which then succeeds, because this was their only live session).
     if (singleIp && s.ip !== ip) {
       await this.store.sessions.delete(token);
       await audit(this.store, { actorId: s.userId, action: "AUTH_IP_MISMATCH", entity: "session", detail: { sessionIp: s.ip }, ip });
@@ -135,14 +244,14 @@ export class AuthService {
 
   private async summary(u: UserRecord): Promise<UserSummary> {
     const { idleTimeoutMinutes } = await this.securitySettings();
-    const now = Date.now();
+    const now = this.now();
     const sessions = (await this.store.sessions.listForUser(u.id)).filter((s) => this.isLive(s, idleTimeoutMinutes, now));
     return {
       id: u.id,
-      username: u.username,
       name: u.name || u.username,
       role: u.role,
       locked: u.locked,
+      lockedUntil: this.tempLockedUntil(u, now),
       activeSessions: sessions.map((s) => ({ ip: s.ip, lastActivityAt: s.lastActivityAt })),
       createdAt: u.createdAt,
     };
@@ -157,16 +266,30 @@ export class AuthService {
     return Promise.all((await this.store.users.list()).map((u) => this.summary(u)));
   }
 
-  async createUser(input: { username: string; name: string; role: Role }, actorId: string | null, fixedPassword?: string): Promise<{ id: string; password: string }> {
-    const username = input.username.trim();
-    if (!/^[A-Za-z0-9._-]{2,40}$/.test(username)) throw badRequest("Username: 2–40 letters, digits, dot, dash or underscore.");
-    if (await this.store.users.getByUsername(username)) throw conflict("USERNAME_TAKEN", `"${username}" is already taken.`);
-    const password = fixedPassword ?? generatePassword();
-    const now = new Date().toISOString();
+  private assertPin(pin: string) {
+    if (!PIN_PATTERN.test(pin)) throw badRequest("PIN must be 4–8 digits.");
+  }
+
+  private async assertUniqueName(name: string, exceptId?: string) {
+    const clash = (await this.store.users.list()).find((u) => (u.name || u.username).toLowerCase() === name.toLowerCase() && u.id !== exceptId);
+    if (clash) throw conflict("NAME_TAKEN", `There's already a user called "${name}" — names must be unique so the sign-in list is unambiguous.`);
+  }
+
+  /** `pin` omitted = a random 6-digit PIN, returned once. */
+  async createUser(input: { name: string; role: Role; pin?: string }, actorId: string | null): Promise<{ id: string; pin: string }> {
+    const name = input.name.trim();
+    if (!name || name.length > 60) throw badRequest("Name is required (max 60 characters).");
+    await this.assertUniqueName(name);
+    const pin = input.pin ?? String(randomInt(0, 1_000_000)).padStart(6, "0");
+    this.assertPin(pin);
+    // Internal, never shown: the login is by tapping the name.
+    let username = slug(name);
+    for (let i = 2; await this.store.users.getByUsername(username); i++) username = `${slug(name)}.${i}`;
+    const now = new Date(this.now()).toISOString();
     const id = randomUUID();
-    await this.store.users.create({ id, username, name: input.name.trim(), passwordHash: hashPassword(password), role: input.role, failedAttempts: 0, locked: false, createdAt: now, updatedAt: now });
-    await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { created: username, role: input.role } });
-    return { id, password };
+    await this.store.users.create({ id, username, name, pinHash: hashPin(pin), role: input.role, failedAttempts: 0, lockouts: 0, lockedUntil: "", locked: false, createdAt: now, updatedAt: now });
+    await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { created: name, role: input.role } });
+    return { id, pin };
   }
 
   private async requireUser(id: string): Promise<UserRecord> {
@@ -175,37 +298,55 @@ export class AuthService {
     return u;
   }
 
-  private async adminCount(): Promise<number> {
+  private async activeAdmins(): Promise<number> {
     return (await this.store.users.list()).filter((u) => u.role === "admin" && !u.locked).length;
   }
 
   async updateUser(id: string, patch: { name?: string; role?: Role; locked?: boolean }, actorId: string): Promise<UserSummary> {
     const u = await this.requireUser(id);
     if (id === actorId && (patch.locked || (patch.role && patch.role !== u.role))) throw forbidden("You can't lock yourself or change your own role.");
-    if (u.role === "admin" && ((patch.role && patch.role !== "admin") || patch.locked) && (await this.adminCount()) <= 1) {
+    if (u.role === "admin" && ((patch.role && patch.role !== "admin") || patch.locked) && (await this.activeAdmins()) <= 1) {
       throw conflict("LAST_ADMIN", "This is the only active admin — create another admin first.");
     }
-    await this.store.users.update(id, { name: patch.name?.trim(), role: patch.role, locked: patch.locked, failedAttempts: patch.locked === false ? 0 : undefined });
+    const name = patch.name?.trim();
+    if (name !== undefined) {
+      if (!name) throw badRequest("Name is required.");
+      await this.assertUniqueName(name, id);
+    }
+    // Unlocking clears every lockout counter too — a clean slate.
+    const unlock = patch.locked === false ? { failedAttempts: 0, lockouts: 0, lockedUntil: "" } : {};
+    await this.store.users.update(id, { name, role: patch.role, locked: patch.locked, ...unlock });
     if (patch.locked) await this.store.sessions.deleteForUser(id);
     await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: patch });
     return (await this.getUser(id))!;
   }
 
-  async resetPassword(id: string, actorId: string): Promise<{ password: string }> {
-    await this.requireUser(id);
-    const password = generatePassword();
-    await this.store.users.update(id, { passwordHash: hashPassword(password), failedAttempts: 0, locked: false });
+  async deleteUser(id: string, actorId: string): Promise<void> {
+    const u = await this.requireUser(id);
+    if (id === actorId) throw forbidden("You can't delete yourself.");
+    if (u.role === "admin" && !u.locked && (await this.activeAdmins()) <= 1) throw conflict("LAST_ADMIN", "This is the only active admin.");
     await this.store.sessions.deleteForUser(id);
-    await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { passwordReset: true } });
-    return { password };
+    await this.store.users.softDelete(id, new Date(this.now()).toISOString());
+    await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { deleted: u.name } });
   }
 
-  async changeOwnPassword(id: string, current: string, next: string): Promise<void> {
+  /** Admin sets a user's PIN (also lifts any lockout). `pin` omitted = random 6 digits. */
+  async setPin(id: string, pin: string | undefined, actorId: string): Promise<{ pin: string }> {
+    await this.requireUser(id);
+    const next = pin ?? String(randomInt(0, 1_000_000)).padStart(6, "0");
+    this.assertPin(next);
+    await this.store.users.update(id, { pinHash: hashPin(next), failedAttempts: 0, lockouts: 0, lockedUntil: "", locked: false });
+    await this.store.sessions.deleteForUser(id);
+    await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { pinReset: true } });
+    return { pin: next };
+  }
+
+  async changeOwnPin(id: string, current: string, next: string): Promise<void> {
     const u = await this.requireUser(id);
-    if (!verifyPassword(current, u.passwordHash)) throw new HttpError(400, "WRONG_PASSWORD", "Current password is incorrect.");
-    if (next.length < 8) throw badRequest("New password must be at least 8 characters.");
-    await this.store.users.update(id, { passwordHash: hashPassword(next) });
-    await audit(this.store, { actorId: id, action: "WRITE", entity: "user", entityId: id, detail: { passwordChanged: true } });
+    if (!verifyPin(current, u.pinHash)) throw new HttpError(400, "WRONG_PIN", "Current PIN is incorrect.");
+    this.assertPin(next);
+    await this.store.users.update(id, { pinHash: hashPin(next) });
+    await audit(this.store, { actorId: id, action: "WRITE", entity: "user", entityId: id, detail: { pinChanged: true } });
   }
 
   async endSessions(id: string, actorId: string): Promise<void> {
@@ -214,9 +355,9 @@ export class AuthService {
     await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { sessionsEnded: true } });
   }
 
-  async ensureBootstrapAdmin(username: string, fixedPassword?: string): Promise<{ username: string; password: string } | null> {
+  async ensureBootstrapAdmin(fixedPin?: string): Promise<{ name: string; pin: string } | null> {
     if ((await this.store.users.count()) > 0) return null;
-    const { password } = await this.createUser({ username, name: "Administrator", role: "admin" }, null, fixedPassword);
-    return { username, password };
+    const { pin } = await this.createUser({ name: "Administrator", role: "admin", pin: fixedPin }, null);
+    return { name: "Administrator", pin };
   }
 }

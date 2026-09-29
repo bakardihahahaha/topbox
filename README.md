@@ -12,9 +12,14 @@ repository later is just `git subtree split --prefix signoff`.
 
 ## What it does
 
-- **Templates** (Setup → Templates, admin): name, document reference/id (printed in the header and
-  footer), any number of **items** (plus **section** headings like "Security red paint on:", bold and
-  indented rows), any number of **check columns** (1st, 2nd, 3rd … up to 8), an optional
+- **Sign-in**: every user is a tile on the first screen — tap your name, type your PIN (4–8
+  digits) on the keypad. Admins create users with a PIN (or a random one) in Setup → Users.
+- **Document** (Setup → Document, admin): logo (image upload or two-tone text), company name,
+  address block, footer line and the "Document Identifier:" label printed on every PDF page.
+- **Templates** (Setup → Templates, admin): title, document reference/id, "Serial Number" and "Item"
+  headings, any number of **items** (plus **section** headings like "Security red paint on:", bold
+  and indented rows; ＋ inserts a new row right below any row), a **number of checks** field
+  (1st, 2nd, 3rd … up to 6, each column renamable; PA-DOC-189 uses 2), an optional
   **"Sign and date here"** row, an optional "each check signed by a different person" rule, and the
   list of **parts that may be replaced** on a service. "Preview PDF" shows the result instantly.
   The PA-DOC-189 checklist is seeded on a fresh install.
@@ -49,7 +54,7 @@ browser (PWA)  ──HTTPS──>  DSM reverse proxy  ──>  signoff-server (F
   and only then clears them from the outbox. Users never wait on Google; if Google is down or over
   quota the outbox simply waits. A crash can't lose a change.
 - Rows are never physically deleted (`deleted_at`), so the mirror is a pure upsert-by-id.
-- **Restore** (Setup → Backup): on a fresh NAS database, pulls every tab back in. Passwords are never
+- **Restore** (Setup → Backup): on a fresh NAS database, pulls every tab back in. PINs are never
   written to the sheet — restored users come back locked and need a reset.
 - ~50 saves/day is far below any Google quota; the mirror batches whatever is pending into a couple
   of calls per tab.
@@ -90,11 +95,17 @@ queued write is idempotent on the server.
 
 ### Security
 
-- bcrypt passwords, **3-strike lockout**, login throttled to 5/min per IP, 10-character random
-  generated passwords (shown once).
+- PIN sign-in (bcrypt-hashed), with layered brute-force protection (`services/auth.ts`):
+  - **3 wrong PINs → account locked for 5 minutes** (the tile shows a countdown);
+  - **5 such lockouts in a row → locked until an admin unlocks it** (a bot waiting out the 5 minutes
+    gets ~15 guesses in total, not thousands);
+  - **per-IP guard across all accounts**: 10 wrong PINs from one IP in 15 min → that IP is blocked
+    for 15 min (stops a bot cycling through the public name list);
+  - every wrong PIN is answered after a 1 s delay; the login route is rate limited to 10/min per IP;
+  - the public name list shows names only (no roles), and hard-locked accounts aren't listed.
 - **One network (IP) per account** (Setup → Security, on by default): a session only works from the
   IP it signed in from; signing in from a second IP is refused while a session is live on the first
-  (checked only after the password is correct). A token used from another IP is killed at once.
+  (checked only after the PIN is correct). A token used from another IP is killed at once.
   Logout ends the session server-side; idle timeout (default 30 min) ends forgotten ones; admins can
   "End sessions" per user.
 - Audit log of every sign-in (including blocked ones, with IP) and every change.
@@ -121,7 +132,7 @@ cd signoff
 npm install
 npm test                 # server test suite (auth/IP rules, sign-off rules, mirror, cache, 429 → 503)
 npm run typecheck
-FAKE_SHEETS=true npm run dev:server   # :8080, in-memory fake Google Sheet; prints the admin password
+FAKE_SHEETS=true npm run dev:server   # :8080, in-memory fake Google Sheet; prints the admin PIN
 npm run dev:web                       # :5175, proxies /api to :8080
 ```
 
@@ -133,5 +144,5 @@ npm run dev:web                       # :5175, proxies /api to :8080
 | `SPREADSHEET_ID` | – | initial backup sheet (can be set/changed in Setup → Backup) |
 | `FAKE_SHEETS` | – | `true` = in-memory fake sheet (dev only) |
 | `TRUST_PROXY` | – | `true` behind DSM's reverse proxy (real client IPs) |
-| `BOOTSTRAP_ADMIN_USERNAME` / `_PASSWORD` | `admin` / random | first admin on an empty database |
+| `BOOTSTRAP_ADMIN_PIN` | random 6 digits | PIN of the first admin ("Administrator") on an empty database |
 | `WEB_DIST_PATH` | `./web-dist` | built PWA served by the same process |

@@ -56,6 +56,11 @@ export async function buildApp(services: Services, opts: { webDistPath?: string;
       });
     }
     if (err instanceof HttpError) return reply.status(err.status).send({ error: err.code, message: err.message });
+    // @fastify/rate-limit's own 429 (too many requests from this IP/session) — deliberately NOT the
+    // retry-silently RATE_LIMITED code: this is the caller being throttled, not the server being busy.
+    if ((err as { statusCode?: number }).statusCode === 429) {
+      return reply.status(429).send({ error: "TOO_MANY_REQUESTS", message: "Too many attempts — wait a minute and try again." });
+    }
     const status = (err as { statusCode?: number }).statusCode;
     if (status && status >= 400 && status < 500) return reply.status(status).send({ error: (err as { code?: string }).code ?? "INVALID_REQUEST", message: (err as Error).message });
     req.log?.error(err);

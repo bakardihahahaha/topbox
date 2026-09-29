@@ -71,7 +71,7 @@ export class CatalogService {
     const name = input.name.trim();
     if (!name) throw badRequest("Template name is required.");
     if (input.checks.length === 0) throw badRequest("A template needs at least one check column.");
-    if (input.checks.length > 8) throw badRequest("At most 8 check columns.");
+    if (input.checks.length > 6) throw badRequest("At most 6 check columns.");
     if (input.checks.some((c) => !c.label.trim())) throw badRequest("Every check column needs a label.");
     if (input.rows.filter((r) => r.kind === "item").length === 0) throw badRequest("A template needs at least one item.");
     if (input.rows.some((r) => !r.text.trim())) throw badRequest("Every row needs text.");
@@ -86,6 +86,7 @@ export class CatalogService {
       documentRef: input.documentRef.trim(),
       documentId: input.documentId.trim(),
       serialLabel: input.serialLabel.trim() || "Serial Number",
+      itemLabel: input.itemLabel.trim() || "Item",
       signRowLabel: input.signRowLabel.trim() || "Sign and date here",
       checks: input.checks.map((c) => ({ id: c.id, label: c.label.trim() })),
       rows: input.rows.map((r) => ({ id: r.id, kind: r.kind, text: r.text.trim(), bold: Boolean(r.bold), indent: Boolean(r.indent) })),
@@ -135,6 +136,7 @@ export function mechanismChecklistSeed(): TemplateInput {
     documentRef: "PA-DOC-189, revision 6, released 23-May-2019",
     documentId: "PA-DOC-189-006",
     serialLabel: "Serial Number",
+    itemLabel: "Item",
     checks: [
       { id: randomUUID(), label: "1st Check" },
       { id: randomUUID(), label: "2nd Check" },

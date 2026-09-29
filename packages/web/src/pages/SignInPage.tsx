@@ -1,245 +1,317 @@
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type { LoginUser } from "@biosite-signoff/shared";
 import { useTheme } from "../theme/ThemeContext.js";
-import { login } from "../lib/client.js";
+import { fetchLoginUsers, login } from "../lib/client.js";
 import { APP_VERSION, clearCacheAndCookies } from "../lib/clearCache.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 
-// Decom's sign-in screen, unchanged apart from the name and the policy callout — same card, same
-// "clear cache & cookies" escape hatch and build number under the form.
+// Tap your name, type your PIN — the whole sign-in. Every active user is a tile on the first
+// screen so nobody types a username. Same card/colour language as decom's sign-in screen.
 
 interface SignInPageProps {
   onSignedIn: () => void;
-  /** Shown as an informational callout above the form — right now only ever "signed out after
-   * being idle" (see idleLogout.ts), so a stale-out reads as an explained transition instead of a
-   * confusing jump back to this screen. */
   message?: string;
 }
 
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [active]);
+  return now;
+}
+
+const countdown = (until: string, now: number) => {
+  const s = Math.max(0, Math.ceil((Date.parse(until) - now) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+
 export function SignInPage({ onSignedIn, message }: SignInPageProps) {
   const { themeLabel, cycleTheme } = useTheme();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [users, setUsers] = useState<LoginUser[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<LoginUser | null>(null);
+  const [filter, setFilter] = useState("");
   const [clearing, setClearing] = useState(false);
+  const anyLocked = Boolean(users?.some((u) => u.lockedUntil));
+  const now = useNow(anyLocked || Boolean(selected?.lockedUntil));
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    const result = await login(username, password);
-    setSubmitting(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
+  async function load() {
+    try {
+      setUsers(await fetchLoginUsers());
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
     }
-    onSignedIn();
   }
 
-  async function handleClearCache() {
-    if (!(await confirmDialog("This will clear the app's cache, cookies, and local data, then reload it. Continue?", { confirmLabel: "Clear & reload" }))) return;
-    setClearing(true);
-    await clearCacheAndCookies();
-  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  // A lock that ran out: refresh so the tile unlocks by itself.
+  useEffect(() => {
+    if (users?.some((u) => u.lockedUntil && Date.parse(u.lockedUntil) <= now)) void load();
+  }, [now, users]);
+
+  const visible = (users ?? []).filter((u) => u.name.toLowerCase().includes(filter.trim().toLowerCase()));
 
   return (
-    <div
-      style={{
-        height: "100%",
-        overflowY: "auto",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "var(--bg-deep)",
-        padding: 16,
-      }}
-    >
-      <div
-        style={{
-          width: 420,
-          maxWidth: "100%",
-          background: "var(--bg-deep)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius-card)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            padding: "20px 24px 18px",
-            borderBottom: "1px solid var(--border)",
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div style={{ fontSize: 26, fontWeight: 700 }}>Biosite Sign-off</div>
-          <button
-            type="button"
-            onClick={cycleTheme}
-            className="mono"
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: ".08em",
-              padding: "5px 9px",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-control)",
-              color: "var(--text-2)",
-              background: "transparent",
-              cursor: "pointer",
-            }}
-          >
+    <div style={{ height: "100%", overflowY: "auto", background: "var(--bg-deep)", padding: 16 }}>
+      <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 8 }}>
+          <div style={{ fontSize: 24, fontWeight: 700 }}>Biosite Sign-off</div>
+          <button type="button" onClick={cycleTheme} className="mono" style={smallButton}>
             {themeLabel}
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          {message && (
-            <div
-              style={{
-                background: "var(--accent-wash)",
-                borderLeft: "3px solid var(--accent)",
-                borderRadius: "var(--radius-callout)",
-                padding: "10px 12px",
-                fontSize: 13,
-                color: "var(--accent-wash-text)",
-              }}
-            >
-              {message}
-            </div>
-          )}
-          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span className="mono" style={labelStyle}>
-              Username
-            </span>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} className="mono" style={inputStyle} autoComplete="username" />
-          </label>
+        {message && <div style={infoBox}>{message}</div>}
+        {loadError && (
+          <div style={errorBox}>
+            {loadError}{" "}
+            <button onClick={() => void load()} style={{ ...smallButton, marginLeft: 8 }}>
+              Retry
+            </button>
+          </div>
+        )}
 
-          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span className="mono" style={labelStyle}>
-              Password
-            </span>
-            <div style={{ position: "relative" }}>
-              <input
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type={showPassword ? "text" : "password"}
-                className="mono"
-                style={{ ...inputStyle, paddingRight: 44 }}
-                autoComplete="current-password"
-              />
+        <div style={{ fontSize: 13, color: "var(--text-3)" }}>Tap your name, then enter your PIN.</div>
+        {users && users.length > 12 && (
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find your name…" style={{ ...input, height: 44 }} />
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+          {users === null && !loadError && <div style={{ color: "var(--text-3)", fontSize: 13 }}>Loading…</div>}
+          {visible.map((u) => {
+            const locked = u.lockedUntil && Date.parse(u.lockedUntil) > now;
+            return (
               <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                className="mono"
+                key={u.id}
+                onClick={() => setSelected(u)}
                 style={{
-                  position: "absolute",
-                  right: 4,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  height: 34,
-                  width: 36,
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--text-3)",
-                  fontSize: 10,
-                  fontWeight: 700,
+                  minHeight: 92,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  padding: 10,
+                  background: "var(--bg-base)",
+                  border: "1px solid var(--border-soft)",
+                  borderRadius: "var(--radius-card)",
                   cursor: "pointer",
+                  opacity: locked ? 0.55 : 1,
                 }}
               >
-                {showPassword ? "HIDE" : "SHOW"}
+                <span
+                  className="mono"
+                  style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--accent-chip)", color: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 14 }}
+                >
+                  {initials(u.name)}
+                </span>
+                <span style={{ fontWeight: 600, fontSize: 14.5, textAlign: "center", lineHeight: 1.2 }}>{u.name}</span>
+                {locked && (
+                  <span className="mono" style={{ fontSize: 11, color: "var(--warn)" }}>
+                    locked {countdown(u.lockedUntil!, now)}
+                  </span>
+                )}
               </button>
-            </div>
-          </label>
+            );
+          })}
+        </div>
 
-          <div
-            style={{
-              background: "var(--accent-wash)",
-              borderLeft: "3px solid var(--accent)",
-              borderRadius: "var(--radius-callout)",
-              padding: "10px 12px",
-              fontSize: 13,
-              color: "var(--accent-wash-text)",
-            }}
-          >
-            3 failed attempts locks the account. One account can only be signed in from one network (IP) at a time.
-          </div>
-
-          {error && (
-            <div
-              style={{
-                background: "var(--danger-wash)",
-                borderLeft: "3px solid var(--danger)",
-                borderRadius: "var(--radius-callout)",
-                padding: "8px 10px",
-                fontSize: 13,
-                color: "var(--danger-text)",
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            style={{
-              height: 50,
-              borderRadius: "var(--radius-control)",
-              border: "none",
-              background: "var(--accent)",
-              color: "var(--bg-deep)",
-              fontWeight: 700,
-              fontSize: 15,
-              cursor: submitting ? "default" : "pointer",
-              opacity: submitting ? 0.7 : 1,
-            }}
-          >
-            {submitting ? "…" : "Sign in"}
-          </button>
-
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 24, flexWrap: "wrap" }}>
           <button
             type="button"
-            onClick={handleClearCache}
             disabled={clearing}
             className="mono"
-            style={{
-              height: 40,
-              borderRadius: "var(--radius-control)",
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--text-2)",
-              fontWeight: 700,
-              fontSize: 12,
-              cursor: clearing ? "default" : "pointer",
-              opacity: clearing ? 0.6 : 1,
+            style={smallButton}
+            onClick={async () => {
+              if (!(await confirmDialog("This will clear the app's cache, cookies, and local data, then reload it. Continue?", { confirmLabel: "Clear & reload" }))) return;
+              setClearing(true);
+              await clearCacheAndCookies();
             }}
           >
             {clearing ? "Clearing…" : "Clear cache & cookies"}
           </button>
-
-          <div className="mono" style={{ fontSize: 11, color: "var(--text-4)", textAlign: "center" }}>
+          <span className="mono" style={{ fontSize: 11, color: "var(--text-4)" }}>
             Build: {APP_VERSION}
-          </div>
-        </form>
+          </span>
+        </div>
+      </div>
+
+      {selected && (
+        <PinPanel
+          user={selected}
+          now={now}
+          onClose={() => {
+            setSelected(null);
+            void load();
+          }}
+          onLocked={(retryAt) => {
+            setSelected((s) => (s ? { ...s, lockedUntil: retryAt } : s));
+            void load();
+          }}
+          onSignedIn={onSignedIn}
+        />
+      )}
+    </div>
+  );
+}
+
+function PinPanel({ user, now, onClose, onLocked, onSignedIn }: { user: LoginUser; now: number; onClose: () => void; onLocked: (retryAt: string) => void; onSignedIn: () => void }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const locked = user.lockedUntil && Date.parse(user.lockedUntil) > now;
+
+  useEffect(() => inputRef.current?.focus(), []);
+
+  async function submit() {
+    if (busy || pin.length < 4 || locked) return;
+    setBusy(true);
+    setError(null);
+    const result = await login(user.id, pin);
+    setBusy(false);
+    setPin("");
+    if (result.ok) return onSignedIn();
+    if (result.code === "INVALID_PIN" && result.attemptsLeft !== undefined) {
+      setError(`Wrong PIN — ${result.attemptsLeft} ${result.attemptsLeft === 1 ? "try" : "tries"} left before a 5-minute lock.`);
+    } else {
+      setError(result.error);
+    }
+    if ((result.code === "TEMP_LOCKED" || result.code === "IP_BLOCKED") && result.retryAt) onLocked(result.retryAt);
+    inputRef.current?.focus();
+  }
+
+  const press = (d: string) => {
+    setError(null);
+    setPin((p) => (p.length < 8 ? p + d : p));
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,.6)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: "min(94vw, 340px)", background: "var(--bg-base)", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-card)", padding: 18, display: "flex", flexDirection: "column", gap: 14 }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 17, fontWeight: 700 }}>{user.name}</div>
+          <button onClick={onClose} aria-label="Back" style={{ ...smallButton, padding: "4px 10px" }}>
+            ✕
+          </button>
+        </div>
+
+        {/* Real input underneath (hardware keyboards, password managers); the keypad drives it. */}
+        <input
+          ref={inputRef}
+          value={pin}
+          onChange={(e) => {
+            setError(null);
+            setPin(e.target.value.replace(/\D/g, "").slice(0, 8));
+          }}
+          onKeyDown={(e) => e.key === "Enter" && void submit()}
+          type="password"
+          inputMode="numeric"
+          autoComplete="current-password"
+          aria-label="PIN"
+          disabled={Boolean(locked)}
+          className="mono"
+          style={{ ...input, height: 52, fontSize: 26, letterSpacing: ".4em", textAlign: "center" }}
+        />
+
+        {locked ? (
+          <div style={errorBox}>Locked after 3 wrong PINs — try again in {countdown(user.lockedUntil!, now)}.</div>
+        ) : (
+          error && <div style={errorBox}>{error}</div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+          {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+            <button key={d} onClick={() => press(d)} disabled={busy || Boolean(locked)} style={key}>
+              {d}
+            </button>
+          ))}
+          <button onClick={() => setPin((p) => p.slice(0, -1))} disabled={busy || Boolean(locked)} style={{ ...key, fontSize: 18 }} aria-label="Delete">
+            ⌫
+          </button>
+          <button onClick={() => press("0")} disabled={busy || Boolean(locked)} style={key}>
+            0
+          </button>
+          <button
+            onClick={() => void submit()}
+            disabled={busy || pin.length < 4 || Boolean(locked)}
+            style={{ ...key, background: "var(--accent)", color: "var(--bg-deep)", border: "none", fontSize: 16, opacity: busy || pin.length < 4 || locked ? 0.5 : 1 }}
+          >
+            {busy ? "…" : "OK"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-const labelStyle: CSSProperties = { fontSize: 9.5, fontWeight: 700, letterSpacing: ".09em", color: "var(--text-3)" };
+const smallButton: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: ".06em",
+  padding: "6px 10px",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-control)",
+  color: "var(--text-2)",
+  background: "transparent",
+  cursor: "pointer",
+};
 
-const inputStyle: CSSProperties = {
+const key: CSSProperties = {
+  height: 58,
+  borderRadius: "var(--radius-control)",
+  border: "1px solid var(--border)",
+  background: "var(--bg-deep)",
+  color: "var(--text)",
+  fontSize: 22,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const input: CSSProperties = {
   width: "100%",
-  height: 46,
   borderRadius: "var(--radius-control)",
   background: "var(--bg-deep)",
   border: "1px solid var(--border)",
   padding: "0 12px",
   fontSize: 15,
   color: "var(--text)",
+};
+
+const infoBox: CSSProperties = {
+  background: "var(--accent-wash)",
+  borderLeft: "3px solid var(--accent)",
+  borderRadius: "var(--radius-callout)",
+  padding: "10px 12px",
+  fontSize: 13,
+  color: "var(--accent-wash-text)",
+};
+
+const errorBox: CSSProperties = {
+  background: "var(--danger-wash)",
+  borderLeft: "3px solid var(--danger)",
+  borderRadius: "var(--radius-callout)",
+  padding: "8px 10px",
+  fontSize: 13,
+  color: "var(--danger-text)",
 };

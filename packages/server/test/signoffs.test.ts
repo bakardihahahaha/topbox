@@ -9,7 +9,7 @@ const today = "2026-09-29";
 describe("sign-off flow", () => {
   it("marks, refuses signing an incomplete check, signs, then locks the column", async () => {
     const t = await setup();
-    const { token } = await t.login("op", "op-pass");
+    const { token } = await t.login("op", "2222");
     const call = t.as(token);
     const id = randomUUID();
     const created = (await call("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "MX-001", mode: "new" })).json() as Signoff;
@@ -37,7 +37,7 @@ describe("sign-off flow", () => {
     expect(locked.json().error).toBe("CHECK_SIGNED");
 
     // Second check by someone else completes it.
-    const other = await t.login("op2", "op2-pass");
+    const other = await t.login("op2", "3333");
     const call2 = t.as(other.token);
     await call2("POST", `/api/signoffs/${id}/marks/fill`, { checkId: second!.id, value: "pass" });
     await call2("PUT", `/api/signoffs/${id}/signatures/${second!.id}`, { path: SIG, date: today });
@@ -52,7 +52,7 @@ describe("sign-off flow", () => {
   it("enforces distinct signers when the template asks for it", async () => {
     const t = await setup();
     const tpl = await t.catalog.updateTemplate(t.template.id, { ...t.template, distinctSigners: true });
-    const { token } = await t.login("op", "op-pass");
+    const { token } = await t.login("op", "2222");
     const call = t.as(token);
     const id = randomUUID();
     await call("POST", "/api/signoffs", { id, templateId: tpl.id, serialNumber: "X", mode: "new" });
@@ -66,7 +66,7 @@ describe("sign-off flow", () => {
     const spring = await t.catalog.createPart({ partNumber: "SP-01", name: "Plunger spring", description: "" });
     const bolt = await t.catalog.createPart({ partNumber: "BT-02", name: "Cam bolt", description: "" });
     await t.catalog.updateTemplate(t.template.id, { ...t.template, partIds: [spring.id] });
-    const { token } = await t.login("op", "op-pass");
+    const { token } = await t.login("op", "2222");
     const call = t.as(token);
 
     const newId = randomUUID();
@@ -91,7 +91,7 @@ describe("sign-off flow", () => {
 
   it("freezes the template on the sign-off", async () => {
     const t = await setup();
-    const { token } = await t.login("op", "op-pass");
+    const { token } = await t.login("op", "2222");
     const id = randomUUID();
     await t.as(token)("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "F", mode: "new" });
     await t.catalog.updateTemplate(t.template.id, { ...t.template, checks: [...t.template.checks, { id: "c3", label: "3rd Check" }] });

@@ -40,7 +40,7 @@ describe("Google Sheets backup mirror", () => {
 
   it("translates a Google 429 on an admin action into 503 RATE_LIMITED + retry-after", async () => {
     const t = await setup();
-    const { token } = await t.login("admin", "admin-pass");
+    const { token } = await t.login("admin", "1111");
     t.sheets.failNext(10);
     const res = await t.as(token)("POST", "/api/backup/sync-now");
     expect(res.statusCode).toBe(503);
@@ -66,7 +66,7 @@ describe("Google Sheets backup mirror", () => {
 
   it("restores a fresh database from the sheet", async () => {
     const t = await setup();
-    const { token } = await t.login("op", "op-pass");
+    const { token } = await t.login("op", "2222");
     const id = randomUUID();
     await t.as(token)("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "R-1", mode: "new" });
     await t.as(token)("POST", `/api/signoffs/${id}/marks/fill`, { checkId: t.template.checks[0]!.id, value: "pass" });
@@ -79,14 +79,14 @@ describe("Google Sheets backup mirror", () => {
     expect(restored?.serialNumber).toBe("R-1");
     expect(restored?.marks).toHaveLength(15);
     expect((await fresh.templates.list())[0]!.rows).toHaveLength(16);
-    const op = await fresh.users.getByUsername("op");
+    const op = await fresh.users.get(t.ids.op!);
     expect(op?.locked).toBe(true); // restored accounts need a password reset
     expect(await fresh.outbox.count()).toBe(0); // restore never re-mirrors
   });
 
   it("disaster recovery on a fresh install: seed template doesn't survive, restore allowed", async () => {
     const t = await setup();
-    const { token } = await t.login("op", "op-pass");
+    const { token } = await t.login("op", "2222");
     await t.as(token)("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "D-1", mode: "new" });
     await t.mirror.flush();
 

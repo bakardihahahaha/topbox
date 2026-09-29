@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings } from "@biosite-signoff/shared";
 import type { AuthService } from "../services/auth.js";
 import type { CatalogService } from "../services/catalog.js";
 import type { SignoffService } from "../services/signoffs.js";
@@ -30,7 +31,8 @@ const templateInput = z.object({
   documentRef: z.string().max(300).default(""),
   documentId: z.string().max(100).default(""),
   serialLabel: z.string().max(100).default("Serial Number"),
-  checks: z.array(z.object({ id, label: z.string().max(60) })).max(8),
+  itemLabel: z.string().max(100).default("Item"),
+  checks: z.array(z.object({ id, label: z.string().max(60) })).max(6),
   rows: z.array(z.object({ id, kind: z.enum(["item", "section"]), text: z.string().max(500), bold: z.boolean(), indent: z.boolean() })).max(200),
   signRowEnabled: z.boolean(),
   signRowLabel: z.string().max(100).default("Sign and date here"),
@@ -38,9 +40,28 @@ const templateInput = z.object({
   partIds: z.array(id).max(500).default([]),
 });
 
-// Login throttled per IP on top of the 3-strike per-account lockout — the lockout stops guessing
-// one account, this stops one source trying many accounts.
-const LOGIN_RATE_LIMIT = { rateLimit: { max: 5, timeWindow: "1 minute" } };
+// Login throttled per IP on top of the per-account 3-strike lockout and the cross-account IP guard
+// (services/auth.ts lists every layer).
+const LOGIN_RATE_LIMIT = { rateLimit: { max: 10, timeWindow: "1 minute" } };
+const pin = z.string().regex(/^\d{4,8}$/, "PIN must be 4–8 digits");
+
+export const DOCUMENT_SETTINGS_KEY = "document";
+
+const documentSettingsInput = z.object({
+  logoTextAccent: z.string().max(40),
+  logoText: z.string().max(40),
+  // Resized client-side to a small PNG/JPEG; the cap keeps it inside one Google Sheets cell.
+  logoDataUrl: z.string().max(45_000).refine((v) => v === "" || /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v), "Logo must be a PNG or JPEG image"),
+  companyName: z.string().max(200),
+  address: z.string().max(1000),
+  footerText: z.string().max(500),
+  documentIdLabel: z.string().max(100),
+});
+
+export async function readDocumentSettings(store: Store): Promise<DocumentSettings> {
+  const raw = await store.appSettings.get(DOCUMENT_SETTINGS_KEY);
+  return { ...DEFAULT_DOCUMENT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<DocumentSettings>) : {}) };
+}
 
 export function registerApi(app: FastifyInstance, s: Services): void {
   const auth = requireAuth(s.auth);
@@ -50,10 +71,16 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   // ---- auth ----------------------------------------------------------------------------------
 
+  /** Public — the sign-in screen's name tiles. Names only: no roles, no ids beyond what login needs. */
+  app.get("/api/auth/users", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async () => s.auth.loginUsers());
+
   app.post("/api/auth/login", { config: LOGIN_RATE_LIMIT }, async (req, reply) => {
-    const body = parse(z.object({ username: z.string().min(1).max(100), password: z.string().min(1).max(200) }), req.body);
-    const result = await s.auth.login(body.username, body.password, req.ip);
-    if (!result.ok) return reply.status(401).send({ error: result.reason });
+    const body = parse(z.object({ userId: id, pin: z.string().min(1).max(20) }), req.body);
+    const result = await s.auth.login(body.userId, body.pin, req.ip);
+    if (!result.ok) {
+      const { ok: _ok, reason, ...rest } = result;
+      return reply.status(reason === "IP_BLOCKED" ? 429 : 401).send({ error: reason, ...rest });
+    }
     return { token: result.token, role: result.role, userId: result.userId };
   });
 
@@ -66,12 +93,12 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   app.get("/api/auth/me", authed, async (req) => {
     const user = await s.auth.getUser(req.user!.userId);
     const sec = await s.auth.securitySettings();
-    return { userId: user!.id, username: user!.username, name: user!.name, role: user!.role, idleTimeoutMinutes: sec.idleTimeoutMinutes };
+    return { userId: user!.id, name: user!.name, role: user!.role, idleTimeoutMinutes: sec.idleTimeoutMinutes };
   });
 
-  app.post("/api/auth/password", authed, async (req) => {
-    const body = parse(z.object({ current: z.string().min(1), next: z.string().min(1).max(200) }), req.body);
-    await s.auth.changeOwnPassword(req.user!.userId, body.current, body.next);
+  app.post("/api/auth/pin", authed, async (req) => {
+    const body = parse(z.object({ current: z.string().min(1).max(20), next: pin }), req.body);
+    await s.auth.changeOwnPin(req.user!.userId, body.current, body.next);
     return { ok: true };
   });
 
@@ -85,14 +112,21 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.get("/api/users", admin, async () => s.auth.listUsers());
   app.post("/api/users", admin, async (req) => {
-    const body = parse(z.object({ username: z.string(), name: z.string().max(100).default(""), role }), req.body);
+    const body = parse(z.object({ name: z.string().max(60), role, pin: pin.optional() }), req.body);
     return s.auth.createUser(body, req.user!.userId);
   });
   app.patch<{ Params: { id: string } }>("/api/users/:id", admin, async (req) => {
     const body = parse(z.object({ name: z.string().max(100).optional(), role: role.optional(), locked: z.boolean().optional() }), req.body);
     return s.auth.updateUser(req.params.id, body, req.user!.userId);
   });
-  app.post<{ Params: { id: string } }>("/api/users/:id/reset-password", admin, async (req) => s.auth.resetPassword(req.params.id, req.user!.userId));
+  app.post<{ Params: { id: string } }>("/api/users/:id/pin", admin, async (req) => {
+    const body = parse(z.object({ pin: pin.optional() }), req.body ?? {});
+    return s.auth.setPin(req.params.id, body.pin, req.user!.userId);
+  });
+  app.delete<{ Params: { id: string } }>("/api/users/:id", admin, async (req) => {
+    await s.auth.deleteUser(req.params.id, req.user!.userId);
+    return { ok: true };
+  });
   app.post<{ Params: { id: string } }>("/api/users/:id/end-sessions", admin, async (req) => {
     await s.auth.endSessions(req.params.id, req.user!.userId);
     return { ok: true };
@@ -102,6 +136,15 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     const q = parse(z.object({ limit: z.coerce.number().int().min(1).max(1000).default(200) }), req.query);
     const users = new Map((await s.store.users.list()).map((u) => [u.id, u.name || u.username]));
     return (await s.store.audit.list(q.limit)).map((e) => ({ ...e, actorName: e.actorId ? (users.get(e.actorId) ?? e.actorId) : null }));
+  });
+
+  // ---- document settings (company header / address / footer / logo on every PDF) ------------
+
+  app.get("/api/document-settings", authed, async () => readDocumentSettings(s.store));
+  app.put("/api/document-settings", admin, async (req) => {
+    const body = parse(documentSettingsInput, req.body);
+    await s.store.appSettings.set(DOCUMENT_SETTINGS_KEY, JSON.stringify(body));
+    return readDocumentSettings(s.store);
   });
 
   // ---- parts ---------------------------------------------------------------------------------

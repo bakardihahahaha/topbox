@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Part, Signoff, TemplateInput, TemplateRow } from "@biosite-signoff/shared";
+import type { Part, TemplateInput, TemplateRow } from "@biosite-signoff/shared";
 import { createTemplate, getTemplate, listParts, updateTemplate } from "../lib/api.js";
 import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
 import { openPdf } from "../lib/pdfLazy.js";
+import { mechanismPreview } from "../lib/preview.js";
 import { useMe } from "../lib/meContext.js";
 import { SetupSubNav } from "../components/SetupSubNav.js";
 import { card, errorBox, errorMessage, ghost, h1, iconButton, infoBox, input, label, page, primary } from "../lib/ui.js";
@@ -22,6 +23,7 @@ const blank = (): TemplateInput => ({
   documentRef: "",
   documentId: "",
   serialLabel: "Serial Number",
+  itemLabel: "Item",
   checks: [
     { id: uid(), label: "1st Check" },
     { id: uid(), label: "2nd Check" },
@@ -32,6 +34,8 @@ const blank = (): TemplateInput => ({
   distinctSigners: false,
   partIds: [],
 });
+
+const MAX_CHECKS = 6;
 
 function move<T>(list: T[], i: number, by: number): T[] {
   const j = i + by;
@@ -71,6 +75,21 @@ export function TemplateEditorPage() {
   };
   const setRow = (i: number, patch: Partial<TemplateRow>) => set({ rows: draft.rows.map((r, j) => (j === i ? { ...r, ...patch } : r)) });
 
+  /** "Number of checks": grows with auto-named columns ("3rd Check"…), shrinks from the right. */
+  const setCheckCount = (n: number) => {
+    const count = Math.max(1, Math.min(MAX_CHECKS, n));
+    const checks = draft.checks.slice(0, count);
+    while (checks.length < count) checks.push({ id: uid(), label: `${ordinal(checks.length + 1)} Check` });
+    set({ checks });
+  };
+
+  /** New row right below row i — same kind of indent, so a sub-point lands inside its section. */
+  const insertBelow = (i: number) => {
+    const ref = draft.rows[i]!;
+    const row: TemplateRow = { id: uid(), kind: "item", text: "", bold: ref.kind === "section" || ref.bold, indent: ref.kind === "section" || ref.indent };
+    set({ rows: [...draft.rows.slice(0, i + 1), row, ...draft.rows.slice(i + 1)] });
+  };
+
   function addBulk() {
     const lines = bulk
       .split("\n")
@@ -108,23 +127,8 @@ export function TemplateEditorPage() {
   function preview() {
     if (!draft) return;
     const now = new Date().toISOString();
-    const sample: Signoff = {
-      id: "preview",
-      number: "SO-PREVIEW",
-      templateId: "preview",
-      template: { ...draft, id: "preview", createdAt: now, updatedAt: now },
-      serialNumber: "SAMPLE-0001",
-      mode: "new",
-      notes: "",
-      marks: [],
-      signatures: [],
-      parts: [],
-      createdBy: me.userId,
-      createdByName: me.name,
-      createdAt: now,
-      updatedAt: now,
-    };
-    void openPdf([sample, { ...sample, serialNumber: "SAMPLE-0002" }]);
+    const t = { ...draft, id: "preview", createdAt: now, updatedAt: now };
+    void openPdf([mechanismPreview(t, me), mechanismPreview(t, me, "SAMPLE-0002")]);
   }
 
   return (
@@ -151,10 +155,34 @@ export function TemplateEditorPage() {
         <Field label="Document id (footer)" value={draft.documentId} onChange={(documentId) => set({ documentId })} placeholder="PA-DOC-189-006" />
         <Field label="Document reference (header)" value={draft.documentRef} onChange={(documentRef) => set({ documentRef })} placeholder="PA-DOC-189, revision 6, released 23-May-2019" />
         <Field label="Identifier label" value={draft.serialLabel} onChange={(serialLabel) => set({ serialLabel })} placeholder="Serial Number" />
+        <Field label="Item column heading" value={draft.itemLabel} onChange={(itemLabel) => set({ itemLabel })} placeholder="Item" />
       </section>
 
       <section style={{ ...card, marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Check columns</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ fontWeight: 700 }}>Check columns</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+            Number of checks
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button style={iconButton} onClick={() => setCheckCount(draft.checks.length - 1)} disabled={draft.checks.length <= 1} aria-label="Fewer checks">
+                −
+              </button>
+              <input
+                value={draft.checks.length}
+                onChange={(e) => {
+                  const n = Number(e.target.value.replace(/\D/g, ""));
+                  if (n) setCheckCount(n);
+                }}
+                inputMode="numeric"
+                className="mono"
+                style={{ ...input, width: 48, height: 32, textAlign: "center", fontWeight: 700 }}
+              />
+              <button style={iconButton} onClick={() => setCheckCount(draft.checks.length + 1)} disabled={draft.checks.length >= MAX_CHECKS} aria-label="More checks">
+                +
+              </button>
+            </div>
+          </label>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {draft.checks.map((c, i) => (
             <div key={c.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -171,15 +199,13 @@ export function TemplateEditorPage() {
             </div>
           ))}
         </div>
-        <button style={{ ...ghost, marginTop: 8 }} disabled={draft.checks.length >= 8} onClick={() => set({ checks: [...draft.checks, { id: uid(), label: `${ordinal(draft.checks.length + 1)} Check` }] })}>
-          + Add check
-        </button>
+        <div style={{ fontSize: 12, color: "var(--text-4)", marginTop: 8 }}>Each column can be renamed. Up to {MAX_CHECKS}; the paper PA-DOC-189 form has 2.</div>
       </section>
 
       <section style={{ ...card, marginBottom: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Items</div>
         <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 10 }}>
-          <b>Item</b> rows get a mark in every check column. <b>Section</b> rows are headings (e.g. "Security red paint on:") with no mark. <b>B</b> = bold, <b>⇥</b> = indent under the section.
+          <b>Item</b> rows get a mark in every check column. <b>Section</b> rows are headings (e.g. "Security red paint on:") with no mark. <b>B</b> = bold, <b>⇥</b> = indent under the section, <b>＋</b> = insert a new row right below, <b>✕</b> = remove.
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {draft.rows.map((r, i) => (
@@ -204,7 +230,10 @@ export function TemplateEditorPage() {
               <button style={iconButton} onClick={() => set({ rows: move(draft.rows, i, 1) })} aria-label="Move down">
                 ↓
               </button>
-              <button style={{ ...iconButton, color: "var(--danger)" }} onClick={() => set({ rows: draft.rows.filter((x) => x.id !== r.id) })} aria-label="Remove">
+              <button style={iconButton} onClick={() => insertBelow(i)} aria-label="Insert a row below" title="Insert a row below">
+                ＋
+              </button>
+              <button style={{ ...iconButton, color: "var(--danger)" }} onClick={() => set({ rows: draft.rows.filter((x) => x.id !== r.id) })} aria-label="Remove" title="Remove this row">
                 ✕
               </button>
             </div>
