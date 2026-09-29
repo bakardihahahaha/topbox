@@ -1,4 +1,4 @@
-# Build context: the signoff/ folder (see .github/workflows/signoff.yml).
+# Build context: the repository root (see .github/workflows/ci.yml).
 FROM node:20-bookworm-slim AS web-build
 WORKDIR /repo
 COPY package.json package-lock.json ./

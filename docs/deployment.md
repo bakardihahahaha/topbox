@@ -43,12 +43,13 @@ Reuse the service account from Decom/KPI if you have one, or:
 
 ## 4. Run it (Container Manager)
 
-1. Make the image pullable once: GitHub → repo → **Packages → signoff-server → Package settings →
-   Change visibility → Public**. The image is built by `.github/workflows/signoff.yml`
-   (automatically on the default branch, or **Actions → Sign-off → Run workflow** from any branch).
-2. File Station: create `/volume1/docker/signoff/`, copy `signoff/docker/docker-compose.yml` into it
-   and the JSON key next to it as `service-account.json`.
-3. **Container Manager → Project → Create** → path `/volume1/docker/signoff` → it reads the compose
+1. Make the image pullable once: GitHub → **Packages → signoff-server → Package settings →
+   Change visibility → Public**, and under **Manage Actions access** give the `topbox` repository
+   **Write** (so its CI can publish new versions). The image is built by `.github/workflows/ci.yml`
+   on every push to `main` (or **Actions → Sign-off → Run workflow**).
+2. File Station: create `/volume1/docker/topbox/` with an empty `data` folder, copy
+   `docker/docker-compose.yml` into it and the JSON key next to it as `service-account.json`.
+3. **Container Manager → Project → Create** → path `/volume1/docker/topbox` → it reads the compose
    file, pulls `ghcr.io/bakardihahahaha/signoff-server:latest`, starts it.
 4. Before step 3, edit `ADMIN_NAME` and `ADMIN_PIN` at the top of the compose file (4–8 digits,
    in quotes). Left empty, a random PIN is printed once in Container → **Log**. Forgot it later?
@@ -66,7 +67,7 @@ Reuse the service account from Decom/KPI if you have one, or:
 
 ## Where the data is
 
-- `/volume1/docker/signoff/data/signoff.db` (+ `-wal`/`-shm` files) — the whole database. Include
+- `/volume1/docker/topbox/data/signoff.db` (+ `-wal`/`-shm` files) — the whole database. Include
   the folder in Hyper Backup if you use it; the Google Sheet is the off-NAS copy.
 - To start from zero: stop the container, delete `data/`, start again (new admin PIN in the log).
 

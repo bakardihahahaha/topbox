@@ -1,7 +1,7 @@
 services:
   signoff-server:
-    # Built by .github/workflows/signoff.yml and pulled from GHCR — the NAS only pulls and runs.
-    # Update: Container Manager > Project > signoff > Action > Update (or ./deploy.sh on a shell).
+    # Built by .github/workflows/ci.yml (repo bakardihahahaha/topbox) and pulled from GHCR — the NAS
+    # only pulls and runs. Update: Container Manager > Project > topbox > Action > Update.
     image: ghcr.io/bakardihahahaha/signoff-server:latest
     container_name: signoff-server
     restart: unless-stopped

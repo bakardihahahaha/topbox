@@ -3,12 +3,12 @@
 Digital version of the paper mechanism checklists (e.g. **PA-DOC-189 "Mechanism Checklist"**):
 define a checklist template once, then operators tick it on a phone/tablet/PC, sign each check
 column on screen, record replaced parts on service jobs, and print a PDF that looks like the paper
-original. Same team, same look and conventions as [Decom](../README.md) — its theme tokens, sign-in
-screen, sync dot and offline queue are reused directly.
+original. Same team, same look and conventions as [Decom](https://github.com/bakardihahahaha/decom) —
+its theme tokens, sign-in screen, sync dot and offline queue are reused directly.
 
-Lives in `signoff/` of the decom repository as its own, fully independent npm workspace (own
-lockfile, Dockerfile and CI workflow — `.github/workflows/signoff.yml`). Moving it into its own
-repository later is just `git subtree split --prefix signoff`.
+Deployed at `https://topbox.duckdns.org` (Synology, see `docs/deployment.md`). CI:
+`.github/workflows/ci.yml` — tests on every push, publishes `ghcr.io/bakardihahahaha/signoff-server`
+from `main`.
 
 ## What it does
 
@@ -128,7 +128,6 @@ docs/      deployment.md — Synology + DuckDNS (topbox.duckdns.org) step by ste
 ## Development
 
 ```bash
-cd signoff
 npm install
 npm test                 # server test suite (auth/IP rules, sign-off rules, mirror, cache, 429 → 503)
 npm run typecheck
