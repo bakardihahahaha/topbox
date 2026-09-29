@@ -7,6 +7,7 @@ import { SignoffService } from "./services/signoffs.js";
 import { MirrorService, SEED_TEMPLATE_SETTING } from "./mirror/MirrorService.js";
 import { FakeSheetsApi, GoogleSheetsApi, type SheetsApi } from "./mirror/SheetsApi.js";
 import { buildApp } from "./app.js";
+import { PIN_PATTERN } from "@biosite-signoff/shared";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const DB_PATH = process.env.DB_PATH ?? "./data/signoff.db";
@@ -26,9 +27,25 @@ async function main() {
   const catalog = new CatalogService(store);
   const signoffs = new SignoffService(store);
 
-  const bootstrap = await auth.ensureBootstrapAdmin(process.env.BOOTSTRAP_ADMIN_PIN || undefined);
+  // ADMIN_NAME / ADMIN_PIN from docker-compose.yml — only used on the very first start (empty
+  // database); after that the admin changes their PIN in the app (Setup → My account).
+  const adminName = (process.env.ADMIN_NAME ?? process.env.BOOTSTRAP_ADMIN_NAME ?? "").trim() || "Administrator";
+  const adminPin = (process.env.ADMIN_PIN ?? process.env.BOOTSTRAP_ADMIN_PIN ?? "").trim() || undefined;
+  if (adminPin && !PIN_PATTERN.test(adminPin)) {
+    throw new Error(`ADMIN_PIN in docker-compose.yml must be 4–8 digits (got "${adminPin}").`);
+  }
+  if (process.env.ADMIN_RESET?.trim().toLowerCase() === "yes") {
+    if (!adminPin) throw new Error('ADMIN_RESET is "yes" but ADMIN_PIN is empty — put the new PIN in ADMIN_PIN.');
+    await auth.resetAdmin(adminName, adminPin);
+    console.log(`\nADMIN RESET: "${adminName}" now signs in with ADMIN_PIN and is unlocked. Set ADMIN_RESET back to "no".\n`);
+  }
+  const bootstrap = await auth.ensureBootstrapAdmin(adminName, adminPin);
   if (bootstrap) {
-    console.log(`\nBOOTSTRAP ADMIN CREATED — shown once, save it now:\n  tap: ${bootstrap.name}\n  PIN: ${bootstrap.pin}\n`);
+    console.log(
+      adminPin
+        ? `\nADMIN CREATED: tap "${bootstrap.name}" on the sign-in screen and use the ADMIN_PIN from docker-compose.yml.\n`
+        : `\nADMIN CREATED — shown once, save it now:\n  tap: ${bootstrap.name}\n  PIN: ${bootstrap.pin}\n`,
+    );
     if ((await catalog.listTemplates()).length === 0) {
       const seed = await catalog.createTemplate(mechanismChecklistSeed());
       // Remembered so a disaster-recovery restore can drop it again if it was never used.

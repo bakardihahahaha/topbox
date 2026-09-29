@@ -121,3 +121,19 @@ describe("document settings", () => {
     expect((await t.as(op.token, "1.1.1.1")("PUT", "/api/document-settings", next)).statusCode).toBe(403);
   });
 });
+
+describe("docker-compose admin", () => {
+  it("bootstrap uses the configured name and PIN; ADMIN_RESET recovers a locked admin", async () => {
+    const { SqliteStore } = await import("../src/store/sqlite/SqliteStore.js");
+    const { AuthService } = await import("../src/services/auth.js");
+    const store = new SqliteStore(":memory:");
+    const auth = new AuthService(store);
+    expect(await auth.ensureBootstrapAdmin("Marcin", "2468")).toEqual({ name: "Marcin", pin: "2468" });
+    expect(await auth.ensureBootstrapAdmin("Marcin", "9999")).toBeNull(); // only on an empty database
+    const [admin] = await auth.loginUsers();
+    for (let i = 0; i < 3; i++) await auth.login(admin!.id, "0000", "1.1.1.1");
+    expect(await auth.login(admin!.id, "2468", "1.1.1.2")).toMatchObject({ ok: false, reason: "TEMP_LOCKED" });
+    await auth.resetAdmin("marcin", "1357");
+    expect(await auth.login(admin!.id, "1357", "1.1.1.2")).toMatchObject({ ok: true, role: "admin" });
+  });
+});

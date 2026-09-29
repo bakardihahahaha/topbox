@@ -355,9 +355,22 @@ export class AuthService {
     await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { sessionsEnded: true } });
   }
 
-  async ensureBootstrapAdmin(fixedPin?: string): Promise<{ name: string; pin: string } | null> {
+  /** Emergency recovery (ADMIN_RESET in docker-compose.yml): the admin called `name` gets `pin`,
+   * is unlocked and made admin — created if missing. Needs access to the NAS, never the web. */
+  async resetAdmin(name: string, pin: string): Promise<void> {
+    const user = (await this.store.users.list()).find((u) => (u.name || u.username).toLowerCase() === name.toLowerCase());
+    if (!user) {
+      await this.createUser({ name, role: "admin", pin }, null);
+      return;
+    }
+    await this.store.users.update(user.id, { role: "admin" });
+    await this.setPin(user.id, pin, user.id);
+    await audit(this.store, { actorId: null, action: "ADMIN_RESET", entity: "user", entityId: user.id, detail: { via: "docker-compose ADMIN_RESET" } });
+  }
+
+  async ensureBootstrapAdmin(name = "Administrator", fixedPin?: string): Promise<{ name: string; pin: string } | null> {
     if ((await this.store.users.count()) > 0) return null;
-    const { pin } = await this.createUser({ name: "Administrator", role: "admin", pin: fixedPin }, null);
-    return { name: "Administrator", pin };
+    const { pin } = await this.createUser({ name, role: "admin", pin: fixedPin }, null);
+    return { name, pin };
   }
 }

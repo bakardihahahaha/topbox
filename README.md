@@ -144,5 +144,6 @@ npm run dev:web                       # :5175, proxies /api to :8080
 | `SPREADSHEET_ID` | – | initial backup sheet (can be set/changed in Setup → Backup) |
 | `FAKE_SHEETS` | – | `true` = in-memory fake sheet (dev only) |
 | `TRUST_PROXY` | – | `true` behind DSM's reverse proxy (real client IPs) |
-| `BOOTSTRAP_ADMIN_PIN` | random 6 digits | PIN of the first admin ("Administrator") on an empty database |
+| `ADMIN_NAME` / `ADMIN_PIN` | `Administrator` / random 6 digits | first admin on an empty database (set in docker-compose.yml) |
+| `ADMIN_RESET` | `no` | `yes` = on start, give `ADMIN_NAME` the `ADMIN_PIN`, unlock it, make it admin (recovery) |
 | `WEB_DIST_PATH` | `./web-dist` | built PWA served by the same process |

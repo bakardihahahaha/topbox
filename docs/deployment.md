@@ -52,9 +52,10 @@ Reuse the service account from Decom/KPI if you have one, or:
    and the JSON key next to it as `service-account.json`.
 3. **Container Manager → Project → Create** → path `/volume1/docker/signoff` → it reads the compose
    file, pulls `ghcr.io/bakardihahahaha/signoff-server:latest`, starts it.
-4. Container → **Log**: copy the one-time admin PIN (or set `BOOTSTRAP_ADMIN_PIN` in the compose
-   file before the first start).
-5. Open `https://topbox.duckdns.org`, tap **Administrator**, enter the PIN, then:
+4. Before step 3, edit `ADMIN_NAME` and `ADMIN_PIN` at the top of the compose file (4–8 digits,
+   in quotes). Left empty, a random PIN is printed once in Container → **Log**. Forgot it later?
+   Set `ADMIN_RESET: "yes"` with a new `ADMIN_PIN`, restart, sign in, set it back to `"no"`.
+5. Open `https://topbox.duckdns.org`, tap your admin name, enter the PIN, then:
    - **Setup → Backup**: paste the Google Sheet URL → "Use this sheet". Everything is copied over;
      the status shows "Up to date" when done.
    - **Setup → Users**: add everyone with a PIN — each person becomes a tile on the sign-in

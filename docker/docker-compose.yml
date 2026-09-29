@@ -6,6 +6,19 @@ services:
     container_name: signoff-server
     restart: unless-stopped
     environment:
+      # ============================== FILL IN BEFORE THE FIRST START ==============================
+      # The administrator account created on the very first start (empty database). It appears as a
+      # tile on the sign-in screen: tap the name, type the PIN.
+      #   ADMIN_NAME - name on the tile (and next to the admin's signatures)
+      #   ADMIN_PIN  - 4 to 8 digits, in quotes. Leave "" to get a random PIN printed in the log.
+      # Only read once: to change the PIN later use Setup > My account in the app (editing it here
+      # afterwards has no effect).
+      ADMIN_NAME: "Administrator"
+      ADMIN_PIN: ""
+      # Emergency only (forgotten PIN / locked out): set to "yes", put a new PIN in ADMIN_PIN,
+      # restart the container, sign in, then set it back to "no" and restart again.
+      ADMIN_RESET: "no"
+      # ============================================================================================
       PORT: 8080
       # The whole database — a single SQLite file on the NAS's own disk (bind-mounted ./data), so
       # every read/write is local and fast. Visible in File Station; back it up like any file.
@@ -19,9 +32,6 @@ services:
       # Optional — can also be set (and changed) later in Setup > Backup. Paste just the ID from
       # https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit
       SPREADSHEET_ID: ""
-      # First admin ("Administrator" tile) on an empty database. Leave empty to get a random 6-digit
-      # PIN printed once in the container log on first start.
-      BOOTSTRAP_ADMIN_PIN: ""
     ports:
       - "127.0.0.1:8084:8080" # DSM reverse proxy destination: http://127.0.0.1:8084
     volumes:
