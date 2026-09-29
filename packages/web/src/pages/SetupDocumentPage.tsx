@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings, type Signoff, type Template } from "@biosite-signoff/shared";
-import { getDocumentSettings, listTemplates, saveDocumentSettings } from "../lib/api.js";
+import { getDocumentSettings, listTemplates, saveDocumentSettings, updateTemplate } from "../lib/api.js";
+import { mutateOrQueue } from "../lib/offlineQueue.js";
+import { withSaving } from "../lib/savingStatus.js";
 import { mechanismPreview } from "../lib/preview.js";
 import { openPdf } from "../lib/pdfLazy.js";
 import { useMe } from "../lib/meContext.js";
@@ -43,6 +45,8 @@ export function SetupDocumentPage() {
   const me = useMe();
   const [s, setS] = useState<DocumentSettings | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
+  /** Edited per-template fields, keyed by template id — only changed templates are saved. */
+  const [docFields, setDocFields] = useState<Record<string, Pick<Template, "name" | "documentRef" | "documentId">>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -63,6 +67,14 @@ export function SetupDocumentPage() {
     setSaving(true);
     setError(null);
     try {
+      for (const t of templates) {
+        const f = docFields[t.id];
+        if (!f || (f.name === t.name && f.documentRef === t.documentRef && f.documentId === t.documentId)) continue;
+        const { id, createdAt: _c, updatedAt: _u, ...rest } = t;
+        const input = { ...rest, ...f };
+        await withSaving(() => mutateOrQueue({ kind: "updateTemplate", templateId: id, input }, () => updateTemplate(id, input)));
+      }
+      setTemplates(templates.map((t) => ({ ...t, ...docFields[t.id] })));
       setS(await saveDocumentSettings(s!));
       setSaved(true);
     } catch (err) {
@@ -72,8 +84,15 @@ export function SetupDocumentPage() {
     }
   }
 
+  const fieldsOf = (t: Template) => docFields[t.id] ?? { name: t.name, documentRef: t.documentRef, documentId: t.documentId };
+  const setField = (t: Template, patch: Partial<Pick<Template, "name" | "documentRef" | "documentId">>) => {
+    setSaved(false);
+    setDocFields((d) => ({ ...d, [t.id]: { ...fieldsOf(t), ...patch } }));
+  };
+
   function preview() {
-    const sample: Signoff = mechanismPreview(templates[0], me);
+    const first = templates[0];
+    const sample: Signoff = mechanismPreview(first ? { ...first, ...fieldsOf(first) } : undefined, me);
     void openPdf([sample], s!);
   }
 
@@ -82,8 +101,8 @@ export function SetupDocumentPage() {
       <h1 style={h1}>Setup</h1>
       <SetupSubNav />
       <p style={hint}>
-        What's printed on every PDF page: logo, company name and address (top right), and the footer. The checklist title, document reference ("PA-DOC-189, revision 6…") and document id
-        are set per template in Templates.
+        Everything printed on the PDF around the checklist: logo, company name and address (top right), footer — and, per checklist, its title, the document reference in the header
+        and the document id in the footer.
       </p>
       {error && <div style={errorBox}>{error}</div>}
       {saved && <div style={infoBox}>Saved — new PDFs use it straight away.</div>}
@@ -133,6 +152,27 @@ export function SetupDocumentPage() {
         </label>
         <Field label="Footer line" value={s.footerText} onChange={(footerText) => set({ footerText })} />
         <Field label="Label before the document id (footer)" value={s.documentIdLabel} onChange={(documentIdLabel) => set({ documentIdLabel })} />
+      </section>
+
+      <section style={{ ...card, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 700 }}>Per checklist</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>
+            Title above the table, reference in the page header (e.g. "PA-DOC-189, revision 6, released 23-May-2019") and id in the footer (e.g. "PA-DOC-189-006"). The same fields are in
+            Templates → Edit.
+          </div>
+        </div>
+        {templates.length === 0 && <div style={{ fontSize: 13, color: "var(--text-4)" }}>No templates yet.</div>}
+        {templates.map((t) => {
+          const f = fieldsOf(t);
+          return (
+            <div key={t.id} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, paddingTop: 10, borderTop: "1px solid var(--border-soft)" }}>
+              <Field label="Checklist title" value={f.name} onChange={(name) => setField(t, { name })} />
+              <Field label="Document reference (header)" value={f.documentRef} onChange={(documentRef) => setField(t, { documentRef })} />
+              <Field label="Document id (footer)" value={f.documentId} onChange={(documentId) => setField(t, { documentId })} />
+            </div>
+          );
+        })}
       </section>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
