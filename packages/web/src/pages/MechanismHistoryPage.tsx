@@ -65,23 +65,26 @@ export function MechanismHistoryPage() {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
           {list.map((v, i) => {
             const on = v.id === selectedId;
+            // Earlier visits are history — shown greyed with a lock (view + PDF only for operators).
+            const old = i < list.length - 1;
             return (
               <button
                 key={v.id}
                 onClick={() => setParams({ id: v.id }, { replace: true })}
+                title={old ? "Earlier visit — view only" : undefined}
                 style={{
                   height: 44,
                   padding: "0 14px",
                   borderRadius: "var(--radius-control)",
-                  border: `1px solid ${on ? "var(--accent)" : "var(--border)"}`,
-                  background: on ? "var(--accent-wash)" : "transparent",
-                  color: on ? "var(--accent)" : "var(--text-2)",
+                  border: `1px solid ${on ? (old ? "var(--text-3)" : "var(--accent)") : "var(--border)"}`,
+                  background: on ? (old ? "var(--surface-alt)" : "var(--accent-wash)") : "transparent",
+                  color: on ? (old ? "var(--text-2)" : "var(--accent)") : old ? "var(--text-4)" : "var(--text-2)",
                   fontWeight: 700,
                   fontSize: 13,
                   cursor: "pointer",
                 }}
               >
-                Visit {i + 1}
+                {old ? "🔒 " : ""}Visit {i + 1}
                 {i === list.length - 1 ? (inWorkshop ? " · now" : " · latest") : ""}
               </button>
             );
@@ -90,7 +93,7 @@ export function MechanismHistoryPage() {
       )}
 
       {/* The checklist of the selected visit */}
-      {selectedId && <SignoffPage key={selectedId} signoffId={selectedId} embedded />}
+      {selectedId && <SignoffPage key={selectedId} signoffId={selectedId} embedded earlierVisit={list.findIndex((v) => v.id === selectedId) < list.length - 1 && list.some((v) => v.id === selectedId)} />}
 
       {/* Full rotation history */}
       {list.length > 0 && (

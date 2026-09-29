@@ -31,6 +31,24 @@ export class SignoffService {
     return s;
   }
 
+  /** A TopBox's earlier visits are history: operators may look (and print), never change them —
+   * only its latest visit is worked on. Admins may still correct an old visit. */
+  private async assertCurrentVisit(s: Signoff, actor: Actor): Promise<void> {
+    if (actor.role === "admin") return;
+    const visits = await this.visits(s.serialNumber);
+    const latest = visits[visits.length - 1];
+    if (latest && latest.id !== s.id) {
+      throw conflict("OLD_VISIT", `This is an earlier visit of ${s.serialNumber} — it's history now. Only an admin can change it.`);
+    }
+  }
+
+  /** The sign-off, if this person may change it (see assertCurrentVisit). */
+  private async requireWritable(id: string, actor: Actor) {
+    const s = await this.require(id);
+    await this.assertCurrentVisit(s, actor);
+    return s;
+  }
+
   /** Recomputes the stored status column (used for list filtering) after every change. */
   private async refresh(id: string): Promise<Signoff> {
     const s = await this.require(id);
@@ -93,7 +111,7 @@ export class SignoffService {
 
   async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }, actor: Actor): Promise<Signoff> {
     if (patch.arrivedAt !== undefined && Number.isNaN(Date.parse(patch.arrivedAt))) throw badRequest("Invalid arrival time.");
-    const s = await this.require(id);
+    const s = await this.requireWritable(id, actor);
     // Serial number and arrival are fixed once a sign-off is started — only an admin corrects them.
     // The one exception: an operator may add (or take back) the refurbished "R" (667 → 667R).
     if (actor.role !== "admin") {
@@ -120,6 +138,7 @@ export class SignoffService {
   async remove(id: string, actor: Actor): Promise<void> {
     const s = await this.store.signoffs.get(id);
     if (!s) return;
+    await this.assertCurrentVisit(s, actor);
     if (actor.role !== "admin" && (await this.permissions()).deleteSignoffs !== "all") {
       throw forbidden("Only an admin can delete sign-offs.");
     }
@@ -155,7 +174,7 @@ export class SignoffService {
   }
 
   async setMark(id: string, input: { rowId: string; checkId: string; value: MarkValue | null }, actor: Actor): Promise<Signoff> {
-    const s = await this.require(id);
+    const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     if (!itemRows(s.template).some((r) => r.id === input.rowId)) throw badRequest("Unknown item row.");
     this.assertNotSigned(s, input.checkId);
@@ -167,8 +186,8 @@ export class SignoffService {
 
   /** "Tick all" — marks every still-empty item in one check column (never overwrites a ✗). */
   /** "✕ all" — clears every mark in one (unsigned) check column. */
-  async clearCheck(id: string, checkId: string): Promise<Signoff> {
-    const s = await this.require(id);
+  async clearCheck(id: string, checkId: string, actor: Actor): Promise<Signoff> {
+    const s = await this.requireWritable(id, actor);
     this.assertCheck(s, checkId);
     this.assertNotSigned(s, checkId);
     await this.store.signoffs.clearMarks(id, checkId, new Date().toISOString());
@@ -204,7 +223,7 @@ export class SignoffService {
   }
 
   async fillCheck(id: string, input: { checkId: string; value: MarkValue }, actor: Actor): Promise<Signoff> {
-    const s = await this.require(id);
+    const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     this.assertNotSigned(s, input.checkId);
     const marked = new Set(s.marks.filter((m) => m.checkId === input.checkId).map((m) => m.rowId));
@@ -217,7 +236,7 @@ export class SignoffService {
   }
 
   async sign(id: string, input: { checkId: string; path: string; date: string; time?: string }, actor: Actor): Promise<Signoff> {
-    const s = await this.require(id);
+    const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     if (!s.template.signRowEnabled) throw badRequest("This template has no sign row.");
     if (!DATE_RE.test(input.date)) throw badRequest("Date must be YYYY-MM-DD.");
@@ -255,7 +274,7 @@ export class SignoffService {
 
   /** `partRowId` is client-generated, so a retried add lands on the same row. */
   async setPart(id: string, partRowId: string, input: { partId: string; qty: number; note: string }, actor: Actor): Promise<Signoff> {
-    const s = await this.require(id);
+    const s = await this.requireWritable(id, actor);
     this.assertEditable(s, actor);
     if (s.mode !== "service") throw conflict("NOT_SERVICE", `Parts can't be recorded on a ${typeNameOf(s)} sign-off — only on a type that allows replaced parts.`);
     const allowed = allowedPartIds(s.template, await this.store.templates.get(s.templateId));
@@ -281,7 +300,7 @@ export class SignoffService {
   /** Stores a photo taken during one check. `photoId` comes from the client, so a retried upload
    * from the offline queue lands on the same photo. */
   async addPhoto(id: string, input: { photoId: string; checkId: string; jpeg: Buffer; takenAt?: string; asUserId?: string }, actor: Actor): Promise<Signoff> {
-    const s = await this.require(id);
+    const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     if (s.photos.some((p) => p.id === input.photoId)) return s;
     this.assertEditable(s, actor);
@@ -318,7 +337,7 @@ export class SignoffService {
   /** An operator may take back their own photos (until the sign-off is complete); anyone else's
    * only an admin. The file stays on the NAS; only the record is (soft-)deleted. */
   async removePhoto(id: string, photoId: string, actor: Actor): Promise<Signoff> {
-    const s = await this.require(id);
+    const s = await this.requireWritable(id, actor);
     const photo = s.photos.find((p) => p.id === photoId);
     if (!photo) return s;
     if (actor.role !== "admin") {
@@ -330,7 +349,7 @@ export class SignoffService {
   }
 
   async removePart(id: string, partRowId: string, actor: Actor): Promise<Signoff> {
-    this.assertEditable(await this.require(id), actor);
+    this.assertEditable(await this.requireWritable(id, actor), actor);
     await this.store.signoffs.removePart(id, partRowId, new Date().toISOString());
     return this.refresh(id);
   }

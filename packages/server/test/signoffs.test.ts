@@ -458,3 +458,30 @@ describe("viewer role", () => {
     }
   });
 });
+
+describe("earlier visits are history", () => {
+  it("operators can read and print an earlier visit but change nothing; admins still can", async () => {
+    const t = await setup();
+    const op = t.as((await t.login("op", "2222")).token);
+    const old = randomUUID();
+    const current = randomUUID();
+    await op("POST", "/api/signoffs", { id: old, templateId: t.template.id, serialNumber: "H-1", typeId: "new-uk", arrivedAt: "2026-08-01T07:00:00.000Z" });
+    await op("POST", "/api/signoffs", { id: current, templateId: t.template.id, serialNumber: "H-1", typeId: "service", arrivedAt: "2026-09-01T07:00:00.000Z" });
+    const first = t.template.checks[0]!;
+    expect((await op("GET", `/api/signoffs/${old}`)).statusCode).toBe(200);
+    expect((await op("POST", "/api/signoffs/batch", { ids: [old] })).statusCode).toBe(200);
+    for (const [method, url, body] of [
+      ["POST", `/api/signoffs/${old}/marks/fill`, { checkId: first.id, value: "pass" }],
+      ["PUT", `/api/signoffs/${old}/marks`, { rowId: t.template.rows[1]!.id, checkId: first.id, value: "pass" }],
+      ["POST", `/api/signoffs/${old}/marks/clear`, { checkId: first.id }],
+      ["PATCH", `/api/signoffs/${old}`, { notes: "late edit" }],
+      ["POST", `/api/signoffs/${old}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: FAKE_JPEG_URL }],
+    ] as const) {
+      expect((await op(method, url, body)).json().error, `${method} ${url}`).toBe("OLD_VISIT");
+    }
+    // The current visit is worked on as usual.
+    expect((await op("POST", `/api/signoffs/${current}/marks/fill`, { checkId: first.id, value: "pass" })).statusCode).toBe(200);
+    const admin = t.as((await t.login("admin", "1111")).token);
+    expect((await admin("PATCH", `/api/signoffs/${old}`, { notes: "admin correction" })).statusCode).toBe(200);
+  });
+});

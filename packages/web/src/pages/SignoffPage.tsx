@@ -24,7 +24,7 @@ const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fai
 
 /** One sign-off (one visit of a TopBox). Used on its own (/signoffs/:id, older links) and embedded
  * in the TopBox page (/signoff/:serial) above that serial's history. */
-export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embedded?: boolean } = {}) {
+export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?: string; embedded?: boolean; earlierVisit?: boolean } = {}) {
   const params = useParams();
   const id = signoffId ?? params.id ?? "";
   const me = useMe();
@@ -36,6 +36,19 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const [loadError, setLoadError] = useState<string | null>(null);
   const [signing, setSigning] = useState<TemplateCheck | null>(null);
   const [photoBusy, setPhotoBusy] = useState<string | null>(null);
+  // Opened on its own (/signoffs/:id) nobody tells us whether a later visit exists — look it up.
+  const [laterVisitExists, setLaterVisitExists] = useState(false);
+  const serialForVisits = embedded ? "" : (signoff?.serialNumber ?? "");
+  useEffect(() => {
+    if (!serialForVisits) return;
+    const check = () =>
+      void api.getVisits(serialForVisits).then((v) => {
+        const i = v.findIndex((x) => x.id === id);
+        setLaterVisitExists(i >= 0 && i < v.length - 1);
+      }, () => {});
+    check();
+    return onDataChange(check);
+  }, [serialForVisits, id]);
   const types = useSignoffTypes();
   const permissions = usePermissions();
   const operators = useOperatorCount();
@@ -123,9 +136,11 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const status = signoffStatus(s);
   const isAdmin = me.role === "admin";
   const viewer = me.role === "viewer";
-  // A completed sign-off is a closed record for operators; a viewer only ever looks (the server
-  // enforces both).
-  const closed = (status === "complete" && !isAdmin) || viewer;
+  // An earlier visit of this TopBox is history — look and print only (admins may still correct).
+  const oldVisit = Boolean(earlierVisit) || laterVisitExists;
+  // A completed sign-off is a closed record for operators, and so is any earlier visit; a viewer
+  // only ever looks (the server enforces all three).
+  const closed = (status === "complete" && !isAdmin) || (oldVisit && !isAdmin) || viewer;
   const canDelete = isAdmin || (permissions.deleteSignoffs === "all" && !viewer);
   const { done, total } = signoffProgress(s);
   const signedBy = (checkId: string) => s.signatures.find((g) => g.checkId === checkId);
@@ -200,7 +215,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   }
 
   return (
-    <div style={embedded ? undefined : page}>
+    <div style={{ ...(embedded ? {} : page), ...(oldVisit ? HISTORY_GREY : {}) }}>
       {/* Header */}
       <div style={{ ...card, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -309,7 +324,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                 return (
                   <th key={c.id} style={{ ...th, width: 92 }}>
                     <div>{c.label}</div>
-                    {!sig && !full && !viewer && (
+                    {!sig && !full && !closed && (
                       <button
                         onClick={() => void mutate({ kind: "fillCheck", id, checkId: c.id, value: "pass" }, () => api.fillCheck(id, c.id, "pass"))}
                         title="Tick every empty item in this check"
@@ -318,7 +333,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                         ✓ all
                       </button>
                     )}
-                    {!sig && full && !viewer && (
+                    {!sig && full && !closed && (
                       <button
                         onClick={() => void mutate({ kind: "clearCheck", id, checkId: c.id }, () => api.clearCheck(id, c.id))}
                         title="Untick every item in this check"
@@ -344,7 +359,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                     </td>
                   ) : (
                     <td key={c.id} style={{ padding: 3, borderLeft: "1px solid var(--border-soft)" }}>
-                      <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id)) || viewer} onTap={() => tap(r.id, c.id)} />
+                      <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id)) || closed} onTap={() => tap(r.id, c.id)} />
                     </td>
                   ),
                 )}
@@ -380,7 +395,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                             </button>
                           )}
                         </div>
-                      ) : viewer ? (
+                      ) : closed ? (
                         <div style={{ color: "var(--text-4)", fontSize: 12, padding: "18px 0" }}>not signed</div>
                       ) : (
                         <button
@@ -488,7 +503,11 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
 
       {closed && (
         <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
-          {viewer ? "👁 View only — you can look and download the PDF." : "🔒 Complete — this record is closed. Only an admin can change it."}
+          {viewer
+            ? "👁 View only — you can look and download the PDF."
+            : oldVisit
+              ? "🔒 Earlier visit — history, view only. Only an admin can change it."
+              : "🔒 Complete — this record is closed. Only an admin can change it."}
         </div>
       )}
       {canDelete && (
@@ -512,6 +531,15 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
     </div>
   );
 }
+
+/** An earlier visit is drawn in greys: the theme's green (ticks, buttons, chips) is swapped for
+ * neutral tones on this subtree only — plain CSS variables, so pop-ups (photos, PDF) still work. */
+const HISTORY_GREY = {
+  "--accent": "var(--text-3)",
+  "--accent-wash": "var(--surface-alt)",
+  "--accent-wash-text": "var(--text-2)",
+  "--warn": "var(--text-3)",
+} as React.CSSProperties;
 
 // With many check columns the grid scrolls sideways on a phone — the item text stays pinned.
 const stickyCol = { position: "sticky" as const, left: 0, zIndex: 1, background: "var(--bg-base)" };

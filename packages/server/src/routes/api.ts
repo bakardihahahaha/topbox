@@ -248,7 +248,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.post<{ Params: { id: string } }>("/api/signoffs/:id/marks/clear", authed, async (req) => {
     const body = parse(z.object({ checkId: id }), req.body);
-    return s.signoffs.clearCheck(req.params.id, body.checkId);
+    return s.signoffs.clearCheck(req.params.id, body.checkId, actor(req));
   });
 
   // ---- photos (taken during a check; JPEG files on the NAS) -----------------------------------
