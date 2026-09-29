@@ -444,6 +444,20 @@ function NotesField({ value, onSave }: { value: string; onSave: (v: string) => v
   );
 }
 
+const stepButton = {
+  width: 48,
+  height: 48,
+  borderRadius: "var(--radius-control)",
+  border: "1px solid var(--border)",
+  background: "var(--bg-deep)",
+  color: "var(--text)",
+  fontSize: 24,
+  fontWeight: 700,
+  lineHeight: 1,
+  cursor: "pointer",
+  flex: "none",
+} as const;
+
 function PartRow(props: {
   number: string;
   name: string;
@@ -459,11 +473,19 @@ function PartRow(props: {
     setQty(String(line?.qty ?? 1));
     setNote(line?.note ?? "");
   }, [line?.qty, line?.note]);
+  const clamp = (v: number) => Math.max(1, Math.min(999, Math.round(v) || 1));
   const commit = () => {
-    const n = Math.max(1, Math.min(999, Math.round(Number(qty)) || 1));
+    const n = clamp(Number(qty));
     setQty(String(n));
     if (line && (n !== line.qty || note.trim() !== line.note)) props.onChange(n, note.trim());
   };
+  /** − / + : saves straight away, no need to leave the field. */
+  const step = (by: number) => {
+    const n = clamp((Number(qty) || 1) + by);
+    setQty(String(n));
+    if (line && n !== line.qty) props.onChange(n, note.trim());
+  };
+  const current = clamp(Number(qty));
   return (
     <div style={{ border: `1px solid ${line ? "var(--accent)" : "var(--border-soft)"}`, background: line ? "var(--accent-wash)" : "transparent", borderRadius: "var(--radius-control)", padding: "8px 10px" }}>
       <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
@@ -477,9 +499,25 @@ function PartRow(props: {
         </span>
       </label>
       {line && (
-        <div style={{ display: "flex", gap: 8, marginTop: 8, marginLeft: 30 }}>
-          <input value={qty} onChange={(e) => setQty(e.target.value)} onBlur={commit} inputMode="numeric" aria-label="Quantity" style={{ ...input, width: 80, height: 42 }} />
-          <input value={note} onChange={(e) => setNote(e.target.value)} onBlur={commit} placeholder="Note (optional)" style={{ ...input, height: 42 }} />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10, marginLeft: 36 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
+            <button type="button" onClick={() => step(-1)} disabled={current <= 1} aria-label="Less" style={{ ...stepButton, opacity: current <= 1 ? 0.4 : 1 }}>
+              −
+            </button>
+            <input
+              value={qty}
+              onChange={(e) => setQty(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              onBlur={commit}
+              inputMode="numeric"
+              aria-label="Quantity"
+              className="mono"
+              style={{ ...input, width: 64, height: 48, textAlign: "center", fontSize: 18, fontWeight: 700 }}
+            />
+            <button type="button" onClick={() => step(1)} disabled={current >= 999} aria-label="More" style={stepButton}>
+              +
+            </button>
+          </div>
+          <input value={note} onChange={(e) => setNote(e.target.value)} onBlur={commit} placeholder="Note (optional)" style={{ ...input, height: 48, flex: "1 1 180px", width: "auto" }} />
         </div>
       )}
     </div>
