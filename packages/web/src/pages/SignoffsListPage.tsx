@@ -7,7 +7,7 @@ import { useData } from "../lib/useData.js";
 import { useMe } from "../lib/meContext.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
-import { topboxUrl } from "../lib/format.js";
+import { stamp, topboxUrl } from "../lib/format.js";
 import { card, chip, errorBox, infoBox, errorMessage, ghost, h1, input, page, primary } from "../lib/ui.js";
 
 const PAGE_SIZE = 50;
@@ -155,6 +155,10 @@ function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; 
           <span className="mono" style={{ fontSize: 17, fontWeight: 700 }}>{s.serialNumber}</span>
           <span style={chip(s.status === "complete" ? "accent" : "warn")}>{s.status === "complete" ? "Complete" : `In progress ${s.progress}`}</span>
           <span style={chip("muted")}>{s.typeName}</span>
+        </div>
+        {/* Tells apart the many visits of one serial number — the date of the 1st check, nothing more. */}
+        <div className="mono" style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 4 }}>
+          1st check {s.firstCheckAt ? stamp(s.firstCheckAt.slice(0, 10)) : "—"}
         </div>
       </Link>
     </div>
