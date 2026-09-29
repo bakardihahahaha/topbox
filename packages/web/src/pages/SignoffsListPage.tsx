@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { SignoffSummary, Template } from "@biosite-signoff/shared";
-import { getSignoffs, listSignoffs, listTemplates } from "../lib/api.js";
+import { getSignoffs, listTemplates } from "../lib/api.js";
+import { listSignoffsOfflineAware } from "../lib/offlineList.js";
 import { useData } from "../lib/useData.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
-import { card, chip, errorBox, errorMessage, formatDateTime, ghost, h1, input, page, primary } from "../lib/ui.js";
+import { card, chip, errorBox, infoBox, errorMessage, formatDateTime, ghost, h1, input, page, primary } from "../lib/ui.js";
 
 const PAGE_SIZE = 50;
 
@@ -28,7 +29,7 @@ export function SignoffsListPage() {
   }, [q]);
 
   const templates = useData<Template[]>(listTemplates);
-  const list = useData(() => listSignoffs({ q: debouncedQ, templateId, status: status || undefined, typeId: typeId || undefined, limit }), [debouncedQ, templateId, status, typeId, limit]);
+  const list = useData(() => listSignoffsOfflineAware({ q: debouncedQ, templateId, status: status || undefined, typeId: typeId || undefined, limit }), [debouncedQ, templateId, status, typeId, limit]);
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -105,6 +106,7 @@ export function SignoffsListPage() {
       )}
 
       {(list.error || pdfError) && <div style={errorBox}>{pdfError ?? list.error}</div>}
+      {list.data?.offline && <div style={infoBox}>No connection — showing the list as last seen on this device. Changes you make are saved here and sync automatically.</div>}
       {!list.data && !list.error && <div style={{ color: "var(--text-3)", fontSize: 13 }}>Loading…</div>}
       {list.data && items.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No sign-offs match.</div>}
 

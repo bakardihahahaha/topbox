@@ -1,14 +1,14 @@
 import type { DocumentSettings, MarkValue, Part, PartInput, Signoff, SignoffMode, SignoffSummary, Template, TemplateInput } from "@biosite-signoff/shared";
-import { getJson, sendJson } from "./client.js";
+import { getJson, getJsonCached, sendJson } from "./client.js";
 
-export const listTemplates = () => getJson<Template[]>("/api/templates");
-export const getTemplate = (id: string) => getJson<Template>(`/api/templates/${id}`);
+export const listTemplates = () => getJsonCached<Template[]>("/api/templates");
+export const getTemplate = (id: string) => getJsonCached<Template>(`/api/templates/${id}`);
 export const createTemplate = (id: string, input: TemplateInput) => sendJson<Template>("POST", "/api/templates", { ...input, id });
 export const updateTemplate = (id: string, input: TemplateInput) => sendJson<Template>("PUT", `/api/templates/${id}`, input);
 export const duplicateTemplate = (id: string) => sendJson<Template>("POST", `/api/templates/${id}/duplicate`);
 export const deleteTemplate = (id: string) => sendJson("DELETE", `/api/templates/${id}`);
 
-export const listParts = () => getJson<Part[]>("/api/parts");
+export const listParts = () => getJsonCached<Part[]>("/api/parts");
 export const createPart = (id: string, input: PartInput) => sendJson<Part>("POST", "/api/parts", { ...input, id });
 export const updatePart = (id: string, patch: Partial<PartInput>) => sendJson<Part>("PATCH", `/api/parts/${id}`, patch);
 export const deletePart = (id: string) => sendJson("DELETE", `/api/parts/${id}`);

@@ -54,7 +54,7 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
       setUsers(await fetchLoginUsers());
       setLoadError(null);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err));
+      setLoadError(err instanceof TypeError ? "No connection to the server — signing in needs it. Try again when the device has signal." : err instanceof Error ? err.message : String(err));
     }
   }
 

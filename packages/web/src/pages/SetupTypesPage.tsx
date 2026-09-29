@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { SignoffType } from "@biosite-signoff/shared";
-import { fetchSignoffTypes, saveSignoffTypes } from "../lib/signoffTypes.js";
+import { fetchSignoffTypes, rememberSignoffTypes, saveSignoffTypes } from "../lib/signoffTypes.js";
+import { mutateOrQueue } from "../lib/offlineQueue.js";
+import { withSaving } from "../lib/savingStatus.js";
 import { SetupSubNav } from "../components/SetupSubNav.js";
 import { card, errorBox, errorMessage, ghost, h1, hint, iconButton, infoBox, input, page, primary } from "../lib/ui.js";
 
@@ -35,8 +37,16 @@ export function SetupTypesPage() {
     setSaving(true);
     setError(null);
     try {
-      setTypes(await saveSignoffTypes(types!.filter((t) => t.name.trim())));
+      const next = types!.filter((t) => t.name.trim());
+      // Applied on this device at once; the server copy follows (queued if offline).
+      setTypes(next);
+      rememberSignoffTypes(next);
       setSaved(true);
+      const outcome = await withSaving(() => mutateOrQueue({ kind: "saveSignoffTypes", types: next }, () => saveSignoffTypes(next)));
+      if (outcome.synced) {
+        setTypes(outcome.result);
+        rememberSignoffTypes(outcome.result);
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {

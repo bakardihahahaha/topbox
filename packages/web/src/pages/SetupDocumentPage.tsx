@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { type DocumentSettings, type Signoff, type Template } from "@biosite-signoff/shared";
 import { getDocumentSettings, listTemplates, saveDocumentSettings, updateTemplate } from "../lib/api.js";
 import { mutateOrQueue } from "../lib/offlineQueue.js";
+import { rememberDocumentSettings } from "../lib/pdfLazy.js";
 import { withSaving } from "../lib/savingStatus.js";
 import { mechanismPreview } from "../lib/preview.js";
 import { openPdf } from "../lib/pdfLazy.js";
@@ -75,7 +76,11 @@ export function SetupDocumentPage() {
         await withSaving(() => mutateOrQueue({ kind: "updateTemplate", templateId: id, input }, () => updateTemplate(id, input)));
       }
       setTemplates(templates.map((t) => ({ ...t, ...docFields[t.id] })));
-      setS(await saveDocumentSettings(s!));
+      // Applied on this device at once (PDFs made here use it straight away); the server copy
+      // follows, queued if offline.
+      rememberDocumentSettings(s!);
+      const outcome = await withSaving(() => mutateOrQueue({ kind: "saveDocumentSettings", settings: s! }, () => saveDocumentSettings(s!)));
+      if (outcome.synced) setS(outcome.result);
       setSaved(true);
     } catch (err) {
       setError(errorMessage(err));

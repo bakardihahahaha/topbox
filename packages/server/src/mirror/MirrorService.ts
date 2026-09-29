@@ -31,6 +31,8 @@ export class MirrorService {
   private tables = new Map<string, SheetTable>();
   private tablesFor: string | null = null;
   private running = false;
+  private again = false;
+  private kickTimer: ReturnType<typeof setTimeout> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private backoffUntil = 0;
   private failures = 0;
@@ -85,7 +87,11 @@ export class MirrorService {
   async flush(): Promise<number> {
     const spreadsheetId = await this.spreadsheetId();
     if (!this.api || !spreadsheetId) return 0;
-    if (this.running) return 0;
+    if (this.running) {
+      // A write landed while a push is in progress — push again right after it.
+      this.again = true;
+      return 0;
+    }
     this.running = true;
     let total = 0;
     try {
@@ -117,7 +123,26 @@ export class MirrorService {
       throw err;
     } finally {
       this.running = false;
+      if (this.again) {
+        this.again = false;
+        this.kick();
+      }
     }
+  }
+
+  /** Push to Google right after a write — debounced by a second so a burst of taps (a whole
+   * column ticked, a signature plus its marks) goes out as one batch. The interval in start() is
+   * only a safety net for anything this misses. Respects the quota backoff. */
+  kick(delayMs = 1000): void {
+    if (!this.api || this.kickTimer) return;
+    this.kickTimer = setTimeout(() => {
+      this.kickTimer = null;
+      if (Date.now() < this.backoffUntil) return;
+      this.flush().catch(() => {
+        /* recorded in lastError; retried after backoff */
+      });
+    }, delayMs);
+    this.kickTimer.unref?.();
   }
 
   /** Background loop — checks the outbox every `intervalMs`, respecting any backoff. */
@@ -133,6 +158,8 @@ export class MirrorService {
   }
 
   stop(): void {
+    if (this.kickTimer) clearTimeout(this.kickTimer);
+    this.kickTimer = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }

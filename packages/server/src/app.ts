@@ -74,7 +74,10 @@ export async function buildApp(services: Services, opts: { webDistPath?: string;
   const WRITE = new Set(["POST", "PUT", "PATCH", "DELETE"]);
   app.addHook("onResponse", async (req, reply) => {
     if (!WRITE.has(req.method) || !req.url.startsWith("/api/") || req.url.startsWith("/api/auth/")) return;
-    if (reply.statusCode >= 200 && reply.statusCode < 300) broadcastDataChange();
+    if (reply.statusCode >= 200 && reply.statusCode < 300) {
+      broadcastDataChange();
+      services.mirror.kick(); // copy the change to the Google Sheet straight away
+    }
     if (req.url.startsWith("/api/users")) return; // AuthService writes its own, more specific entries
     const path = req.url.split("?")[0]!;
     await audit(services.store, {

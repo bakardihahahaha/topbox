@@ -104,3 +104,15 @@ describe("Google Sheets backup mirror", () => {
     expect((await n.store.signoffs.list({ limit: 10, offset: 0 })).items.map((x) => x.serialNumber)).toEqual(["D-1"]);
   });
 });
+
+describe("instant mirror", () => {
+  it("pushes a write to the sheet about a second after it lands, without waiting for the interval", async () => {
+    const t = await setup();
+    await t.mirror.flush();
+    const admin = await t.login("admin", "1111");
+    await t.as(admin.token)("POST", "/api/parts", { partNumber: "FAST-1", name: "Fast part", description: "" });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(JSON.stringify(t.sheets.tabs.get("sheet-1/parts"))).toContain("FAST-1");
+    expect(await t.store.outbox.count()).toBe(0);
+  });
+});

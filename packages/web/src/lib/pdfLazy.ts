@@ -7,6 +7,14 @@ import type { PdfBranding } from "./pdf.js";
 // made offline still carries the right address.
 const KEY = "biosite-signoff.document-settings";
 
+export function rememberDocumentSettings(settings: DocumentSettings): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(settings));
+  } catch {
+    // best-effort
+  }
+}
+
 async function branding(override?: DocumentSettings): Promise<PdfBranding> {
   let settings = override;
   if (!settings) {

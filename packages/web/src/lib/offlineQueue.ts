@@ -10,7 +10,8 @@
 //
 // Every id (sign-off, part line, part, template) is generated on the client, so replaying any
 // queued write is idempotent on the server and nothing needs re-mapping after it syncs.
-import type { MarkValue, PartInput, SignoffMode, TemplateInput } from "@biosite-signoff/shared";
+import type { DocumentSettings, MarkValue, PartInput, SignoffMode, SignoffType, TemplateInput } from "@biosite-signoff/shared";
+import { saveSignoffTypes } from "./signoffTypes.js";
 import { ApiError } from "./client.js";
 import * as api from "./api.js";
 
@@ -30,7 +31,9 @@ export type QueuedAction =
   | { kind: "deletePart"; partId: string }
   | { kind: "createTemplate"; templateId: string; input: TemplateInput }
   | { kind: "updateTemplate"; templateId: string; input: TemplateInput }
-  | { kind: "deleteTemplate"; templateId: string };
+  | { kind: "deleteTemplate"; templateId: string }
+  | { kind: "saveDocumentSettings"; settings: DocumentSettings }
+  | { kind: "saveSignoffTypes"; types: SignoffType[] };
 
 function describe(a: QueuedAction): string {
   switch (a.kind) {
@@ -64,6 +67,10 @@ function describe(a: QueuedAction): string {
       return `Save template "${a.input.name}"`;
     case "deleteTemplate":
       return "Delete a template";
+    case "saveDocumentSettings":
+      return "Save document settings";
+    case "saveSignoffTypes":
+      return "Save sign-off types";
   }
 }
 
@@ -99,6 +106,10 @@ async function apply(a: QueuedAction): Promise<unknown> {
       return api.updateTemplate(a.templateId, a.input);
     case "deleteTemplate":
       return api.deleteTemplate(a.templateId);
+    case "saveDocumentSettings":
+      return api.saveDocumentSettings(a.settings);
+    case "saveSignoffTypes":
+      return saveSignoffTypes(a.types);
   }
 }
 
@@ -269,6 +280,17 @@ export function dismissQueueFailures(): void {
 
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => void flushQueue());
+  // iPad/iOS Safari doesn't reliably fire "online" when signal comes back (and navigator.onLine
+  // can be wrong either way), so also try whenever the app comes back to the foreground, and
+  // every 10s while anything is still waiting. An attempt with no signal just fails quietly and
+  // the writes stay queued.
+  const tryNow = () => {
+    if (cachedCount > 0) void flushQueue();
+  };
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && tryNow());
+  window.addEventListener("focus", tryNow);
+  window.addEventListener("pageshow", tryNow);
+  setInterval(tryNow, 10_000);
   void refreshCount().then(() => {
     if (navigator.onLine) void flushQueue();
   });

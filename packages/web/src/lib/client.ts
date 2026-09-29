@@ -68,6 +68,25 @@ export async function getJson<T>(path: string): Promise<T> {
   return (await (await authedFetch(path)).json()) as T;
 }
 
+/** Like getJson, but remembers the answer on this device and returns that copy when there's no
+ * connection (fetch threw) — reference data (checklists, parts) needed to keep working offline. */
+export async function getJsonCached<T>(path: string): Promise<T> {
+  const key = `biosite-signoff.cache:${path}`;
+  try {
+    const data = await getJson<T>(path);
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch {
+      // best-effort
+    }
+    return data;
+  } catch (err) {
+    const raw = err instanceof TypeError ? localStorage.getItem(key) : null;
+    if (raw) return JSON.parse(raw) as T;
+    throw err;
+  }
+}
+
 export async function sendJson<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
   const res = await authedFetch(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
   return (await res.json()) as T;
@@ -118,23 +137,48 @@ export async function login(userId: string, pin: string): Promise<LoginOutcome> 
 
 /** Ends the session on the server too — with single-IP sessions on, that's what frees the account
  * to be used from a different network straight away. */
+const ME_KEY = "biosite-signoff.me";
+
 export async function logout(): Promise<void> {
   const token = getToken();
   setToken(null);
+  try {
+    localStorage.removeItem(ME_KEY);
+  } catch {
+    // best-effort
+  }
   if (token) await fetch("/api/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
 }
 
 export async function fetchMe(): Promise<Me | null> {
   const token = getToken();
   if (!token) return null;
-  try {
-    const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) {
-      setToken(null);
+  // Only a definite "this session is gone" (401) signs the device out. No signal, a proxy error
+  // while the NAS restarts (502/503) etc. keep the person signed in on the last known identity —
+  // they keep working locally and everything syncs once the server answers again.
+  const remembered = (): Me | null => {
+    try {
+      return JSON.parse(localStorage.getItem(ME_KEY) ?? "null") as Me | null;
+    } catch {
       return null;
     }
-    return (await res.json()) as Me;
+  };
+  try {
+    const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) {
+      setToken(null);
+      localStorage.removeItem(ME_KEY);
+      return null;
+    }
+    if (!res.ok) return remembered();
+    const me = (await res.json()) as Me;
+    try {
+      localStorage.setItem(ME_KEY, JSON.stringify(me));
+    } catch {
+      // best-effort
+    }
+    return me;
   } catch {
-    return null;
+    return remembered();
   }
 }

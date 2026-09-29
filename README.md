@@ -49,7 +49,7 @@ browser (PWA)  ──HTTPS──>  DSM reverse proxy  ──>  topbox-server (Fa
 - Every read and write goes to a single **SQLite file on the NAS** (`docker/data/signoff.db`) — no
   network hop, so the app is fast.
 - Every write also records `(table, row id)` in a `mirror_outbox` table **in the same transaction**
-  (transactional outbox). A background worker (`mirror/MirrorService.ts`, every 15 s) copies the
+  (transactional outbox). A background worker (`mirror/MirrorService.ts`, about a second after each write, plus a 15 s safety net) copies the
   current version of those rows to a Google Sheet — one tab per table, header row = column names —
   and only then clears them from the outbox. Users never wait on Google; if Google is down or over
   quota the outbox simply waits. A crash can't lose a change.
