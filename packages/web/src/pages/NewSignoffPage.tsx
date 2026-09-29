@@ -89,9 +89,6 @@ export function NewSignoffPage() {
               </button>
             ))}
           </div>
-          {type?.allowsParts && chosen && chosen.partIds.length === 0 && (
-            <span style={{ fontSize: 12, color: "var(--text-3)" }}>This checklist has no replaceable parts defined — parts can be enabled for it in Setup → Templates.</span>
-          )}
         </div>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>

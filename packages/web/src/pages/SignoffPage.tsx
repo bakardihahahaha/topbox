@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -114,9 +114,8 @@ export function SignoffPage() {
   const { done, total } = signoffProgress(s);
   const signedBy = (checkId: string) => s.signatures.find((g) => g.checkId === checkId);
   const markOf = (rowId: string, checkId: string) => s.marks.find((m) => m.rowId === rowId && m.checkId === checkId)?.value;
-  // The checklist's parts as frozen on this sign-off plus any enabled for it since.
-  const allowedIds = new Set([...t.partIds, ...(liveTemplate?.partIds ?? [])]);
-  const allowedParts = parts.filter((p) => allowedIds.has(p.id));
+  const allowed = allowedPartIds(t, liveTemplate);
+  const allowedParts = allowed === "all" ? parts : parts.filter((p) => allowed.has(p.id));
   const showParts = s.mode === "service";
 
   function tap(rowId: string, checkId: string) {
@@ -312,17 +311,13 @@ export function SignoffPage() {
           <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 10 }}>Tick every part that was replaced on this mechanism. Leave everything unticked if nothing was replaced.</div>
           {allowedParts.length === 0 && s.parts.length === 0 && (
             <div style={{ ...infoBox, marginBottom: 0 }}>
-              No replaceable parts are set up for this checklist yet.{" "}
+              No parts are defined yet.{" "}
               {me.role === "admin" ? (
                 <>
-                  Add them in <Link to="/setup/parts" style={{ color: "inherit", fontWeight: 700 }}>Setup → Parts</Link>, then tick them in{" "}
-                  <Link to={`/setup/templates/${s.templateId}`} style={{ color: "inherit", fontWeight: 700 }}>
-                    Setup → Templates → this checklist
-                  </Link>
-                  . They appear here straight away.
+                  Add them in <Link to="/setup/parts" style={{ color: "inherit", fontWeight: 700 }}>Setup → Parts</Link> — they appear here straight away.
                 </>
               ) : (
-                "Ask an admin to add them (Setup → Parts, then Templates)."
+                "Ask an admin to add them in Setup → Parts."
               )}
             </div>
           )}

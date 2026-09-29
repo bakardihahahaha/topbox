@@ -138,18 +138,21 @@ describe("sign-off types", () => {
   });
 });
 
-describe("parts enabled after a sign-off was started", () => {
-  it("can be recorded on that sign-off", async () => {
+describe("parts available on a service sign-off", () => {
+  it("every defined part when the checklist ticks none; narrowed (incl. later changes) when it does", async () => {
     const t = await setup();
     const admin = await t.login("admin", "1111");
     const call = t.as(admin.token);
     const id = randomUUID();
     await call("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "LATE-1", typeId: "service" });
-    const part = await t.catalog.createPart({ partNumber: "LP-1", name: "Late part", description: "" });
-    expect((await call("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: part.id, qty: 1 })).statusCode).toBe(400);
-    await t.catalog.updateTemplate(t.template.id, { ...t.template, partIds: [part.id] });
-    const res = await call("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: part.id, qty: 2 });
+    // Parts defined after the sign-off was started, none ticked on the checklist -> all allowed.
+    const a = await t.catalog.createPart({ partNumber: "LP-1", name: "Late part", description: "" });
+    const b = await t.catalog.createPart({ partNumber: "LP-2", name: "Other part", description: "" });
+    const res = await call("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: a.id, qty: 2 });
     expect(res.statusCode).toBe(200);
     expect((res.json() as Signoff).parts).toMatchObject([{ name: "Late part", qty: 2 }]);
+    // Admin narrows the checklist to part A only -> B is refused, even on this in-progress sign-off.
+    await t.catalog.updateTemplate(t.template.id, { ...t.template, partIds: [a.id] });
+    expect((await call("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: b.id, qty: 1 })).statusCode).toBe(400);
   });
 });

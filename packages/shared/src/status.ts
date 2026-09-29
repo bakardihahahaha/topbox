@@ -26,6 +26,15 @@ export function signoffStatus(signoff: Pick<Signoff, "template" | "marks" | "sig
   return total > 0 && done === total ? "complete" : "draft";
 }
 
+/** Which parts can be recorded as replaced on a sign-off. `frozen` = the checklist copy on the
+ * sign-off, `live` = its current version (so parts enabled later count too). A checklist with no
+ * parts ticked offers every defined part — ticking some narrows the list for that checklist. */
+export function allowedPartIds(frozen: Template, live?: Template | null): "all" | Set<string> {
+  const current = live ?? frozen;
+  if (current.partIds.length === 0) return "all";
+  return new Set([...frozen.partIds, ...current.partIds]);
+}
+
 export const MARK_LABEL: Record<string, string> = { pass: "✓", fail: "✗", na: "N/A" };
 
 /** Signature capture box — SignaturePad draws in it, the PDF generator scales from it. */

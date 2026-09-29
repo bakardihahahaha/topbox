@@ -53,7 +53,7 @@ export function SetupTemplatesPage() {
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                 <span style={chip(t.signRowEnabled ? "accent" : "muted")}>{t.signRowEnabled ? "Sign & date row" : "No sign row"}</span>
-                <span style={chip(t.partIds.length ? "accent" : "muted")}>{t.partIds.length ? `${t.partIds.length} replaceable parts` : "No parts"}</span>
+                <span style={chip("muted")}>{t.partIds.length ? `${t.partIds.length} selected parts` : "All parts"}</span>
               </div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>

@@ -266,7 +266,7 @@ export function TemplateEditorPage() {
       <section style={{ ...card, marginBottom: 12 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>Replaceable parts (service only)</div>
         <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 10 }}>
-          Tick the parts an operator may mark as replaced on a <b>service</b> sign-off of this template. Leave all unticked if this mechanism never gets parts replaced. Manage the list under{" "}
+          By default a service sign-off of this checklist offers <b>every</b> part. Tick parts here only to narrow the list down to those that fit this mechanism. Manage the list under{" "}
           <Link to="/setup/parts" style={{ color: "var(--accent)" }}>
             Parts
           </Link>
