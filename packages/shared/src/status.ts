@@ -107,3 +107,22 @@ export function signatureLength(path: string): number {
   }
   return total;
 }
+
+/** The most checks one operator may sign on a single sign-off: the checks are spread as evenly as
+ * possible over the operators in the system (2 operators × 2 checks → 1 each; × 3 checks → 2 and
+ * 1; × 4 checks → 2 each; a lone operator signs them all). Admins are exempt. */
+export function maxChecksPerOperator(checks: number, operators: number): number {
+  return Math.ceil(checks / Math.max(1, operators));
+}
+
+/** Why this operator may not sign `checkId` under the cross-check rule, or null if they may. */
+export function crossCheckBlock(s: Signoff, checkId: string, actor: { userId: string; role: "admin" | "operator" }, operators: number): string | null {
+  if (actor.role === "admin") return null;
+  const max = maxChecksPerOperator(s.template.checks.length, operators);
+  const mine = s.signatures.filter((g) => g.checkId !== checkId && g.userId === actor.userId);
+  if (mine.length < max) return null;
+  const labels = mine.map((g) => s.template.checks.find((c) => c.id === g.checkId)?.label ?? "a check").join(", ");
+  return max === 1
+    ? `You already signed ${labels} — this check must be signed by a different operator.`
+    : `With ${operators} operators, one person may sign at most ${max} of the ${s.template.checks.length} checks — you already signed ${labels}. Another operator must sign this one.`;
+}

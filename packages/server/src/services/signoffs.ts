@@ -1,4 +1,4 @@
-import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
 import { HttpError, badRequest, conflict, forbidden, notFound } from "./errors.js";
@@ -221,8 +221,15 @@ export class SignoffService {
     if (s.template.distinctSigners && s.signatures.some((sig) => sig.checkId !== input.checkId && sig.userId === actor.userId)) {
       throw conflict("SAME_SIGNER", "You already signed another check on this sign-off — this one needs a different person.");
     }
+    const block = crossCheckBlock(s, input.checkId, actor, await this.operatorCount());
+    if (block) throw conflict("CROSS_CHECK", block);
     await this.store.signoffs.upsertSignature(id, { checkId: input.checkId, userId: actor.userId, name: actor.name, path: input.path, date: input.date, time: input.time ?? "", at: new Date().toISOString() });
     return this.refresh(id);
+  }
+
+  /** Operators in the system — the cross-check rule spreads checks over them. */
+  async operatorCount(): Promise<number> {
+    return (await this.store.users.list()).filter((u) => u.role === "operator").length;
   }
 
   async unsign(id: string, checkId: string, actor: Actor): Promise<Signoff> {

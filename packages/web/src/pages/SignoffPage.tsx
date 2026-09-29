@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, crossCheckBlock, isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -14,7 +14,7 @@ import { confirmDialog } from "../lib/confirmDialog.js";
 import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
-import { usePermissions } from "../lib/permissions.js";
+import { useOperatorCount, usePermissions } from "../lib/permissions.js";
 import { localStamp } from "../lib/format.js";
 import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
@@ -35,6 +35,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const [signing, setSigning] = useState<TemplateCheck | null>(null);
   const types = useSignoffTypes();
   const permissions = usePermissions();
+  const operators = useOperatorCount();
   const typesRef = useRef(types);
   typesRef.current = types;
   const inflight = useRef(0);
@@ -307,6 +308,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                 {t.checks.map((c) => {
                   const sig = signedBy(c.id);
                   const full = isCheckFullyMarked(s, c.id);
+                  const block = sig ? null : crossCheckBlock(s, c.id, me, operators);
                   return (
                     <td key={c.id} style={{ padding: 4, borderLeft: "1px solid var(--border-soft)", verticalAlign: "top", textAlign: "center" }}>
                       {sig ? (
@@ -333,11 +335,11 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                       ) : (
                         <button
                           disabled={!full}
-                          title={full ? "Sign and date this check" : "Mark every item in this check first"}
-                          onClick={() => setSigning(c)}
-                          style={{ ...primary, height: 56, width: "100%", padding: 0, fontSize: 13, opacity: full ? 1 : 0.35, cursor: full ? "pointer" : "not-allowed" }}
+                          title={block ?? (full ? "Sign and date this check" : "Mark every item in this check first")}
+                          onClick={() => (block ? setError(block) : setSigning(c))}
+                          style={{ ...primary, height: 56, width: "100%", padding: 0, fontSize: 13, opacity: full && !block ? 1 : 0.35, cursor: full ? "pointer" : "not-allowed" }}
                         >
-                          Sign
+                          {block ? "Other operator" : "Sign"}
                         </button>
                       )}
                     </td>

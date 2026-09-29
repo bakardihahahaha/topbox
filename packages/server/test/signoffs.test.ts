@@ -49,6 +49,64 @@ describe("sign-off flow", () => {
     expect((await call("DELETE", `/api/signoffs/${id}/signatures/${second!.id}`)).statusCode).toBe(403);
   });
 
+  it("spreads checks over the operators (cross-check); admins are exempt", async () => {
+    const t = await setup();
+    const four = await t.catalog.updateTemplate(t.template.id, {
+      ...t.template,
+      checks: [1, 2, 3, 4].map((n) => ({ id: `c${n}`, label: `Check ${n}` })),
+    });
+    const a = t.as((await t.login("op", "2222")).token);
+    const b = t.as((await t.login("op2", "3333")).token);
+    const sign = (call: typeof a, id: string, n: number) => call("PUT", `/api/signoffs/${id}/signatures/c${n}`, { path: SIG, date: today });
+    const start = async (call: typeof a) => {
+      const id = randomUUID();
+      await call("POST", "/api/signoffs", { id, templateId: four.id, serialNumber: `X-${id.slice(0, 4)}`, mode: "new" });
+      for (const c of four.checks) await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c.id, value: "pass" });
+      return id;
+    };
+
+    // 2 operators × 4 checks → at most 2 each.
+    const id = await start(a);
+    expect((await sign(a, id, 1)).statusCode).toBe(200);
+    expect((await sign(a, id, 2)).statusCode).toBe(200);
+    expect((await sign(a, id, 3)).json().error).toBe("CROSS_CHECK");
+    expect((await sign(b, id, 3)).statusCode).toBe(200);
+    expect((await sign(b, id, 4)).statusCode).toBe(200);
+
+    // 2 operators × 2 checks → strictly crossed.
+    await t.catalog.updateTemplate(four.id, { ...four, checks: four.checks.slice(0, 2) });
+    const id2 = await start(a);
+    expect((await sign(a, id2, 1)).statusCode).toBe(200);
+    expect((await sign(a, id2, 2)).json().error).toBe("CROSS_CHECK");
+
+    // An admin can sign any number of checks.
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const id3 = await start(admin);
+    expect((await sign(admin, id3, 1)).statusCode).toBe(200);
+    expect((await sign(admin, id3, 2)).statusCode).toBe(200);
+
+    // A lone operator signs everything.
+    expect((await admin("DELETE", `/api/users/${t.ids.op2}`)).statusCode).toBe(200);
+    expect((await sign(a, id2, 2)).statusCode).toBe(200);
+  });
+
+  it("lists in-progress sign-offs above completed ones", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const ids = [randomUUID(), randomUUID(), randomUUID()];
+    for (const [i, id] of ids.entries()) await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: `L-${i}`, mode: "new" });
+    // Complete the newest one; it drops below the older in-progress ones.
+    for (const c of t.template.checks) {
+      await admin("POST", `/api/signoffs/${ids[2]}/marks/fill`, { checkId: c.id, value: "pass" });
+      await admin("PUT", `/api/signoffs/${ids[2]}/signatures/${c.id}`, { path: SIG, date: today });
+    }
+    const order = () => admin("GET", "/api/signoffs").then((r) => (r.json() as { items: { id: string }[] }).items.map((x) => x.id));
+    expect(await order()).toEqual([ids[1], ids[0], ids[2]]);
+    // Taking a signature back makes it in progress again — back to the top.
+    await admin("DELETE", `/api/signoffs/${ids[2]}/signatures/${t.template.checks[1]!.id}`);
+    expect(await order()).toEqual([ids[2], ids[1], ids[0]]);
+  });
+
   it("enforces distinct signers when the template asks for it", async () => {
     const t = await setup();
     const tpl = await t.catalog.updateTemplate(t.template.id, { ...t.template, distinctSigners: true });

@@ -66,7 +66,7 @@ export interface SignoffListFilter {
   typeId?: string;
   /** Exact serial number (case-insensitive) — one mechanism's visits. */
   serial?: string;
-  /** Default newest first; "arrived_asc" = a mechanism's history in order. */
+  /** Default: in-progress first, then completed; newest first within each. "arrived_asc" = a mechanism's history in order. */
   order?: "created_desc" | "arrived_asc";
   limit: number;
   offset: number;

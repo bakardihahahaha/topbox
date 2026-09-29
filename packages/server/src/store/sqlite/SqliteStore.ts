@@ -557,7 +557,7 @@ class SqliteSignoffs implements SignoffsRepo {
     }
     const clause = where.join(" AND ");
     const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM signoffs WHERE ${clause}`).get(...params) as { n: number }).n;
-    const rows = this.db.prepare(`SELECT * FROM signoffs WHERE ${clause} ORDER BY ${f.order === "arrived_asc" ? "arrived_at ASC, created_at ASC" : "created_at DESC"} LIMIT ? OFFSET ?`).all(...params, f.limit, f.offset) as SignoffRow[];
+    const rows = this.db.prepare(`SELECT * FROM signoffs WHERE ${clause} ORDER BY ${f.order === "arrived_asc" ? "arrived_at ASC, created_at ASC" : "CASE WHEN status = 'complete' THEN 1 ELSE 0 END, created_at DESC"} LIMIT ? OFFSET ?`).all(...params, f.limit, f.offset) as SignoffRow[];
     return { items: this.hydrate(rows), total };
   }
 

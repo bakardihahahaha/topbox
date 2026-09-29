@@ -146,6 +146,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   // ---- permissions ---------------------------------------------------------------------------
 
   app.get("/api/permissions", authed, async () => s.signoffs.permissions());
+  app.get("/api/sign-policy", authed, async () => ({ operators: await s.signoffs.operatorCount() }));
   app.put("/api/permissions", admin, async (req) => s.signoffs.setPermissions(parse(z.object({ deleteSignoffs: z.enum(["admin", "all"]) }), req.body)));
 
   // ---- sign-off types (the New sign-off screen's buttons) -------------------------------------
