@@ -34,7 +34,7 @@ const templateInput = z.object({
   documentId: z.string().max(100).default(""),
   serialLabel: z.string().max(100).default("Serial Number"),
   itemLabel: z.string().max(100).default("Item"),
-  checks: z.array(z.object({ id, label: z.string().max(60) })).max(6),
+  checks: z.array(z.object({ id, label: z.string().max(60) })).max(12),
   rows: z.array(z.object({ id, kind: z.enum(["item", "section"]), text: z.string().max(500), bold: z.boolean(), indent: z.boolean() })).max(200),
   signRowEnabled: z.boolean(),
   signRowLabel: z.string().max(100).default("Sign and date here"),

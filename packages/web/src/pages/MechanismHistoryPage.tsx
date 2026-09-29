@@ -1,74 +1,119 @@
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { checkDoneAt, departedAt, typeNameOf, type Signoff } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { daysBetween, localStamp, stamp } from "../lib/format.js";
+import { SignoffPage } from "./SignoffPage.js";
 import { card, chip, errorBox, h1, page, primary } from "../lib/ui.js";
 
-/** One mechanism's full rotation: arrived → 1st check → 2nd check (= left) → back again … */
+/**
+ * The TopBox page — topbox.duckdns.org/signoff/<serial number>. On top: the checklist of the
+ * selected visit (the current one by default), where the checks are done. Below: the whole
+ * rotation of that mechanism — every visit's arrival, every check (however many the checklist
+ * has) with date, time and who, and the departure — oldest to newest, again and again.
+ * `?id=<sign-off id>` picks a visit (also one created offline and not synced yet).
+ */
 export function MechanismHistoryPage() {
   const { serial = "" } = useParams();
+  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const visits = useData<Signoff[]>(() => getVisits(serial), [serial]);
   const list = visits.data ?? [];
   const latest = list[list.length - 1];
+  const selectedId = params.get("id") ?? latest?.id ?? null;
   const inWorkshop = latest && !departedAt(latest);
+
+  const startNewVisit = () =>
+    navigate(
+      `/signoffs/new?serial=${encodeURIComponent(latest?.serialNumber ?? serial)}` +
+        (latest ? `&templateId=${encodeURIComponent(latest.templateId)}&typeId=${encodeURIComponent(latest.typeId)}` : ""),
+    );
 
   return (
     <div style={page}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <div>
-          <h1 style={{ ...h1, fontSize: 24 }} className="mono">
-            {serial}
+          <h1 style={{ ...h1, fontSize: 26 }} className="mono">
+            {latest?.serialNumber ?? serial}
           </h1>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             {list.length} visit{list.length === 1 ? "" : "s"}
             {latest && (inWorkshop ? " · in the workshop now" : ` · at client since ${stamp(departedAt(latest))}`)}
           </div>
         </div>
-        {latest && !inWorkshop && (
-          <button
-            style={{ ...primary, height: 56, fontSize: 15 }}
-            onClick={() => navigate(`/signoffs/new?serial=${encodeURIComponent(latest.serialNumber)}&templateId=${encodeURIComponent(latest.templateId)}&typeId=${encodeURIComponent(latest.typeId)}`)}
-          >
-            Mechanism is back — start new visit
+        {(!latest || !inWorkshop) && visits.data && (
+          <button style={{ ...primary, height: 56, fontSize: 15 }} onClick={startNewVisit}>
+            {latest ? "Mechanism is back — start new visit" : "Start first sign-off"}
           </button>
         )}
-        {latest && inWorkshop && (
-          <Link to={`/signoffs/${latest.id}`} style={{ ...primary, height: 56, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
-            Open current visit
-          </Link>
-        )}
       </div>
-      {visits.error && <div style={errorBox}>{visits.error}</div>}
+      {visits.error && !selectedId && <div style={errorBox}>{visits.error}</div>}
 
-      <div style={{ display: "flex", flexDirection: "column-reverse", gap: 10 }}>
-        {list.map((v, i) => {
-          const left = departedAt(v);
-          const prev = list[i - 1];
-          const prevLeft = prev ? departedAt(prev) : null;
-          return (
-            <Link key={v.id} to={`/signoffs/${v.id}`} style={{ ...card, color: "inherit", textDecoration: "none", padding: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>
-                  Visit {i + 1} · {typeNameOf(v)}{" "}
-                  <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 400 }}>
-                    {v.number}
-                  </span>
-                </div>
-                {left ? <span style={chip("accent")}>Left {stamp(left)}</span> : <span style={chip("warn")}>In workshop</span>}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-                <Step label="Arrived" value={localStamp(v.arrivedAt)} sub={prevLeft ? `${daysBetween(prevLeft.replace(" ", "T"), new Date(v.arrivedAt))} days at client before` : undefined} />
-                {v.template.checks.map((c) => {
-                  const done = checkDoneAt(v, c.id);
-                  return <Step key={c.id} label={c.label} value={done ? stamp(done.at) : "not done"} sub={done?.by} muted={!done} />;
-                })}
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+      {/* Visit picker */}
+      {list.length > 1 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+          {list.map((v, i) => {
+            const on = v.id === selectedId;
+            return (
+              <button
+                key={v.id}
+                onClick={() => setParams({ id: v.id }, { replace: true })}
+                style={{
+                  height: 44,
+                  padding: "0 14px",
+                  borderRadius: "var(--radius-control)",
+                  border: `1px solid ${on ? "var(--accent)" : "var(--border)"}`,
+                  background: on ? "var(--accent-wash)" : "transparent",
+                  color: on ? "var(--accent)" : "var(--text-2)",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                Visit {i + 1}
+                {i === list.length - 1 ? (inWorkshop ? " · now" : " · latest") : ""}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* The checklist of the selected visit */}
+      {selectedId && <SignoffPage key={selectedId} signoffId={selectedId} embedded />}
+
+      {/* Full rotation history */}
+      {list.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 18, fontWeight: 700, margin: "28px 0 10px" }}>History</h2>
+          <div style={{ display: "flex", flexDirection: "column-reverse", gap: 10 }}>
+            {list.map((v, i) => {
+              const left = departedAt(v);
+              const prev = list[i - 1];
+              const prevLeft = prev ? departedAt(prev) : null;
+              return (
+                <Link key={v.id} to={`?id=${v.id}`} replace style={{ ...card, color: "inherit", textDecoration: "none", padding: 16, borderColor: v.id === selectedId ? "var(--accent)" : "var(--border-soft)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>
+                      Visit {i + 1} · {typeNameOf(v)}{" "}
+                      <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 400 }}>
+                        {v.number}
+                      </span>
+                    </div>
+                    {left ? <span style={chip("accent")}>Left {stamp(left)}</span> : <span style={chip("warn")}>In workshop</span>}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
+                    <Step label="Arrived" value={localStamp(v.arrivedAt)} sub={prevLeft ? `${daysBetween(prevLeft.replace(" ", "T"), new Date(v.arrivedAt))} days at client before` : undefined} />
+                    {v.template.checks.map((c) => {
+                      const done = checkDoneAt(v, c.id);
+                      return <Step key={c.id} label={c.label} value={done ? stamp(done.at) : "not done"} sub={done?.by} muted={!done} />;
+                    })}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

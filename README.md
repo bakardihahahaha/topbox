@@ -35,6 +35,12 @@ from `main`.
   anything. Single sign-off from its screen, or tick several on the list and "Generate PDF": they are
   stacked like the paper form (two standard mechanism checklists per A4 page).
 
+- **TopBox page** — `https://topbox.duckdns.org/signoff/<serial number>`: the checklist of the
+  current visit on top (where the checks are done), a visit picker, and the whole rotation below:
+  every visit's arrival, each check's date + time + signer, departure (= the last check), again
+  and again. The home screen has one tab per sign-off type showing what's in stock (first check
+  done, last check not yet — with 4 checks it stays through checks 1–3).
+
 ## Architecture
 
 ```

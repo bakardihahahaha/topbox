@@ -103,7 +103,9 @@ function drawSignature(doc: jsPDF, path: string, x: number, y: number, w: number
 
 /** Rough block height (mm) so a sign-off that won't fit starts on a fresh page instead of
  * splitting its table across two. */
-const checkColWidth = (checks: number) => (checks > 4 ? 17 : checks > 3 ? 20 : 24);
+/** Check columns share what the item text leaves (about 100mm of A4): 24mm each for 1-3 checks,
+ * narrower from there, down to ~8mm for 12. */
+const checkColWidth = (checks: number) => Math.min(24, 100 / Math.max(checks, 1));
 
 function estimateHeight(s: Signoff): number {
   const itemWidth = PAGE.w - PAGE.margin * 2 - s.template.checks.length * checkColWidth(s.template.checks.length) - 3;
@@ -133,7 +135,10 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
     { content: pdfText(t.serialLabel), styles: { fontStyle: "bold", fontSize: 10, minCellHeight: 9, valign: "middle" } },
     { content: pdfText(s.serialNumber), colSpan: t.checks.length, styles: { fontSize: 11, valign: "middle", halign: "center" } },
   ]);
-  body.push([{ content: pdfText(t.itemLabel || "Item"), styles: { fontStyle: "bold" } }, ...t.checks.map((c) => ({ content: pdfText(c.label), styles: { fontStyle: "bold" } }))]);
+  body.push([
+    { content: pdfText(t.itemLabel || "Item"), styles: { fontStyle: "bold" } },
+    ...t.checks.map((c) => ({ content: pdfText(c.label), styles: { fontStyle: "bold", fontSize: t.checks.length > 6 ? 6 : t.checks.length > 4 ? 7 : 8, halign: "center" } })),
+  ]);
   for (const r of t.rows) {
     const label = { content: `${r.indent ? "  " : ""}${pdfText(r.text)}`, styles: { fontStyle: r.bold ? "bold" : "normal" } };
     if (r.kind === "section") {

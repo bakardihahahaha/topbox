@@ -35,7 +35,7 @@ const blank = (): TemplateInput => ({
   partIds: [],
 });
 
-const MAX_CHECKS = 6;
+const MAX_CHECKS = 12;
 
 function move<T>(list: T[], i: number, by: number): T[] {
   const j = i + by;

@@ -71,7 +71,7 @@ export class CatalogService {
     const name = input.name.trim();
     if (!name) throw badRequest("Template name is required.");
     if (input.checks.length === 0) throw badRequest("A template needs at least one check column.");
-    if (input.checks.length > 6) throw badRequest("At most 6 check columns.");
+    if (input.checks.length > 12) throw badRequest("At most 12 check columns (more won't fit on an A4 page).");
     if (input.checks.some((c) => !c.label.trim())) throw badRequest("Every check column needs a label.");
     if (input.rows.filter((r) => r.kind === "item").length === 0) throw badRequest("A template needs at least one item.");
     if (input.rows.some((r) => !r.text.trim())) throw badRequest("Every row needs text.");

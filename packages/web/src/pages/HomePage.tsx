@@ -4,7 +4,7 @@ import type { SignoffSummary } from "@biosite-signoff/shared";
 import { getStock } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
-import { stamp, localStamp } from "../lib/format.js";
+import { stamp, localStamp, topboxUrl } from "../lib/format.js";
 import { SignoffsListPage } from "./SignoffsListPage.js";
 import { card, chip, errorBox, page, primary } from "../lib/ui.js";
 
@@ -86,7 +86,7 @@ function StockTab({ typeId, typeName, service }: { typeId: string; typeName: str
       {stock.data && items.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 14 }}>Nothing in stock for {typeName}.</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
         {items.map((s) => (
-          <Link key={s.id} to={`/signoffs/${s.id}`} style={{ ...card, color: "inherit", textDecoration: "none", display: "flex", flexDirection: "column", gap: 6, padding: 16 }}>
+          <Link key={s.id} to={topboxUrl(s.serialNumber, s.id)} style={{ ...card, color: "inherit", textDecoration: "none", display: "flex", flexDirection: "column", gap: 6, padding: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
               <span className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
                 {s.serialNumber}

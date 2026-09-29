@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { fetchMe, logout, onUnauthorized, type Me } from "./lib/client.js";
 import { MeContext } from "./lib/meContext.js";
 import { useIdleLogout } from "./lib/idleLogout.js";
@@ -123,7 +123,8 @@ export function App() {
             <Route path="/" element={<Navigate to="/signoffs" replace />} />
             <Route path="/signoffs" element={<HomePage />} />
             <Route path="/mechanisms" element={<MechanismsPage />} />
-            <Route path="/mechanisms/:serial" element={<MechanismHistoryPage />} />
+            <Route path="/signoff/:serial" element={<MechanismHistoryPage />} />
+            <Route path="/mechanisms/:serial" element={<ToTopbox />} />
             <Route path="/signoffs/new" element={<NewSignoffPage />} />
             <Route path="/signoffs/:id" element={<SignoffPage />} />
             <Route path="/setup/account" element={<AccountPage />} />
@@ -146,6 +147,12 @@ export function App() {
       </div>
     </MeContext.Provider>
   );
+}
+
+/** Old /mechanisms/<serial> links -> the TopBox page /signoff/<serial>. */
+function ToTopbox() {
+  const { serial = "" } = useParams();
+  return <Navigate to={`/signoff/${encodeURIComponent(serial)}`} replace />;
 }
 
 const navButton = {

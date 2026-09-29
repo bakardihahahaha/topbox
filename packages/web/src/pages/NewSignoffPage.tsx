@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { departedAt, type Signoff } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
-import { stamp } from "../lib/format.js";
+import { stamp, topboxUrl } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { createSignoff, listTemplates } from "../lib/api.js";
@@ -49,7 +49,7 @@ export function NewSignoffPage() {
     try {
       const outcome = await withSaving(() => mutateOrQueue({ kind: "createSignoff", input }, () => createSignoff(input)));
       cacheSignoff(outcome.synced ? outcome.result : draftSignoff(input, type, chosen, me));
-      navigate(`/signoffs/${input.id}`, { replace: true });
+      navigate(topboxUrl(input.serialNumber, input.id), { replace: true });
     } catch (err) {
       setError(errorMessage(err));
       setBusy(false);
@@ -118,7 +118,7 @@ export function NewSignoffPage() {
             {stillIn ? (
               <>
                 <b>{lastVisit.serialNumber}</b> is still in the workshop (visit {previous.length}, {lastVisit.number}) —{" "}
-                <a href={`/signoffs/${lastVisit.id}`} style={{ color: "var(--accent)", fontWeight: 700 }}>
+                <a href={topboxUrl(lastVisit.serialNumber, lastVisit.id)} style={{ color: "var(--accent)", fontWeight: 700 }}>
                   open it instead
                 </a>
                 .

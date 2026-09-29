@@ -18,8 +18,11 @@ import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, info
 
 const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fail: "na", na: null };
 
-export function SignoffPage() {
-  const { id = "" } = useParams();
+/** One sign-off (one visit of a TopBox). Used on its own (/signoffs/:id, older links) and embedded
+ * in the TopBox page (/signoff/:serial) above that serial's history. */
+export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embedded?: boolean } = {}) {
+  const params = useParams();
+  const id = signoffId ?? params.id ?? "";
   const me = useMe();
   const navigate = useNavigate();
   const [signoff, setSignoff] = useState<Signoff | null>(null);
@@ -148,7 +151,7 @@ export function SignoffPage() {
   }
 
   return (
-    <div style={page}>
+    <div style={embedded ? undefined : page}>
       {/* Header */}
       <div style={{ ...card, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -210,9 +213,11 @@ export function SignoffPage() {
               Arrived
             </span>
             <ArrivedField value={s.arrivedAt} onSave={(arrivedAt) => mutate({ kind: "updateHeader", id, patch: { arrivedAt } }, () => api.updateSignoffHeader(id, { arrivedAt }))} />
-            <Link to={`/mechanisms/${encodeURIComponent(s.serialNumber)}`} style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600 }}>
-              History of {s.serialNumber} →
-            </Link>
+            {!embedded && (
+              <Link to={`/signoff/${encodeURIComponent(s.serialNumber)}?id=${s.id}`} style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600 }}>
+                History of {s.serialNumber} →
+              </Link>
+            )}
           </label>
         </div>
       </div>

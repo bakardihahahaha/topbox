@@ -229,3 +229,23 @@ describe("home screen stock tabs", () => {
     expect((await call("GET", "/api/stock/new-usa")).json()).toEqual([]);
   });
 });
+
+describe("stock with more than two checks", () => {
+  it("stays in stock through checks 1-3 of 4 and leaves only after the last one", async () => {
+    const t = await setup();
+    const checks = ["1st Check", "2nd Check", "3rd Check", "4th Check"].map((label) => ({ id: randomUUID(), label }));
+    const tpl = await t.catalog.updateTemplate(t.template.id, { ...t.template, checks });
+    const admin = await t.login("admin", "1111");
+    const call = t.as(admin.token);
+    const id = randomUUID();
+    await call("POST", "/api/signoffs", { id, templateId: tpl.id, serialNumber: "TB-4C", typeId: "new-uk" });
+    const inStock = async () => ((await call("GET", "/api/stock/new-uk")).json() as { serialNumber: string; progress: string }[]).find((s) => s.serialNumber === "TB-4C");
+    expect(await inStock()).toBeUndefined();
+    for (let i = 0; i < 4; i++) {
+      await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: checks[i]!.id, value: "pass" });
+      await call("PUT", `/api/signoffs/${id}/signatures/${checks[i]!.id}`, { path: SIG, date: "2026-09-10", time: `1${i}:00` });
+      if (i < 3) expect((await inStock())?.progress).toBe(`${i + 1}/4`);
+    }
+    expect(await inStock()).toBeUndefined();
+  });
+});

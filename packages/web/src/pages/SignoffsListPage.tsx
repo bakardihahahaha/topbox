@@ -6,6 +6,7 @@ import { listSignoffsOfflineAware } from "../lib/offlineList.js";
 import { useData } from "../lib/useData.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
+import { topboxUrl } from "../lib/format.js";
 import { card, chip, errorBox, infoBox, errorMessage, formatDateTime, ghost, h1, input, page, primary } from "../lib/ui.js";
 
 const PAGE_SIZE = 50;
@@ -129,7 +130,7 @@ function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; 
   return (
     <div style={{ ...card, padding: "14px 14px", display: "flex", alignItems: "center", gap: 14, borderColor: selected ? "var(--accent)" : "var(--border-soft)" }}>
       <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.number}`} style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none" }} />
-      <Link to={`/signoffs/${s.id}`} style={{ flex: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}>
+      <Link to={topboxUrl(s.serialNumber, s.id)} style={{ flex: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>{s.serialNumber}</span>
           <span style={chip(s.status === "complete" ? "accent" : "warn")}>{s.status === "complete" ? "Complete" : `In progress ${s.progress}`}</span>

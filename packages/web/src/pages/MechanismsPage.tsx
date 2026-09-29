@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { MechanismSummary } from "@biosite-signoff/shared";
 import { listMechanisms } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
-import { daysBetween, localStamp, stamp } from "../lib/format.js";
+import { daysBetween, localStamp, stamp, topboxUrl } from "../lib/format.js";
 import { card, chip, errorBox, h1, hint, input, page } from "../lib/ui.js";
 
 /** Every mechanism (serial number) and where it is now: in the workshop or out at a client. */
@@ -28,7 +28,7 @@ export function MechanismsPage() {
         {list.data?.map((m) => (
           <Link
             key={m.serialNumber}
-            to={`/mechanisms/${encodeURIComponent(m.serialNumber)}`}
+            to={topboxUrl(m.serialNumber)}
             style={{ ...card, color: "inherit", textDecoration: "none", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: 16 }}
           >
             <div>
