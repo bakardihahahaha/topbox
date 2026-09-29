@@ -49,7 +49,7 @@ describe("Google Sheets backup mirror", () => {
     expect(JSON.stringify(res.json())).not.toMatch(/Quota exceeded/);
   });
 
-  it("serves repeated tab reads from cache and drops the cache on write", async () => {
+  it("serves repeated tab reads from cache", async () => {
     const t = await setup();
     await t.mirror.flush();
     const table = new SheetTable(t.sheets, "sheet-1", "parts", 60_000);
@@ -57,11 +57,40 @@ describe("Google Sheets backup mirror", () => {
     await Promise.all([table.readAll(), table.readAll(), table.readAll()]);
     await table.readAll();
     expect(t.sheets.calls.read - before).toBe(1);
-    await table.upsert(TABLES.find((x) => x.name === "parts")!.columns, [{ id: "p9", part_number: "Z", name: "Z", description: "", created_at: "", updated_at: "", deleted_at: "" }]);
-    const afterWrite = t.sheets.calls.read;
-    const rows = await table.readAll();
-    expect(t.sheets.calls.read).toBe(afterWrite + 1);
-    expect(rows.some((r) => r.id === "p9")).toBe(true);
+  });
+
+  it("sends a whole sync — many sign-offs, several tabs — as ONE write call", async () => {
+    const t = await setup();
+    t.mirror.stop(); // no automatic pushes in between — this test flushes by hand
+    await t.mirror.flush(); // first sync (creates the tabs) — also one write
+    const op = t.as((await t.login("op", "2222")).token);
+    const first = t.template.checks[0]!;
+    for (let i = 0; i < 20; i++) {
+      const id = randomUUID();
+      await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: `B-${i}`, typeId: "new-uk" });
+      await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: first.id, value: "pass" });
+      await op("PUT", `/api/signoffs/${id}/signatures/${first.id}`, { path: "M10 10L90 60L150 20", date: "2026-09-29" });
+    }
+    const writes = t.sheets.calls.write;
+    const reads = t.sheets.calls.read;
+    const pushed = await t.mirror.flush();
+    expect(pushed).toBe(20 * 17); // 20 × (sign-off + 15 marks + signature)
+    expect(t.sheets.calls.write - writes).toBe(1);
+    expect(t.sheets.calls.read - reads).toBeLessThanOrEqual(1);
+    const signoffs = t.sheets.tabs.get("sheet-1/signoffs")!;
+    expect(signoffs.length).toBe(21); // header + 20
+    expect(t.sheets.tabs.get("sheet-1/signoff_signatures")!.length).toBe(21);
+
+    // An update right after overwrites in place — still one write, and no re-read (cache holds
+    // exactly what was written).
+    await op("PATCH", `/api/signoffs/${signoffs[5]![0]}`, { notes: "scratch on the lid" });
+    const w2 = t.sheets.calls.write;
+    const r2 = t.sheets.calls.read;
+    await t.mirror.flush();
+    expect(t.sheets.calls.write - w2).toBe(1);
+    expect(t.sheets.calls.read - r2).toBe(0);
+    expect(t.sheets.tabs.get("sheet-1/signoffs")!.length).toBe(21);
+    expect(JSON.stringify(t.sheets.tabs.get("sheet-1/signoffs")![5])).toContain("scratch on the lid");
   });
 
   it("restores a fresh database from the sheet", async () => {

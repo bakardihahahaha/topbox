@@ -1,4 +1,4 @@
-import type { SheetsApi } from "./SheetsApi.js";
+import { toRowData, type SheetRequest, type SheetsApi } from "./SheetsApi.js";
 
 export function columnLetter(index: number): string {
   let n = index + 1;
@@ -14,12 +14,14 @@ export function columnLetter(index: number): string {
 /**
  * One Google Sheets tab, addressed by header name, with a short server-side read cache.
  *
+ * Writing: plan() turns rows into requests (overwrite in place by id, append the new ones) without
+ * calling Google — MirrorService collects the plans of every tab and sends them as ONE batch.
+ *
  * Read cache: a tab read twice within `cacheTtlMs` (several devices refreshing after the same
  * change, the mirror upserting two batches back to back, an admin reopening the Backup screen)
  * is answered from memory instead of asking Google again. Concurrent readers share ONE in-flight
- * request. The cache is dropped the moment anything is written to this tab — success or failure,
- * since a failed write may still have partially landed — so nobody ever sees data older than
- * their own last write, while the number of calls against Google's per-minute quota falls.
+ * request. After a successful write the cache holds exactly what was written (no re-read needed);
+ * a failed write drops it, so nobody ever sees data older than their own last write.
  */
 export class SheetTable {
   private cached: { grid: string[][]; at: number } | null = null;
@@ -65,50 +67,54 @@ export class SheetTable {
     return rows.filter((r) => r.some((v) => v !== "")).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ""])));
   }
 
-  private async write<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } finally {
-      this.invalidate();
+  fresh(): boolean {
+    return Boolean(this.cached && Date.now() - this.cached.at < this.cacheTtlMs);
+  }
+
+  /** Seeds the cache with a grid read elsewhere (one batchGet covering several tabs). */
+  prime(grid: string[][]): void {
+    this.invalidate();
+    this.cached = { grid, at: Date.now() };
+  }
+
+  /** The requests that upsert `rows` by id into this tab (header first if columns are missing —
+   * appended on the right, never reordered, a human may have added their own), plus the grid as
+   * it will look afterwards. Needs the current grid (readGrid/prime) — calls nothing itself. */
+  async plan(sheetId: number, columns: readonly string[], rows: Record<string, string>[]): Promise<{ requests: SheetRequest[]; grid: string[][] }> {
+    const grid = (await this.readGrid()).map((r) => [...r]);
+    const requests: SheetRequest[] = [];
+    const current = grid[0] ?? [];
+    const missing = columns.filter((c) => !current.includes(c));
+    const header = [...current, ...missing];
+    if (missing.length > 0) {
+      requests.push({ updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: header.length }, rows: [toRowData(header)], fields: "userEnteredValue" } });
+      grid[0] = header;
     }
-  }
-
-  /** Makes sure the header row holds every column in `columns` (appending any missing ones on
-   * the right, never reordering what's there — a human may have added their own columns). */
-  async ensureHeader(columns: readonly string[]): Promise<string[]> {
-    const grid = await this.readGrid();
-    const header = grid[0] ?? [];
-    const missing = columns.filter((c) => !header.includes(c));
-    if (missing.length === 0) return header;
-    const next = [...header, ...missing];
-    await this.write(() => this.api.batchUpdate(this.spreadsheetId, [{ range: `${this.tab}!A1`, values: [next] }]));
-    return next;
-  }
-
-  /** Upsert by `id`: existing rows are overwritten in place (one batched call), new ones appended
-   * (one call). Rows are never deleted from the sheet — the app soft-deletes via deleted_at. */
-  async upsert(columns: readonly string[], rows: Record<string, string>[]): Promise<void> {
-    if (rows.length === 0) return;
-    const header = await this.ensureHeader(columns);
-    const grid = await this.readGrid();
     const idCol = header.indexOf("id");
     const rowIndexById = new Map<string, number>();
     grid.forEach((r, i) => {
       if (i > 0 && r[idCol]) rowIndexById.set(r[idCol]!, i);
     });
-
     const toCells = (row: Record<string, string>) => header.map((h, i) => (columns.includes(h) ? (row[h] ?? "") : (grid[rowIndexById.get(row.id!) ?? -1]?.[i] ?? "")));
-    const updates: { range: string; values: string[][] }[] = [];
     const appends: string[][] = [];
-    const lastCol = columnLetter(header.length - 1);
     for (const row of rows) {
       const idx = rowIndexById.get(row.id!);
-      if (idx === undefined) appends.push(toCells(row));
-      else updates.push({ range: `${this.tab}!A${idx + 1}:${lastCol}${idx + 1}`, values: [toCells(row)] });
+      const cells = toCells(row);
+      if (idx === undefined) {
+        appends.push(cells);
+        rowIndexById.set(row.id!, grid.length);
+        grid.push(cells);
+      } else {
+        requests.push({ updateCells: { range: { sheetId, startRowIndex: idx, endRowIndex: idx + 1, startColumnIndex: 0, endColumnIndex: header.length }, rows: [toRowData(cells)], fields: "userEnteredValue" } });
+        grid[idx] = cells;
+      }
     }
-    await this.write(async () => {
-      await this.api.batchUpdate(this.spreadsheetId, updates);
-      await this.api.append(this.spreadsheetId, `${this.tab}!A1`, appends);
-    });
+    if (appends.length > 0) requests.push({ appendCells: { sheetId, rows: appends.map(toRowData), fields: "userEnteredValue" } });
+    return { requests, grid };
+  }
+
+  /** After the batch carrying this tab's plan succeeded. */
+  commit(grid: string[][]): void {
+    this.prime(grid);
   }
 }

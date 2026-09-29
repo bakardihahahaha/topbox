@@ -5,13 +5,30 @@ import { GoogleAuth } from "google-auth-library";
 // FakeSheetsApi (below) implements the same interface in memory for local dev and tests, and can
 // be told to answer 429 to exercise the rate-limit path.
 
+/** One request inside a single spreadsheets:batchUpdate call — the mirror sends every change of a
+ * sync (new tabs, overwritten rows, appended rows, across all tabs) as ONE such call. */
+export type SheetRequest =
+  | { addSheet: { properties: { title: string; sheetId: number } } }
+  | { updateCells: { range: { sheetId: number; startRowIndex: number; endRowIndex: number; startColumnIndex: number; endColumnIndex: number }; rows: SheetRowData[]; fields: "userEnteredValue" } }
+  | { appendCells: { sheetId: number; rows: SheetRowData[]; fields: "userEnteredValue" } };
+
+export interface SheetRowData {
+  values: { userEnteredValue?: { stringValue: string } }[];
+}
+
+/** Values stored as plain strings — a "2026-09-29" or "0012" never becomes a date/number cell, so
+ * a restore reads back exactly what was written. */
+export const toRowData = (cells: string[]): SheetRowData => ({ values: cells.map((v) => (v === "" ? {} : { userEnteredValue: { stringValue: v } })) });
+
 export interface SheetsApi {
-  listTabs(spreadsheetId: string): Promise<string[]>;
-  addTab(spreadsheetId: string, title: string): Promise<void>;
+  /** Every tab with its numeric id (1 read). */
+  listSheets(spreadsheetId: string): Promise<{ title: string; sheetId: number }[]>;
   /** Whole-tab read, e.g. "parts!A1:ZZ". */
   getValues(spreadsheetId: string, range: string): Promise<string[][]>;
-  batchUpdate(spreadsheetId: string, data: { range: string; values: string[][] }[]): Promise<void>;
-  append(spreadsheetId: string, range: string, values: string[][]): Promise<void>;
+  /** Several ranges in one read call — result in the same order as `ranges`. */
+  batchGet(spreadsheetId: string, ranges: string[]): Promise<string[][][]>;
+  /** Everything in one write call, applied by Google in order, all or nothing. */
+  batch(spreadsheetId: string, requests: SheetRequest[]): Promise<void>;
 }
 
 export function statusOf(err: unknown): number | undefined {
@@ -53,16 +70,12 @@ export class GoogleSheetsApi implements SheetsApi {
     });
   }
 
-  async listTabs(spreadsheetId: string) {
-    const data = await this.request<{ sheets?: { properties?: { title?: string } }[] }>({
+  async listSheets(spreadsheetId: string) {
+    const data = await this.request<{ sheets?: { properties?: { title?: string; sheetId?: number } }[] }>({
       url: `${BASE}/${encodeURIComponent(spreadsheetId)}`,
-      params: { fields: "sheets.properties.title" },
+      params: { fields: "sheets.properties(title,sheetId)" },
     });
-    return (data.sheets ?? []).map((s) => s.properties?.title ?? "");
-  }
-
-  async addTab(spreadsheetId: string, title: string) {
-    await this.request({ url: `${BASE}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, method: "POST", data: { requests: [{ addSheet: { properties: { title } } }] } });
+    return (data.sheets ?? []).map((s) => ({ title: s.properties?.title ?? "", sheetId: s.properties?.sheetId ?? 0 }));
   }
 
   async getValues(spreadsheetId: string, range: string) {
@@ -70,21 +83,16 @@ export class GoogleSheetsApi implements SheetsApi {
     return data.values ?? [];
   }
 
-  // valueInputOption RAW: stored exactly as sent — a "2026-09-29" or "0012" never gets turned into
-  // a date/number cell by Sheets' own type detection, so restore reads back the identical string.
-  async batchUpdate(spreadsheetId: string, data: { range: string; values: string[][] }[]) {
-    if (data.length === 0) return;
-    await this.request({ url: `${BASE}/${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, method: "POST", data: { valueInputOption: "RAW", data } });
+  async batchGet(spreadsheetId: string, ranges: string[]) {
+    if (ranges.length === 0) return [];
+    const query = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join("&");
+    const data = await this.request<{ valueRanges?: { values?: string[][] }[] }>({ url: `${BASE}/${encodeURIComponent(spreadsheetId)}/values:batchGet?${query}` });
+    return ranges.map((_, i) => data.valueRanges?.[i]?.values ?? []);
   }
 
-  async append(spreadsheetId: string, range: string, values: string[][]) {
-    if (values.length === 0) return;
-    await this.request({
-      url: `${BASE}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append`,
-      method: "POST",
-      params: { valueInputOption: "RAW", insertDataOption: "INSERT_ROWS" },
-      data: { values },
-    });
+  async batch(spreadsheetId: string, requests: SheetRequest[]) {
+    if (requests.length === 0) return;
+    await this.request({ url: `${BASE}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, method: "POST", data: { requests } });
   }
 }
 
@@ -109,39 +117,56 @@ export class FakeSheetsApi implements SheetsApi {
     return `${spreadsheetId}/${tab}`;
   }
 
-  async listTabs(spreadsheetId: string) {
+  private sheetIds = new Map<string, number>(); // "<spreadsheet>/<tab>" -> sheetId
+
+  async listSheets(spreadsheetId: string) {
     this.maybeFail();
     this.calls.read++;
-    return [...this.tabs.keys()].filter((k) => k.startsWith(`${spreadsheetId}/`)).map((k) => k.slice(spreadsheetId.length + 1));
-  }
-  async addTab(spreadsheetId: string, title: string) {
-    this.maybeFail();
-    this.calls.write++;
-    if (!this.tabs.has(this.key(spreadsheetId, title))) this.tabs.set(this.key(spreadsheetId, title), []);
+    return [...this.tabs.keys()]
+      .filter((k) => k.startsWith(`${spreadsheetId}/`))
+      .map((k) => ({ title: k.slice(spreadsheetId.length + 1), sheetId: this.sheetIds.get(k) ?? 0 }));
   }
   async getValues(spreadsheetId: string, range: string) {
     this.maybeFail();
     this.calls.read++;
-    const tab = range.split("!")[0]!;
-    return (this.tabs.get(this.key(spreadsheetId, tab)) ?? []).map((r) => [...r]);
+    return this.grid(spreadsheetId, range.split("!")[0]!);
   }
-  async batchUpdate(spreadsheetId: string, data: { range: string; values: string[][] }[]) {
+  async batchGet(spreadsheetId: string, ranges: string[]) {
+    this.maybeFail();
+    this.calls.read++;
+    return ranges.map((r) => this.grid(spreadsheetId, r.split("!")[0]!));
+  }
+  async batch(spreadsheetId: string, requests: SheetRequest[]) {
     this.maybeFail();
     this.calls.write++;
-    for (const d of data) {
-      const [tab, cell] = d.range.split("!") as [string, string];
-      const rowIndex = Number(/\d+/.exec(cell)![0]) - 1;
-      const grid = this.tabs.get(this.key(spreadsheetId, tab)) ?? [];
-      d.values.forEach((row, i) => (grid[rowIndex + i] = [...row]));
-      this.tabs.set(this.key(spreadsheetId, tab), grid);
+    // All or nothing, like Google: work on copies, swap in at the end.
+    const next = new Map([...this.tabs].map(([k, g]) => [k, g.map((r) => [...r])]));
+    const ids = new Map(this.sheetIds);
+    const titleOf = (sheetId: number) => {
+      const key = [...ids.entries()].find(([k, v]) => v === sheetId && k.startsWith(`${spreadsheetId}/`))?.[0];
+      if (!key) throw Object.assign(new Error(`No sheet with id ${sheetId}`), { response: { status: 400 } });
+      return key;
+    };
+    const cells = (r: SheetRowData) => r.values.map((v) => v.userEnteredValue?.stringValue ?? "");
+    for (const req of requests) {
+      if ("addSheet" in req) {
+        const key = this.key(spreadsheetId, req.addSheet.properties.title);
+        next.set(key, []);
+        ids.set(key, req.addSheet.properties.sheetId);
+      } else if ("updateCells" in req) {
+        const key = titleOf(req.updateCells.range.sheetId);
+        const grid = next.get(key)!;
+        req.updateCells.rows.forEach((r, i) => (grid[req.updateCells.range.startRowIndex + i] = cells(r)));
+      } else {
+        const grid = next.get(titleOf(req.appendCells.sheetId))!;
+        grid.push(...req.appendCells.rows.map(cells));
+      }
     }
+    this.tabs.clear();
+    for (const [k, g] of next) this.tabs.set(k, g);
+    this.sheetIds = ids;
   }
-  async append(spreadsheetId: string, range: string, values: string[][]) {
-    this.maybeFail();
-    this.calls.write++;
-    const tab = range.split("!")[0]!;
-    const grid = this.tabs.get(this.key(spreadsheetId, tab)) ?? [];
-    grid.push(...values.map((r) => [...r]));
-    this.tabs.set(this.key(spreadsheetId, tab), grid);
+  private grid(spreadsheetId: string, tab: string) {
+    return (this.tabs.get(this.key(spreadsheetId, tab)) ?? []).map((r) => [...r]);
   }
 }
