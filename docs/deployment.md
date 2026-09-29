@@ -21,16 +21,14 @@ container port **8084** (decom 8083, KPI 8082, Stock Take 8080).
 2. **DSM → Control Panel → Login Portal → Advanced → Reverse Proxy → Create**:
    - Source: HTTPS, `topbox.duckdns.org`, port 443 (enable HSTS)
    - Destination: HTTP, `localhost`, port **8084**
-   - **Custom Header → Create**:
-     - `X-Forwarded-For` = `$proxy_add_x_forwarded_for`
-     - `X-Real-IP` = `$remote_addr`
-     - also **Create → WebSocket** (adds the Upgrade/Connection headers; harmless, keeps live
-       updates snappy)
+   - Custom headers: none needed normally — set it up exactly like the other apps. DSM's reverse
+     proxy already forwards the visitor's real address (`X-Forwarded-For`/`X-Real-IP`).
 
-   The `X-Forwarded-For` header is what lets the app see each user's real IP — the
-   one-IP-per-account rule and the login rate limit depend on it. **Check it** after the first
-   sign-in: Setup → Users shows each active session's IP. If everyone shows `172.x.x.x` or
-   `127.0.0.1`, the header is missing.
+   The real address matters more here than in the other apps: the one-IP-per-account rule, the
+   per-IP PIN guard and the login rate limit all key on it. **Check it** after the first sign-in:
+   Setup → Users shows each active session's IP. If it's your real public/mobile IP, all good. If
+   everyone shows `172.x.x.x` or `127.0.0.1`, add under **Custom Header → Create → Custom**:
+   `X-Forwarded-For` = `$proxy_add_x_forwarded_for` and `X-Real-IP` = `$remote_addr`.
 
 ## 3. Google Sheets backup (service account)
 
