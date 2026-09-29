@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings, type Signoff, type Template } from "@biosite-signoff/shared";
+import { type DocumentSettings, type Signoff, type Template } from "@biosite-signoff/shared";
 import { getDocumentSettings, listTemplates, saveDocumentSettings, updateTemplate } from "../lib/api.js";
 import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
@@ -117,9 +117,8 @@ export function SetupDocumentPage() {
             </button>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
-            <Field label="Logo text (red part)" value={s.logoTextAccent} onChange={(logoTextAccent) => set({ logoTextAccent })} />
-            <Field label="Logo text (dark part)" value={s.logoText} onChange={(logoText) => set({ logoText })} />
+          <div style={{ maxWidth: 420 }}>
+            <Field label="Logo (text, printed in black)" value={s.logoText} onChange={(logoText) => set({ logoText })} />
           </div>
         )}
         <label style={{ ...ghost, height: "auto", padding: "8px 12px", display: "inline-flex", alignSelf: "flex-start", alignItems: "center" }}>
@@ -181,9 +180,6 @@ export function SetupDocumentPage() {
         </button>
         <button style={{ ...ghost, height: 38 }} onClick={preview}>
           Preview PDF
-        </button>
-        <button style={{ ...ghost, height: 38 }} onClick={() => set({ ...DEFAULT_DOCUMENT_SETTINGS })}>
-          Reset to Biosite defaults
         </button>
       </div>
     </div>

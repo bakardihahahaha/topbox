@@ -48,8 +48,7 @@ const pin = z.string().regex(/^\d{4,8}$/, "PIN must be 4–8 digits");
 export const DOCUMENT_SETTINGS_KEY = "document";
 
 const documentSettingsInput = z.object({
-  logoTextAccent: z.string().max(40),
-  logoText: z.string().max(40),
+  logoText: z.string().max(60),
   // Resized client-side to a small PNG/JPEG; the cap keeps it inside one Google Sheets cell.
   logoDataUrl: z.string().max(45_000).refine((v) => v === "" || /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(v), "Logo must be a PNG or JPEG image"),
   companyName: z.string().max(200),
@@ -60,7 +59,11 @@ const documentSettingsInput = z.object({
 
 export async function readDocumentSettings(store: Store): Promise<DocumentSettings> {
   const raw = await store.appSettings.get(DOCUMENT_SETTINGS_KEY);
-  return { ...DEFAULT_DOCUMENT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<DocumentSettings>) : {}) };
+  const saved = raw ? (JSON.parse(raw) as Partial<DocumentSettings> & { logoTextAccent?: string }) : {};
+  // Settings saved before the logo became one plain-text field kept it in two parts ("BIO" + "SITE").
+  const { logoTextAccent, ...rest } = saved;
+  const logoText = logoTextAccent !== undefined ? `${logoTextAccent}${rest.logoText ?? ""}` : rest.logoText;
+  return { ...DEFAULT_DOCUMENT_SETTINGS, ...rest, ...(logoText !== undefined ? { logoText } : {}) };
 }
 
 export function registerApi(app: FastifyInstance, s: Services): void {

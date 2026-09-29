@@ -137,3 +137,14 @@ describe("docker-compose admin", () => {
     expect(await auth.login(admin!.id, "1357", "1.1.1.2")).toMatchObject({ ok: true, role: "admin" });
   });
 });
+
+describe("document settings — logo text", () => {
+  it("reads a legacy two-part logo as one text", async () => {
+    const t = await setup();
+    await t.store.appSettings.set("document", JSON.stringify({ logoTextAccent: "BIO", logoText: "SITE" }));
+    const admin = await t.login("admin", "1111");
+    const d = (await t.as(admin.token)("GET", "/api/document-settings")).json();
+    expect(d.logoText).toBe("BIOSITE");
+    expect(d).not.toHaveProperty("logoTextAccent");
+  });
+});

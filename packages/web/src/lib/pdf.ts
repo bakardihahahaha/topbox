@@ -44,10 +44,8 @@ function drawMasthead(doc: jsPDF, documentRef: string, b: PdfBranding) {
   } else {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.setTextColor(...RED);
-    doc.text(pdfText(c.logoTextAccent), PAGE.margin, 22);
-    doc.setTextColor(60, 60, 60);
-    doc.text(pdfText(c.logoText), PAGE.margin + doc.getTextWidth(pdfText(c.logoTextAccent)), 22);
+    doc.setTextColor(0, 0, 0);
+    if (c.logoText.trim()) doc.text(pdfText(c.logoText.trim()), PAGE.margin, 22, { maxWidth: 90 });
   }
 
   doc.setFont("helvetica", "normal");

@@ -146,10 +146,9 @@ export type Role = "admin" | "operator";
 /** Company details printed on every PDF page — edited in Setup → Document, shared by all
  * templates (each template keeps its own title, document reference and id). */
 export interface DocumentSettings {
-  /** Two-tone wordmark shown when no logo image is uploaded: "BIO" (accent) + "SITE". */
-  logoTextAccent: string;
+  /** Logo as plain black text, used when no logo image is uploaded. */
   logoText: string;
-  /** PNG/JPEG data URL; replaces the wordmark when set. */
+  /** PNG/JPEG data URL; replaces the text logo when set. */
   logoDataUrl: string;
   companyName: string;
   /** Top-right address block, one line per line (street, city, postcode, tel, web…). */
@@ -161,8 +160,7 @@ export interface DocumentSettings {
 }
 
 export const DEFAULT_DOCUMENT_SETTINGS: DocumentSettings = {
-  logoTextAccent: "BIO",
-  logoText: "SITE",
+  logoText: "BIOSITE",
   logoDataUrl: "",
   companyName: "Biosite Systems Ltd.",
   address: "Lancaster House\nDrayton Road, Solihull, UK\nB90 4NG\nTel: +44(0)121 374 2939\nwww.biositesystems.com",
