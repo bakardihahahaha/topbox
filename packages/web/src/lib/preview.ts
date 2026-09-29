@@ -30,6 +30,8 @@ export function mechanismPreview(template: Template | undefined, me: Me, serialN
     template: t,
     serialNumber,
     mode: "new",
+    typeId: "",
+    typeName: "New",
     notes: "",
     marks: [],
     signatures: [],

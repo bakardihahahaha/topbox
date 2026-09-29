@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { isCheckFullyMarked, signoffProgress, signoffStatus, type MarkValue, type Part, type Signoff, type TemplateCheck } from "@biosite-signoff/shared";
+import { isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -13,6 +13,7 @@ import { downloadPdf, openPdf } from "../lib/pdfLazy.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
+import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, input, label, page, primary } from "../lib/ui.js";
 
 const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fail: "na", na: null };
@@ -26,6 +27,9 @@ export function SignoffPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [signing, setSigning] = useState<TemplateCheck | null>(null);
+  const types = useSignoffTypes();
+  const typesRef = useRef(types);
+  typesRef.current = types;
   const inflight = useRef(0);
   const partsRef = useRef<Part[]>([]);
   partsRef.current = parts;
@@ -43,7 +47,7 @@ export function SignoffPage() {
       }
     }
     const pending = await pendingFor(id);
-    const merged = pending.reduce((s, a) => applyLocal(s, a, me, partsRef.current), base);
+    const merged = pending.reduce((s, a) => applyLocal(s, a, me, partsRef.current, typesRef.current), base);
     if (inflight.current > 0) return;
     setSignoff(merged);
     cacheSignoff(merged);
@@ -65,7 +69,7 @@ export function SignoffPage() {
     setError(null);
     setSignoff((s) => {
       if (!s) return s;
-      const next = applyLocal(s, action, me, parts);
+      const next = applyLocal(s, action, me, parts, types);
       cacheSignoff(next);
       return next;
     });
@@ -104,13 +108,17 @@ export function SignoffPage() {
     void mutate({ kind: "setMark", id, rowId, checkId, value }, () => api.setMark(id, rowId, checkId, value));
   }
 
-  async function changeMode(mode: "new" | "service") {
-    if (mode === s.mode) return;
-    if (mode === "new" && s.parts.length > 0) {
-      setError("Untick the replaced parts first — a New sign-off can't have replaced parts.");
+  // Records from before types existed have no typeId — match them by name, then by mode.
+  const currentTypeId = s.typeId || types.find((x) => x.name === s.typeName)?.id || "";
+
+  async function changeType(typeId: string) {
+    const next = types.find((x) => x.id === typeId);
+    if (!next || typeId === currentTypeId) return;
+    if (!next.allowsParts && s.parts.length > 0) {
+      setError(`Untick the replaced parts first — ${next.name} doesn't record replaced parts.`);
       return;
     }
-    await mutate({ kind: "updateHeader", id, patch: { mode } }, () => api.updateSignoffHeader(id, { mode }));
+    await mutate({ kind: "updateHeader", id, patch: { typeId } }, () => api.updateSignoffHeader(id, { typeId }));
   }
 
   async function remove() {
@@ -166,17 +174,21 @@ export function SignoffPage() {
             <span className="mono" style={label}>
               Type
             </span>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              {(["new", "service"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => void changeMode(m)}
-                  style={{ ...ghost, height: 38, borderColor: s.mode === m ? "var(--accent)" : "var(--border)", color: s.mode === m ? "var(--accent)" : "var(--text-3)", background: s.mode === m ? "var(--accent-wash)" : "transparent" }}
-                >
-                  {m === "new" ? "New (check only)" : "Service"}
-                </button>
-              ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 6 }}>
+              {types.map((x) => {
+                const on = x.id === currentTypeId;
+                return (
+                  <button
+                    key={x.id}
+                    onClick={() => void changeType(x.id)}
+                    style={{ ...ghost, height: 38, borderColor: on ? "var(--accent)" : "var(--border)", color: on ? "var(--accent)" : "var(--text-3)", background: on ? "var(--accent-wash)" : "transparent" }}
+                  >
+                    {x.name}
+                  </button>
+                );
+              })}
             </div>
+            {!currentTypeId && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Recorded as: {typeNameOf(s)}</span>}
           </div>
         </div>
       </div>

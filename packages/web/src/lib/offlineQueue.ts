@@ -15,8 +15,9 @@ import { ApiError } from "./client.js";
 import * as api from "./api.js";
 
 export type QueuedAction =
-  | { kind: "createSignoff"; input: { id: string; templateId: string; serialNumber: string; mode: SignoffMode } }
-  | { kind: "updateHeader"; id: string; patch: { serialNumber?: string; notes?: string; mode?: SignoffMode } }
+  // `mode` only on entries queued before sign-off types existed — the server still accepts it.
+  | { kind: "createSignoff"; input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode } }
+  | { kind: "updateHeader"; id: string; patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode } }
   | { kind: "setMark"; id: string; rowId: string; checkId: string; value: MarkValue | null }
   | { kind: "fillCheck"; id: string; checkId: string; value: MarkValue }
   | { kind: "sign"; id: string; checkId: string; path: string; date: string }

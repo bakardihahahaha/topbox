@@ -56,6 +56,8 @@ export const TABLES: readonly TableSpec[] = [
       "template_json",
       "serial_number",
       "mode",
+      "type_id",
+      "type_name",
       "status",
       "notes",
       "created_by",

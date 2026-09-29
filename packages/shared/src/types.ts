@@ -66,9 +66,31 @@ export interface Part {
 
 export type PartInput = Pick<Part, "partNumber" | "name" | "description">;
 
-/** "new" mechanisms are only checked. "service" mechanisms are repaired and may have parts
- * replaced — only a service sign-off shows the replaced-parts section. */
+/** Internal flag behind every sign-off type: "new" = check only, "service" = repaired, replaced
+ * parts may be recorded (only then is the replaced-parts section shown). */
 export type SignoffMode = "new" | "service";
+
+/** A button on the New sign-off screen — "New (UK)", "New (USA)", "Service"… — defined by an
+ * admin in Setup → Types. */
+export interface SignoffType {
+  id: string;
+  name: string;
+  /** Small line under the name on the button, e.g. "Check only". */
+  description: string;
+  /** Service-style: replaced parts can be recorded. */
+  allowsParts: boolean;
+}
+
+export const DEFAULT_SIGNOFF_TYPES: SignoffType[] = [
+  { id: "new-uk", name: "New (UK)", description: "Check only", allowsParts: false },
+  { id: "new-usa", name: "New (USA)", description: "Check only", allowsParts: false },
+  { id: "service", name: "Service", description: "Repair + replaced parts", allowsParts: true },
+];
+
+export const modeOf = (t: Pick<SignoffType, "allowsParts">): SignoffMode => (t.allowsParts ? "service" : "new");
+
+/** Display name for a sign-off, including ones created before types existed. */
+export const typeNameOf = (s: { typeName?: string; mode: SignoffMode }) => s.typeName || (s.mode === "service" ? "Service" : "New");
 
 export type MarkValue = "pass" | "fail" | "na";
 
@@ -114,6 +136,10 @@ export interface Signoff {
   template: Template;
   serialNumber: string;
   mode: SignoffMode;
+  /** Which sign-off type was picked; its name is snapshotted so renaming/deleting the type later
+   * never changes an existing record. Empty on records from before types existed. */
+  typeId: string;
+  typeName: string;
   notes: string;
   marks: Mark[];
   signatures: Signature[];
@@ -131,6 +157,7 @@ export interface SignoffSummary {
   templateName: string;
   serialNumber: string;
   mode: SignoffMode;
+  typeName: string;
   status: SignoffStatus;
   /** "2/3" — checks signed (or fully marked when the sign row is off) out of total. */
   progress: string;

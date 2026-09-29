@@ -4,6 +4,7 @@ import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings } from "@biosite-signo
 import type { AuthService } from "../services/auth.js";
 import type { CatalogService } from "../services/catalog.js";
 import type { SignoffService } from "../services/signoffs.js";
+import type { SignoffTypesService } from "../services/signoffTypes.js";
 import type { MirrorService } from "../mirror/MirrorService.js";
 import type { Store } from "../store/Store.js";
 import { HttpError } from "../services/errors.js";
@@ -16,6 +17,7 @@ export interface Services {
   auth: AuthService;
   catalog: CatalogService;
   signoffs: SignoffService;
+  signoffTypes: SignoffTypesService;
   mirror: MirrorService;
 }
 
@@ -141,6 +143,14 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     return (await s.store.audit.list(q.limit)).map((e) => ({ ...e, actorName: e.actorId ? (users.get(e.actorId) ?? e.actorId) : null }));
   });
 
+  // ---- sign-off types (the New sign-off screen's buttons) -------------------------------------
+
+  app.get("/api/signoff-types", authed, async () => s.signoffTypes.list());
+  app.put("/api/signoff-types", admin, async (req) => {
+    const body = parse(z.array(z.object({ id, name: z.string().max(40), description: z.string().max(80).default(""), allowsParts: z.boolean() })).max(12), req.body);
+    return s.signoffTypes.save(body);
+  });
+
   // ---- document settings (company header / address / footer / logo on every PDF) ------------
 
   app.get("/api/document-settings", authed, async () => readDocumentSettings(s.store));
@@ -188,12 +198,13 @@ export function registerApi(app: FastifyInstance, s: Services): void {
         templateId: z.string().optional(),
         status: z.enum(["draft", "complete"]).optional(),
         mode: mode.optional(),
+        typeId: z.string().optional(),
         limit: z.coerce.number().int().min(1).max(200).default(50),
         offset: z.coerce.number().int().min(0).default(0),
       }),
       req.query,
     );
-    return s.signoffs.list({ search: q.q?.trim() || undefined, templateId: q.templateId || undefined, status: q.status, mode: q.mode, limit: q.limit, offset: q.offset });
+    return s.signoffs.list({ search: q.q?.trim() || undefined, templateId: q.templateId || undefined, status: q.status, mode: q.mode, typeId: q.typeId || undefined, limit: q.limit, offset: q.offset });
   });
 
   /** Full records for several sign-offs at once — the multi-select "Generate PDF" on the list. */
@@ -203,14 +214,14 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   });
 
   app.post("/api/signoffs", authed, async (req) => {
-    const body = parse(z.object({ id: z.string().uuid(), templateId: id, serialNumber: z.string().max(100), mode }), req.body);
+    const body = parse(z.object({ id: z.string().uuid(), templateId: id, serialNumber: z.string().max(100), typeId: id.optional(), mode: mode.optional() }), req.body);
     return s.signoffs.create(body, actor(req));
   });
 
   app.get<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => s.signoffs.get(req.params.id));
 
   app.patch<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => {
-    const body = parse(z.object({ serialNumber: z.string().max(100).optional(), notes: z.string().max(5000).optional(), mode: mode.optional() }), req.body);
+    const body = parse(z.object({ serialNumber: z.string().max(100).optional(), notes: z.string().max(5000).optional(), typeId: id.optional(), mode: mode.optional() }), req.body);
     return s.signoffs.updateHeader(req.params.id, body);
   });
 

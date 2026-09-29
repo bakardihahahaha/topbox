@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import type { SignoffMode, Template } from "@biosite-signoff/shared";
+import type { Template } from "@biosite-signoff/shared";
+import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { createSignoff, listTemplates } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { useMe } from "../lib/meContext.js";
@@ -15,7 +16,9 @@ export function NewSignoffPage() {
   const me = useMe();
   const templates = useData<Template[]>(listTemplates);
   const [templateId, setTemplateId] = useState("");
-  const [mode, setMode] = useState<SignoffMode>("new");
+  const types = useSignoffTypes();
+  const [typeId, setTypeId] = useState("");
+  const type = types.find((t) => t.id === typeId) ?? types[0];
   const [serial, setSerial] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,13 +27,13 @@ export function NewSignoffPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!chosen || !serial.trim()) return;
+    if (!chosen || !type || !serial.trim()) return;
     setBusy(true);
     setError(null);
-    const input = { id: crypto.randomUUID(), templateId: chosen.id, serialNumber: serial.trim(), mode };
+    const input = { id: crypto.randomUUID(), templateId: chosen.id, serialNumber: serial.trim(), typeId: type.id };
     try {
       const outcome = await withSaving(() => mutateOrQueue({ kind: "createSignoff", input }, () => createSignoff(input)));
-      cacheSignoff(outcome.synced ? outcome.result : draftSignoff(input, chosen, me));
+      cacheSignoff(outcome.synced ? outcome.result : draftSignoff(input, type, chosen, me));
       navigate(`/signoffs/${input.id}`, { replace: true });
     } catch (err) {
       setError(errorMessage(err));
@@ -41,7 +44,7 @@ export function NewSignoffPage() {
   return (
     <div style={{ ...page, maxWidth: 560 }}>
       <h1 style={h1}>New sign-off</h1>
-      <p style={hint}>Pick the checklist, say whether this is a new mechanism (check only) or a service one (repair, parts may be replaced), then enter its serial number.</p>
+      <p style={hint}>Pick the checklist and the type, then enter the serial number.</p>
       {(error || templates.error) && <div style={errorBox}>{error ?? templates.error}</div>}
       {templates.data?.length === 0 && <div style={errorBox}>No templates yet — an admin needs to create one under Setup → Templates.</div>}
 
@@ -64,29 +67,29 @@ export function NewSignoffPage() {
           <span className="mono" style={label}>
             Type
           </span>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {(["new", "service"] as const).map((m) => (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+            {types.map((t) => (
               <button
-                key={m}
+                key={t.id}
                 type="button"
-                onClick={() => setMode(m)}
+                onClick={() => setTypeId(t.id)}
                 style={{
-                  height: 58,
+                  minHeight: 58,
                   borderRadius: "var(--radius-control)",
-                  border: `1px solid ${mode === m ? "var(--accent)" : "var(--border)"}`,
-                  background: mode === m ? "var(--accent-wash)" : "var(--bg-deep)",
-                  color: mode === m ? "var(--accent-wash-text)" : "var(--text-2)",
+                  border: `1px solid ${type?.id === t.id ? "var(--accent)" : "var(--border)"}`,
+                  background: type?.id === t.id ? "var(--accent-wash)" : "var(--bg-deep)",
+                  color: type?.id === t.id ? "var(--accent-wash-text)" : "var(--text-2)",
                   cursor: "pointer",
                   textAlign: "left",
-                  padding: "0 12px",
+                  padding: "8px 12px",
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{m === "new" ? "New" : "Service"}</div>
-                <div style={{ fontSize: 11.5, opacity: 0.8 }}>{m === "new" ? "Check only" : "Repair + replaced parts"}</div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{t.name}</div>
+                {t.description && <div style={{ fontSize: 11.5, opacity: 0.8 }}>{t.description}</div>}
               </button>
             ))}
           </div>
-          {mode === "service" && chosen && chosen.partIds.length === 0 && (
+          {type?.allowsParts && chosen && chosen.partIds.length === 0 && (
             <span style={{ fontSize: 12, color: "var(--text-3)" }}>This checklist has no replaceable parts defined — parts can be enabled for it in Setup → Templates.</span>
           )}
         </div>

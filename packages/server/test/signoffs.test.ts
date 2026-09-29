@@ -98,3 +98,42 @@ describe("sign-off flow", () => {
     expect(((await t.as(token)("GET", `/api/signoffs/${id}`)).json() as Signoff).template.checks).toHaveLength(2);
   });
 });
+
+describe("sign-off types", () => {
+  it("defaults to New (UK) / New (USA) / Service; admin edits them; records keep their type name", async () => {
+    const t = await setup();
+    const admin = await t.login("admin", "1111");
+    const call = t.as(admin.token);
+    const types = (await call("GET", "/api/signoff-types")).json();
+    expect(types.map((x: { name: string }) => x.name)).toEqual(["New (UK)", "New (USA)", "Service"]);
+
+    const usa = randomUUID();
+    const created = (await call("POST", "/api/signoffs", { id: usa, templateId: t.template.id, serialNumber: "U-1", typeId: "new-usa" })).json() as Signoff;
+    expect(created).toMatchObject({ typeId: "new-usa", typeName: "New (USA)", mode: "new" });
+
+    // Admin adds a type, renames one, reorders.
+    const next = [
+      { id: "service", name: "Service", description: "Repair", allowsParts: true },
+      { id: "new-usa", name: "New (US)", description: "Check only", allowsParts: false },
+      { id: "rework", name: "Rework", description: "Parts may change", allowsParts: true },
+    ];
+    expect((await call("PUT", "/api/signoff-types", next)).json().map((x: { name: string }) => x.name)).toEqual(["Service", "New (US)", "Rework"]);
+    expect((await call("PUT", "/api/signoff-types", [])).statusCode).toBe(400);
+    expect((await call("PUT", "/api/signoff-types", [next[0], { ...next[1], name: "service" }])).statusCode).toBe(400);
+
+    // The existing record keeps the name it was created with.
+    expect(((await call("GET", `/api/signoffs/${usa}`)).json() as Signoff).typeName).toBe("New (USA)");
+
+    // Switching to a parts-allowing type enables parts; switching back with parts is refused.
+    const part = await t.catalog.createPart({ partNumber: "P", name: "Spring", description: "" });
+    await t.catalog.updateTemplate(t.template.id, { ...t.template, partIds: [part.id] });
+    const svc = randomUUID();
+    await call("POST", "/api/signoffs", { id: svc, templateId: t.template.id, serialNumber: "S-9", typeId: "new-usa" });
+    expect((await call("PATCH", `/api/signoffs/${svc}`, { typeId: "rework" })).json()).toMatchObject({ typeName: "Rework", mode: "service" });
+    await call("PUT", `/api/signoffs/${svc}/parts/${randomUUID()}`, { partId: part.id, qty: 1 });
+    expect((await call("PATCH", `/api/signoffs/${svc}`, { typeId: "new-usa" })).json().error).toBe("HAS_PARTS");
+
+    const filtered = (await call("GET", "/api/signoffs?typeId=rework")).json();
+    expect(filtered.items.map((x: { typeName: string }) => x.typeName)).toEqual(["Rework"]);
+  });
+});

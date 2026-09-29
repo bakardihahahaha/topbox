@@ -18,6 +18,7 @@ export interface SignoffFilter {
   templateId?: string;
   status?: "draft" | "complete";
   mode?: SignoffMode;
+  typeId?: string;
   limit?: number;
   offset?: number;
 }
@@ -29,8 +30,8 @@ export function listSignoffs(f: SignoffFilter) {
 }
 export const getSignoff = (id: string) => getJson<Signoff>(`/api/signoffs/${id}`);
 export const getSignoffs = (ids: string[]) => sendJson<Signoff[]>("POST", "/api/signoffs/batch", { ids });
-export const createSignoff = (input: { id: string; templateId: string; serialNumber: string; mode: SignoffMode }) => sendJson<Signoff>("POST", "/api/signoffs", input);
-export const updateSignoffHeader = (id: string, patch: { serialNumber?: string; notes?: string; mode?: SignoffMode }) => sendJson<Signoff>("PATCH", `/api/signoffs/${id}`, patch);
+export const createSignoff = (input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode }) => sendJson<Signoff>("POST", "/api/signoffs", input);
+export const updateSignoffHeader = (id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode }) => sendJson<Signoff>("PATCH", `/api/signoffs/${id}`, patch);
 export const deleteSignoff = (id: string) => sendJson("DELETE", `/api/signoffs/${id}`);
 export const setMark = (id: string, rowId: string, checkId: string, value: MarkValue | null) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/marks`, { rowId, checkId, value });
 export const fillCheck = (id: string, checkId: string, value: MarkValue) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/fill`, { checkId, value });

@@ -1,4 +1,5 @@
-import { isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary } from "@biosite-signoff/shared";
+import { isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary } from "@biosite-signoff/shared";
+import type { SignoffTypesService } from "./signoffTypes.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
 import { badRequest, conflict, forbidden, notFound } from "./errors.js";
 
@@ -15,7 +16,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const PATH_RE = /^[ML0-9 .-]+$/;
 
 export class SignoffService {
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly types: SignoffTypesService,
+  ) {}
 
   private async require(id: string) {
     const s = await this.store.signoffs.get(id);
@@ -43,6 +47,7 @@ export class SignoffService {
       templateName: s.template.name,
       serialNumber: s.serialNumber,
       mode: s.mode,
+      typeName: typeNameOf(s),
       status: signoffStatus(s),
       progress: `${done}/${total}`,
       createdByName: s.createdByName,
@@ -61,13 +66,14 @@ export class SignoffService {
   }
 
   /** `id` comes from the client so a queued/retried create is idempotent. */
-  async create(input: { id: string; templateId: string; serialNumber: string; mode: SignoffMode }, actor: Actor): Promise<Signoff> {
+  async create(input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode }, actor: Actor): Promise<Signoff> {
     const existing = await this.store.signoffs.get(input.id);
     if (existing) return existing;
     const template = await this.store.templates.get(input.templateId);
     if (!template) throw notFound("Template");
     const serialNumber = input.serialNumber.trim();
     if (!serialNumber) throw badRequest("Serial number is required.");
+    const type = await this.types.resolve(input);
     const now = new Date().toISOString();
     // A number collision (two creates racing) just retries with the next number.
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -78,7 +84,7 @@ export class SignoffService {
           templateId: template.id,
           template,
           serialNumber,
-          mode: input.mode,
+          ...type,
           status: "draft",
           notes: "",
           createdBy: actor.userId,
@@ -94,11 +100,14 @@ export class SignoffService {
     return this.require(input.id);
   }
 
-  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: SignoffMode }): Promise<Signoff> {
+  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode }): Promise<Signoff> {
     const s = await this.require(id);
     if (patch.serialNumber !== undefined && !patch.serialNumber.trim()) throw badRequest("Serial number is required.");
-    if (patch.mode === "new" && s.parts.length > 0) throw conflict("HAS_PARTS", "Remove the replaced parts before switching this sign-off to New.");
-    await this.store.signoffs.updateHeader(id, { serialNumber: patch.serialNumber?.trim(), notes: patch.notes, mode: patch.mode }, new Date().toISOString());
+    const type = patch.typeId !== undefined || patch.mode !== undefined ? await this.types.resolve(patch) : undefined;
+    if (type?.mode === "new" && s.parts.length > 0) {
+      throw conflict("HAS_PARTS", `Remove the replaced parts before switching this sign-off to ${type.typeName || "a check-only type"}.`);
+    }
+    await this.store.signoffs.updateHeader(id, { serialNumber: patch.serialNumber?.trim(), notes: patch.notes, ...type }, new Date().toISOString());
     return this.refresh(id);
   }
 
@@ -176,7 +185,7 @@ export class SignoffService {
   /** `partRowId` is client-generated, so a retried add lands on the same row. */
   async setPart(id: string, partRowId: string, input: { partId: string; qty: number; note: string }): Promise<Signoff> {
     const s = await this.require(id);
-    if (s.mode !== "service") throw conflict("NOT_SERVICE", "Parts can only be recorded on a service sign-off.");
+    if (s.mode !== "service") throw conflict("NOT_SERVICE", `Parts can't be recorded on a ${typeNameOf(s)} sign-off — only on a type that allows replaced parts.`);
     if (!s.template.partIds.includes(input.partId)) throw badRequest("This part isn't allowed for this template.");
     if (!Number.isInteger(input.qty) || input.qty < 1 || input.qty > 999) throw badRequest("Quantity must be 1–999.");
     const existingLine = s.parts.find((p) => p.id === partRowId);

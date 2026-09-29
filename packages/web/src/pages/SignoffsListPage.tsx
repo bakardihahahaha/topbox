@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { SignoffMode, SignoffSummary, Template } from "@biosite-signoff/shared";
+import type { SignoffSummary, Template } from "@biosite-signoff/shared";
 import { getSignoffs, listSignoffs, listTemplates } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
+import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { card, chip, errorBox, errorMessage, formatDateTime, ghost, h1, input, page, primary } from "../lib/ui.js";
 
 const PAGE_SIZE = 50;
@@ -14,7 +15,8 @@ export function SignoffsListPage() {
   const [debouncedQ, setDebouncedQ] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [status, setStatus] = useState<"" | "draft" | "complete">("");
-  const [mode, setMode] = useState<"" | SignoffMode>("");
+  const [typeId, setTypeId] = useState("");
+  const types = useSignoffTypes();
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -26,7 +28,7 @@ export function SignoffsListPage() {
   }, [q]);
 
   const templates = useData<Template[]>(listTemplates);
-  const list = useData(() => listSignoffs({ q: debouncedQ, templateId, status: status || undefined, mode: mode || undefined, limit }), [debouncedQ, templateId, status, mode, limit]);
+  const list = useData(() => listSignoffs({ q: debouncedQ, templateId, status: status || undefined, typeId: typeId || undefined, limit }), [debouncedQ, templateId, status, typeId, limit]);
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -78,10 +80,13 @@ export function SignoffsListPage() {
           <option value="draft">In progress</option>
           <option value="complete">Complete</option>
         </select>
-        <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} style={input}>
-          <option value="">New + service</option>
-          <option value="new">New</option>
-          <option value="service">Service</option>
+        <select value={typeId} onChange={(e) => setTypeId(e.target.value)} style={input}>
+          <option value="">All types</option>
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -126,7 +131,7 @@ function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; 
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>{s.serialNumber}</span>
           <span style={chip(s.status === "complete" ? "accent" : "warn")}>{s.status === "complete" ? "Complete" : `In progress ${s.progress}`}</span>
-          <span style={chip("muted")}>{s.mode === "service" ? "Service" : "New"}</span>
+          <span style={chip("muted")}>{s.typeName}</span>
         </div>
         <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {s.number} · {s.templateName} · {s.createdByName} · {formatDateTime(s.updatedAt)}

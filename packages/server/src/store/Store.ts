@@ -63,6 +63,7 @@ export interface SignoffListFilter {
   templateId?: string;
   status?: SignoffStatus;
   mode?: SignoffMode;
+  typeId?: string;
   limit: number;
   offset: number;
 }
@@ -128,7 +129,7 @@ export interface SignoffsRepo {
   list(filter: SignoffListFilter): Promise<{ items: (Signoff & { status: SignoffStatus })[]; total: number }>;
   /** Next free running number, e.g. 124 — the service formats it. */
   nextNumber(): Promise<number>;
-  updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: SignoffMode }, at: string): Promise<void>;
+  updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: SignoffMode; typeId?: string; typeName?: string }, at: string): Promise<void>;
   setStatus(id: string, status: SignoffStatus, at: string): Promise<void>;
   softDelete(id: string, at: string): Promise<void>;
 

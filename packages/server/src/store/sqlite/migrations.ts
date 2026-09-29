@@ -152,6 +152,12 @@ const MIGRATIONS: string[] = [
     deleted_at TEXT NOT NULL DEFAULT ''
   );
   `,
+  // 3: admin-defined sign-off types ("New (UK)", "New (USA)", "Service"…) — mode stays as the
+  //    parts-allowed flag, the picked type is snapshotted by id and name.
+  `
+  ALTER TABLE signoffs ADD COLUMN type_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE signoffs ADD COLUMN type_name TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

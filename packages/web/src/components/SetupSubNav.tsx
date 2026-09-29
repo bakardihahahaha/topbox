@@ -7,6 +7,7 @@ export function SetupSubNav() {
     ...(me.role === "admin"
       ? [
           { to: "/setup/templates", label: "Templates" },
+          { to: "/setup/types", label: "Types" },
           { to: "/setup/parts", label: "Parts" },
           { to: "/setup/document", label: "Document" },
           { to: "/setup/users", label: "Users" },

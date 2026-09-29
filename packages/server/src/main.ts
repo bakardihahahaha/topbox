@@ -1,3 +1,4 @@
+import { SignoffTypesService } from "./services/signoffTypes.js";
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { SqliteStore } from "./store/sqlite/SqliteStore.js";
@@ -25,7 +26,8 @@ async function main() {
 
   const auth = new AuthService(store, { failureDelayMs: 1000 });
   const catalog = new CatalogService(store);
-  const signoffs = new SignoffService(store);
+  const signoffTypes = new SignoffTypesService(store);
+  const signoffs = new SignoffService(store, signoffTypes);
 
   // ADMIN_NAME / ADMIN_PIN from docker-compose.yml — only used on the very first start (empty
   // database); after that the admin changes their PIN in the app (Setup → My account).
@@ -61,7 +63,7 @@ async function main() {
   const mirror = new MirrorService(store, sheetsApi, SPREADSHEET_ID);
   mirror.start();
 
-  const app = await buildApp({ store, auth, catalog, signoffs, mirror }, { webDistPath: WEB_DIST_PATH, logger: true, trustProxy: TRUST_PROXY });
+  const app = await buildApp({ store, auth, catalog, signoffs, signoffTypes, mirror }, { webDistPath: WEB_DIST_PATH, logger: true, trustProxy: TRUST_PROXY });
   await app.listen({ port: PORT, host: "0.0.0.0" });
 
   const shutdown = async () => {

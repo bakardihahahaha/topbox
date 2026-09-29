@@ -1,4 +1,4 @@
-import type { Part, Signoff, Template } from "@biosite-signoff/shared";
+import { modeOf, type Part, type Signoff, type SignoffType, type Template } from "@biosite-signoff/shared";
 import type { QueuedAction } from "./offlineQueue.js";
 import type { Me } from "./client.js";
 
@@ -6,7 +6,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 /** A brand-new sign-off built locally — shown immediately (even offline) while the create request
  * syncs in the background. The server assigns the real SO number; until then it reads "pending". */
-export function draftSignoff(input: { id: string; serialNumber: string; mode: "new" | "service" }, template: Template, me: Me): Signoff {
+export function draftSignoff(input: { id: string; serialNumber: string }, type: SignoffType, template: Template, me: Me): Signoff {
   const now = new Date().toISOString();
   return {
     id: input.id,
@@ -14,7 +14,9 @@ export function draftSignoff(input: { id: string; serialNumber: string; mode: "n
     templateId: template.id,
     template,
     serialNumber: input.serialNumber,
-    mode: input.mode,
+    mode: modeOf(type),
+    typeId: type.id,
+    typeName: type.name,
     notes: "",
     marks: [],
     signatures: [],
@@ -29,11 +31,14 @@ export function draftSignoff(input: { id: string; serialNumber: string; mode: "n
 /** Mirrors what the server does for each queued action, so the screen can update optimistically
  * and replay still-queued writes on top of a freshly fetched copy. Validation stays on the server
  * — this only ever applies changes the UI already allowed. */
-export function applyLocal(s: Signoff, a: QueuedAction, me: Me, parts: Part[]): Signoff {
+export function applyLocal(s: Signoff, a: QueuedAction, me: Me, parts: Part[], types: SignoffType[] = []): Signoff {
   const at = new Date().toISOString();
   switch (a.kind) {
-    case "updateHeader":
-      return { ...s, ...a.patch };
+    case "updateHeader": {
+      const { typeId, mode, ...rest } = a.patch;
+      const type = typeId ? types.find((t) => t.id === typeId) : undefined;
+      return { ...s, ...rest, ...(type ? { typeId: type.id, typeName: type.name, mode: modeOf(type) } : mode ? { mode } : {}) };
+    }
     case "setMark": {
       const marks = s.marks.filter((m) => !(m.rowId === a.rowId && m.checkId === a.checkId));
       if (a.value) marks.push({ rowId: a.rowId, checkId: a.checkId, value: a.value, byUserId: me.userId, byName: me.name, at });

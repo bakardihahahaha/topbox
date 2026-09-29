@@ -419,6 +419,8 @@ interface SignoffRow {
   template_json: string;
   serial_number: string;
   mode: "new" | "service";
+  type_id: string;
+  type_name: string;
   status: SignoffStatus;
   notes: string;
   created_by: string;
@@ -478,10 +480,10 @@ class SqliteSignoffs implements SignoffsRepo {
     return this.tx(() => {
       const res = this.db
         .prepare(
-          `INSERT OR IGNORE INTO signoffs (id, number, template_id, template_json, serial_number, mode, status, notes, created_by, created_by_name, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO signoffs (id, number, template_id, template_json, serial_number, mode, type_id, type_name, status, notes, created_by, created_by_name, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(s.id, s.number, s.templateId, JSON.stringify(s.template), s.serialNumber, s.mode, s.status, s.notes, s.createdBy, s.createdByName, s.createdAt, s.updatedAt);
+        .run(s.id, s.number, s.templateId, JSON.stringify(s.template), s.serialNumber, s.mode, s.typeId, s.typeName, s.status, s.notes, s.createdBy, s.createdByName, s.createdAt, s.updatedAt);
       if (res.changes === 0) return false;
       this.enqueue("signoffs", s.id);
       return true;
@@ -502,6 +504,8 @@ class SqliteSignoffs implements SignoffsRepo {
       template: JSON.parse(r.template_json),
       serialNumber: r.serial_number,
       mode: r.mode,
+      typeId: r.type_id,
+      typeName: r.type_name,
       status: r.status,
       notes: r.notes,
       createdBy: r.created_by,
@@ -540,6 +544,10 @@ class SqliteSignoffs implements SignoffsRepo {
       where.push("mode = ?");
       params.push(f.mode);
     }
+    if (f.typeId) {
+      where.push("type_id = ?");
+      params.push(f.typeId);
+    }
     const clause = where.join(" AND ");
     const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM signoffs WHERE ${clause}`).get(...params) as { n: number }).n;
     const rows = this.db.prepare(`SELECT * FROM signoffs WHERE ${clause} ORDER BY created_at DESC LIMIT ? OFFSET ?`).all(...params, f.limit, f.offset) as SignoffRow[];
@@ -551,11 +559,13 @@ class SqliteSignoffs implements SignoffsRepo {
     return (r.n ?? 0) + 1;
   }
 
-  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: "new" | "service" }, at: string) {
+  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; mode?: "new" | "service"; typeId?: string; typeName?: string }, at: string) {
     const cols: Record<string, unknown> = {};
     if (patch.serialNumber !== undefined) cols.serial_number = patch.serialNumber;
     if (patch.notes !== undefined) cols.notes = patch.notes;
     if (patch.mode !== undefined) cols.mode = patch.mode;
+    if (patch.typeId !== undefined) cols.type_id = patch.typeId;
+    if (patch.typeName !== undefined) cols.type_name = patch.typeName;
     const keys = Object.keys(cols);
     if (keys.length === 0) return;
     this.tx(() => {

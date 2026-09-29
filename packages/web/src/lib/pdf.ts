@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable, { type CellHookData } from "jspdf-autotable";
-import { DEFAULT_DOCUMENT_SETTINGS, SIGNATURE_BOX, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
+import { DEFAULT_DOCUMENT_SETTINGS, SIGNATURE_BOX, typeNameOf, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
 import { parseSignaturePath } from "./signaturePath.js";
 
 // The PDF is built entirely in the browser (jsPDF) on whatever device presses the button — the
@@ -189,7 +189,7 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
   doc.setFontSize(7);
   doc.setTextColor(...GREY);
   doc.setFont("helvetica", "normal");
-  doc.text(pdfText(`${s.number}  ·  ${s.mode === "service" ? "Service" : "New"}  ·  started by ${s.createdByName} on ${s.createdAt.slice(0, 10)}`), PAGE.margin, y + 1);
+  doc.text(pdfText(`${s.number}  ·  ${typeNameOf(s)}  ·  started by ${s.createdByName} on ${s.createdAt.slice(0, 10)}`), PAGE.margin, y + 1);
   y += 3;
 
   if (s.mode === "service" && s.parts.length > 0) {

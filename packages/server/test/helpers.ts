@@ -1,3 +1,4 @@
+import { SignoffTypesService } from "../src/services/signoffTypes.js";
 import { SqliteStore } from "../src/store/sqlite/SqliteStore.js";
 import { AuthService } from "../src/services/auth.js";
 import { CatalogService, mechanismChecklistSeed } from "../src/services/catalog.js";
@@ -10,10 +11,11 @@ export async function setup(opts: { withSheets?: boolean; now?: () => number } =
   const store = new SqliteStore(":memory:");
   const auth = new AuthService(store, { now: opts.now });
   const catalog = new CatalogService(store);
-  const signoffs = new SignoffService(store);
+  const signoffTypes = new SignoffTypesService(store);
+  const signoffs = new SignoffService(store, signoffTypes);
   const sheets = new FakeSheetsApi();
   const mirror = new MirrorService(store, opts.withSheets === false ? null : sheets, "sheet-1", { cacheTtlMs: 60_000 });
-  const app = await buildApp({ store, auth, catalog, signoffs, mirror });
+  const app = await buildApp({ store, auth, catalog, signoffs, signoffTypes, mirror });
   // Tests refer to users by alias; PINs below.
   const ids: Record<string, string> = {
     admin: (await auth.createUser({ name: "Admin", role: "admin", pin: "1111" }, null)).id,
@@ -33,5 +35,5 @@ export async function setup(opts: { withSheets?: boolean; now?: () => number } =
     return call;
   }
 
-  return { ids, store, auth, catalog, signoffs, sheets, mirror, app, template, login, as };
+  return { ids, store, auth, catalog, signoffs, signoffTypes, sheets, mirror, app, template, login, as };
 }
