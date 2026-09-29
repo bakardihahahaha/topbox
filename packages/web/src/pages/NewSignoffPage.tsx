@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { departedAt, mechanismKey, oncePerTopboxBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
+import { allowsRefurbishedR, departedAt, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
 import { stamp, topboxUrl } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
@@ -40,9 +40,11 @@ export function NewSignoffPage() {
   const blockOf = (t: SignoffType) => (previous && previous.length > 0 && serial.trim() ? oncePerTopboxBlock(serial.trim(), previous, t, types) : null);
   const returning = Boolean(previous && previous.length > 0 && !stillIn);
   const type = types.find((t) => t.id === typeId) ?? (returning ? types.find((t) => !blockOf(t)) : undefined) ?? types[0];
-  const typeBlock = type ? blockOf(type) : null;
   const key = mechanismKey(serial);
   const hasR = serial.trim() !== "" && key !== serial.trim().toUpperCase();
+  // The refurbished R only on the types that allow it (Setup → Types).
+  const typeBlock = type ? (blockOf(type) ?? refurbishedRBlock(serial, type)) : null;
+  const canAddR = Boolean(type && allowsRefurbishedR(type)) && /\d$/.test(key) && !hasR;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -123,7 +125,7 @@ export function NewSignoffPage() {
           </span>
           <input value={serial} onChange={(e) => setSerial(e.target.value)} autoFocus style={{ ...input, height: 56, fontSize: 18 }} className="mono" autoCapitalize="characters" />
         </label>
-        {/\d$/.test(key) && (
+        {(canAddR || hasR) && (
           <button type="button" onClick={() => setSerial(hasR ? serial.trim().slice(0, -1) : `${serial.trim()}R`)} style={{ ...ghost, height: 48, alignSelf: "flex-start" }} title="R = refurbished">
             {hasR ? "Remove R" : "+R refurbished"}
           </button>
@@ -141,7 +143,7 @@ export function NewSignoffPage() {
               </>
             ) : (
               <>
-                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit))}. Type set to <b>{type?.name}</b>{/\d$/.test(key) && !hasR ? " — add R if it was refurbished" : ""}.
+                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit))}. Type set to <b>{type?.name}</b>{canAddR ? " — add R if it was refurbished" : ""}.
               </>
             )}
           </div>

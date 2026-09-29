@@ -1,4 +1,4 @@
-import { DEFAULT_SIGNOFF_TYPES, isOncePerTopbox, modeOf, type SignoffMode, type SignoffType } from "@biosite-signoff/shared";
+import { DEFAULT_SIGNOFF_TYPES, allowsRefurbishedR, isOncePerTopbox, modeOf, type SignoffMode, type SignoffType } from "@biosite-signoff/shared";
 import type { Store } from "../store/Store.js";
 import { badRequest, notFound } from "./errors.js";
 
@@ -16,7 +16,7 @@ export class SignoffTypesService {
   async save(types: SignoffType[]): Promise<SignoffType[]> {
     if (types.length === 0) throw badRequest("Keep at least one type.");
     if (types.length > 12) throw badRequest("At most 12 types.");
-    const clean = types.map((t) => ({ id: t.id.trim(), name: t.name.trim(), description: t.description.trim(), allowsParts: Boolean(t.allowsParts), oncePerTopbox: isOncePerTopbox(t) }));
+    const clean = types.map((t) => ({ id: t.id.trim(), name: t.name.trim(), description: t.description.trim(), allowsParts: Boolean(t.allowsParts), oncePerTopbox: isOncePerTopbox(t), refurbishedR: allowsRefurbishedR(t) }));
     if (clean.some((t) => !t.id || !t.name)) throw badRequest("Every type needs a name.");
     if (new Set(clean.map((t) => t.id)).size !== clean.length) throw badRequest("Type ids must be unique.");
     if (new Set(clean.map((t) => t.name.toLowerCase())).size !== clean.length) throw badRequest("Two types have the same name.");

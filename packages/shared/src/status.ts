@@ -1,5 +1,5 @@
 import type { Role, Signature, Signoff, SignoffStatus, SignoffSummary, SignoffType, Template } from "./types.js";
-import { isOncePerTopbox, typeNameOf } from "./types.js";
+import { allowsRefurbishedR, isOncePerTopbox, typeNameOf } from "./types.js";
 
 export function itemRows(template: Template) {
   return template.rows.filter((r) => r.kind === "item");
@@ -178,4 +178,14 @@ export function oncePerTopboxBlock(
   const prior = visits.find((v) => v.id !== selfId && isOncePerTopbox(typeOf(v)));
   if (!prior) return null;
   return `TopBox ${serial} is already in the database as ${typeNameOf(prior)}. ${type.name} can only be used once per TopBox — choose another type from the list.`;
+}
+
+/** The serial carries the refurbished "R" (667R). */
+export const hasRefurbishedR = (serial: string) => serial.trim() !== "" && mechanismKey(serial) !== serial.trim().toUpperCase();
+
+/** Why this serial can't be used with this type, or null — the "R" only on types that allow it
+ * (Setup → Types). */
+export function refurbishedRBlock(serial: string, type: Pick<SignoffType, "name" | "allowsParts" | "refurbishedR">): string | null {
+  if (!hasRefurbishedR(serial) || allowsRefurbishedR(type)) return null;
+  return `The refurbished "R" can't be used with ${type.name} — only with the types that allow it (Setup → Types). Remove the R or pick another type.`;
 }

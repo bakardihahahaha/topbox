@@ -153,7 +153,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.get("/api/signoff-types", authed, async () => s.signoffTypes.list());
   app.put("/api/signoff-types", admin, async (req) => {
-    const body = parse(z.array(z.object({ id, name: z.string().max(40), description: z.string().max(80).default(""), allowsParts: z.boolean(), oncePerTopbox: z.boolean().optional() })).max(12), req.body);
+    const body = parse(z.array(z.object({ id, name: z.string().max(40), description: z.string().max(80).default(""), allowsParts: z.boolean(), oncePerTopbox: z.boolean().optional(), refurbishedR: z.boolean().optional() })).max(12), req.body);
     return s.signoffTypes.save(body);
   });
 

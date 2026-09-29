@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, crossCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeLocked, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, allowsRefurbishedR, crossCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeLocked, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -156,7 +156,9 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   // operator may make.
   const serialKey = mechanismKey(s.serialNumber);
   const hasR = serialKey !== s.serialNumber.trim().toUpperCase();
-  const canToggleR = !isAdmin && !closed && /\d$/.test(serialKey);
+  // Adding the R only on types that allow it (Setup → Types); taking it off always.
+  const currentType = types.find((x) => x.id === s.typeId);
+  const canToggleR = !isAdmin && !closed && /\d$/.test(serialKey) && (hasR || Boolean(currentType && allowsRefurbishedR(currentType)));
   function toggleR() {
     const next = hasR ? s.serialNumber.trim().slice(0, -1) : `${s.serialNumber.trim()}R`;
     void mutate({ kind: "updateHeader", id, patch: { serialNumber: next } }, () => api.updateSignoffHeader(id, { serialNumber: next }));

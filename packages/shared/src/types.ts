@@ -82,14 +82,19 @@ export interface SignoffType {
   /** Only once per TopBox (e.g. "New"): once a TopBox has had a visit of such a type it can't get
    * one again. Unset on types saved before this existed — then check-only types count as once. */
   oncePerTopbox?: boolean;
+  /** The serial number may get the refurbished "R" (667 → 667R) on this type. Unset on types saved
+   * before this existed — then only parts-allowing (service) types allow it. */
+  refurbishedR?: boolean;
 }
+
+export const allowsRefurbishedR = (t: Pick<SignoffType, "allowsParts" | "refurbishedR">) => t.refurbishedR ?? t.allowsParts;
 
 export const isOncePerTopbox = (t: Pick<SignoffType, "allowsParts" | "oncePerTopbox">) => t.oncePerTopbox ?? !t.allowsParts;
 
 export const DEFAULT_SIGNOFF_TYPES: SignoffType[] = [
-  { id: "new-uk", name: "New (UK)", description: "Check only", allowsParts: false, oncePerTopbox: true },
-  { id: "new-usa", name: "New (USA)", description: "Check only", allowsParts: false, oncePerTopbox: true },
-  { id: "service", name: "Service", description: "Repair + replaced parts", allowsParts: true, oncePerTopbox: false },
+  { id: "new-uk", name: "New (UK)", description: "Check only", allowsParts: false, oncePerTopbox: true, refurbishedR: false },
+  { id: "new-usa", name: "New (USA)", description: "Check only", allowsParts: false, oncePerTopbox: true, refurbishedR: false },
+  { id: "service", name: "Service", description: "Repair + replaced parts", allowsParts: true, oncePerTopbox: false, refurbishedR: true },
 ];
 
 export const modeOf = (t: Pick<SignoffType, "allowsParts">): SignoffMode => (t.allowsParts ? "service" : "new");

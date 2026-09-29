@@ -512,3 +512,21 @@ describe("types used only once per TopBox", () => {
     expect((await start("777", "service")).json().error).toBe("TYPE_ONCE_ONLY");
   });
 });
+
+describe("refurbished R only on types that allow it", () => {
+  it("refuses 667R on a check-only type, allows it on Service; Setup → Types decides", async () => {
+    const t = await setup();
+    const op = t.as((await t.login("op", "2222")).token);
+    const start = (serial: string, typeId: string) => op("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: serial, typeId });
+    expect((await start("556R", "new-uk")).json().error).toBe("R_NOT_ALLOWED");
+    const created = (await start("556", "new-uk")).json() as Signoff;
+    expect((await op("PATCH", `/api/signoffs/${created.id}`, { serialNumber: "556R" })).json().error).toBe("R_NOT_ALLOWED");
+    const svc = (await start("557R", "service")).json() as Signoff;
+    expect(svc.serialNumber).toBe("557R");
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const types = (await admin("GET", "/api/signoff-types")).json() as { id: string; refurbishedR?: boolean }[];
+    expect(types.map((x) => x.refurbishedR)).toEqual([false, false, true]);
+    await admin("PUT", "/api/signoff-types", types.map((x) => ({ ...x, refurbishedR: x.id === "new-usa" ? true : x.refurbishedR })));
+    expect((await start("558R", "new-usa")).statusCode).toBe(200);
+  });
+});
