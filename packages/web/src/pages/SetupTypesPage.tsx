@@ -59,7 +59,7 @@ export function SetupTypesPage() {
       <h1 style={h1}>Setup</h1>
       <SetupSubNav />
       <p style={hint}>
-        The type buttons on the New sign-off screen, in this order. Tick "Replaced parts" for service-style types — only those show the replaced-parts list. Tick "Only once per TopBox" for types like New: once a TopBox has had a visit of such a type, no "only once" type can be picked for it again (it has to be one of the others). Tick "R" refurbished for the types where the serial number may get the refurbished R (667 → 667R) — only those show the +R button. Renaming or deleting a type
+        The type buttons on the New sign-off screen, in this order. Tick "Replaced parts" for service-style types — only those show the replaced-parts list. Tick "Only once per TopBox" for types like New: once a TopBox has had a visit of that type, that type can't be picked for it again (the other types stay available). Tick "R" refurbished for the types where the serial number may get the refurbished R (667 → 667R) — only those show the +R button. Renaming or deleting a type
         never changes sign-offs already made; they keep the name they were created with.
       </p>
       {error && <div style={errorBox}>{error}</div>}

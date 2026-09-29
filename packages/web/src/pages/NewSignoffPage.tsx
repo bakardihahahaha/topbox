@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { allowsRefurbishedR, departedAt, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
+import { allowsRefurbishedR, departedAt, isOncePerTopbox, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
 import { stamp, topboxUrl } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
@@ -34,12 +34,12 @@ export function NewSignoffPage() {
   }, [serial]);
   const lastVisit = previous?.[previous.length - 1];
   const stillIn = lastVisit && !departedAt(lastVisit);
-  // "Only once per TopBox" types (Setup → Types, e.g. New) can't be picked again for a TopBox that
-  // already had one. Unless someone picks a type themselves, a returning serial defaults to the
-  // first type still allowed for it.
-  const blockOf = (t: SignoffType) => (previous && previous.length > 0 && serial.trim() ? oncePerTopboxBlock(serial.trim(), previous, t, types) : null);
+  // An "only once per TopBox" type (Setup → Types, e.g. New (UK)) can't be picked again for a
+  // TopBox that already had it. Unless someone picks a type themselves, a returning serial defaults
+  // to the first repeatable type (e.g. Service), else the first type still allowed for it.
+  const blockOf = (t: SignoffType) => (previous && previous.length > 0 && serial.trim() ? oncePerTopboxBlock(serial.trim(), previous, t) : null);
   const returning = Boolean(previous && previous.length > 0 && !stillIn);
-  const type = types.find((t) => t.id === typeId) ?? (returning ? types.find((t) => !blockOf(t)) : undefined) ?? types[0];
+  const type = types.find((t) => t.id === typeId) ?? (returning ? (types.find((t) => !isOncePerTopbox(t)) ?? types.find((t) => !blockOf(t))) : undefined) ?? types[0];
   const key = mechanismKey(serial);
   const hasR = serial.trim() !== "" && key !== serial.trim().toUpperCase();
   // The refurbished R only on the types that allow it (Setup → Types).

@@ -163,19 +163,19 @@ export function photoBlock(s: Signoff, checkId: string, actor: { userId: string;
 }
 
 /** Why `type` can't be used for a (new or changed) visit of this TopBox, or null if it can.
- * Types marked "only once per TopBox" (like New) are one group: after a TopBox has had a visit of
- * any of them, none of them can be picked for it again — it's no longer new. `visits` are the
- * TopBox's other visits (any serial spelling, 667 / 667R). */
+ * A type marked "only once per TopBox" (like New (UK)) can't be picked again once the TopBox has
+ * had a visit of that same type — other types, "only once" ones included, stay available.
+ * `visits` are the TopBox's visits (any serial spelling, 667 / 667R). */
 export function oncePerTopboxBlock(
   serial: string,
   visits: Pick<Signoff, "id" | "typeId" | "typeName" | "mode">[],
   type: SignoffType,
-  types: SignoffType[],
   selfId?: string,
 ): string | null {
   if (!isOncePerTopbox(type)) return null;
-  const typeOf = (v: Pick<Signoff, "typeId" | "typeName" | "mode">) => types.find((t) => t.id === v.typeId) ?? types.find((t) => t.name === v.typeName) ?? { allowsParts: v.mode === "service" };
-  const prior = visits.find((v) => v.id !== selfId && isOncePerTopbox(typeOf(v)));
+  // Records from before types had ids are matched by name.
+  const sameType = (v: Pick<Signoff, "typeId" | "typeName">) => (v.typeId ? v.typeId === type.id : v.typeName === type.name);
+  const prior = visits.find((v) => v.id !== selfId && sameType(v));
   if (!prior) return null;
   return `TopBox ${serial} is already in the database as ${typeNameOf(prior)}. ${type.name} can only be used once per TopBox — choose another type from the list.`;
 }

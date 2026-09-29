@@ -47,7 +47,7 @@ export class SignoffService {
     const types = await this.types.list();
     const type = types.find((t) => t.id === typeId);
     if (!type) return;
-    const block = oncePerTopboxBlock(serial, await this.visits(serial), type, types, selfId);
+    const block = oncePerTopboxBlock(serial, await this.visits(serial), type, selfId);
     if (block) throw conflict("TYPE_ONCE_ONLY", block);
   }
 

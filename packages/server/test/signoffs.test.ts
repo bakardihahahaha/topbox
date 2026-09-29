@@ -496,11 +496,13 @@ describe("types used only once per TopBox", () => {
     expect(again.statusCode).toBe(409);
     expect(again.json()).toMatchObject({ error: "TYPE_ONCE_ONLY" });
     expect(again.json().message).toMatch(/already in the database as New \(UK\).*choose another type/);
-    expect((await start("555R", "new-usa")).json().error).toBe("TYPE_ONCE_ONLY"); // same TopBox, any "only once" type
+    // Another "only once" type is still fine for the same TopBox (555R = 555) — once each.
+    expect((await start("555", "new-usa")).statusCode).toBe(200);
+    expect((await start("555", "new-usa")).json().error).toBe("TYPE_ONCE_ONLY");
     expect((await start("555", "service")).statusCode).toBe(200);
     const service2 = (await start("555", "service")).json() as Signoff;
     expect(service2.typeName).toBe("Service");
-    // …and a visit can't be switched to an "only once" type either.
+    // …and a visit can't be switched to an "only once" type it already had either.
     expect((await op("PATCH", `/api/signoffs/${service2.id}`, { typeId: "new-usa" })).json().error).toBe("TYPE_ONCE_ONLY");
 
     // Setup → Types decides: make Service "only once" and a third Service is refused.
