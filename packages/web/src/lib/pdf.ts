@@ -41,11 +41,7 @@ function drawPhotos(doc: jsPDF, s: Signoff, photos: PdfPhotos): boolean {
     doc.setFontSize(12);
     doc.setTextColor(...INK);
     doc.text(pdfText(`Photos - TopBox ${s.serialNumber}${cont ? " (continued)" : ""}`), PAGE.margin, PAGE.top + 2);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...GREY);
-    doc.text(pdfText(`${typeNameOf(s)} - attachment to the checklist above`), PAGE.margin, PAGE.top + 7);
-    y = PAGE.top + 12;
+    y = PAGE.top + 7;
     col = 0;
   };
   heading(false);
@@ -249,14 +245,6 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
   });
 
   let y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3;
-
-  doc.setFontSize(7);
-  doc.setTextColor(...GREY);
-  doc.setFont("helvetica", "normal");
-  const left = departedAt(s);
-  const leftText = left ? `  ·  left ${left.slice(0, 10).split("-").reverse().join("/")}${left.slice(10)}` : "";
-  doc.text(pdfText(`${typeNameOf(s)}${leftText}  ·  started by ${s.createdByName}`), PAGE.margin, y + 1);
-  y += 3;
 
   if (s.mode === "service" && s.parts.length > 0) {
     autoTable(doc, {
