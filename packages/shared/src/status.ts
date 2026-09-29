@@ -1,5 +1,5 @@
-import type { Role, Signature, Signoff, SignoffStatus, SignoffSummary, Template } from "./types.js";
-import { typeNameOf } from "./types.js";
+import type { Role, Signature, Signoff, SignoffStatus, SignoffSummary, SignoffType, Template } from "./types.js";
+import { isOncePerTopbox, typeNameOf } from "./types.js";
 
 export function itemRows(template: Template) {
   return template.rows.filter((r) => r.kind === "item");
@@ -160,4 +160,22 @@ export function photoBlock(s: Signoff, checkId: string, actor: { userId: string;
   const next = s.template.checks.find((c) => !s.signatures.some((g) => g.checkId === c.id));
   if (next && next.id !== checkId) return `The check being done now is ${next.label} — photos go to that check.`;
   return crossCheckBlock(s, checkId, actor, operators);
+}
+
+/** Why `type` can't be used for a (new or changed) visit of this TopBox, or null if it can.
+ * Types marked "only once per TopBox" (like New) are one group: after a TopBox has had a visit of
+ * any of them, none of them can be picked for it again — it's no longer new. `visits` are the
+ * TopBox's other visits (any serial spelling, 667 / 667R). */
+export function oncePerTopboxBlock(
+  serial: string,
+  visits: Pick<Signoff, "id" | "typeId" | "typeName" | "mode">[],
+  type: SignoffType,
+  types: SignoffType[],
+  selfId?: string,
+): string | null {
+  if (!isOncePerTopbox(type)) return null;
+  const typeOf = (v: Pick<Signoff, "typeId" | "typeName" | "mode">) => types.find((t) => t.id === v.typeId) ?? types.find((t) => t.name === v.typeName) ?? { allowsParts: v.mode === "service" };
+  const prior = visits.find((v) => v.id !== selfId && isOncePerTopbox(typeOf(v)));
+  if (!prior) return null;
+  return `TopBox ${serial} is already in the database as ${typeNameOf(prior)}. ${type.name} can only be used once per TopBox — choose another type from the list.`;
 }

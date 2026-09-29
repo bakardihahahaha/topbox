@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { departedAt, mechanismKey, type Signoff } from "@biosite-signoff/shared";
+import { departedAt, mechanismKey, oncePerTopboxBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
 import { stamp, topboxUrl } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
@@ -34,10 +34,13 @@ export function NewSignoffPage() {
   }, [serial]);
   const lastVisit = previous?.[previous.length - 1];
   const stillIn = lastVisit && !departedAt(lastVisit);
-  // A mechanism that has been out at a client and comes back is serviced — unless someone picks
-  // a type themselves, a returning serial defaults to the first parts-allowing type (Service).
+  // "Only once per TopBox" types (Setup → Types, e.g. New) can't be picked again for a TopBox that
+  // already had one. Unless someone picks a type themselves, a returning serial defaults to the
+  // first type still allowed for it.
+  const blockOf = (t: SignoffType) => (previous && previous.length > 0 && serial.trim() ? oncePerTopboxBlock(serial.trim(), previous, t, types) : null);
   const returning = Boolean(previous && previous.length > 0 && !stillIn);
-  const type = types.find((t) => t.id === typeId) ?? (returning ? types.find((t) => t.allowsParts) : undefined) ?? types[0];
+  const type = types.find((t) => t.id === typeId) ?? (returning ? types.find((t) => !blockOf(t)) : undefined) ?? types[0];
+  const typeBlock = type ? blockOf(type) : null;
   const key = mechanismKey(serial);
   const hasR = serial.trim() !== "" && key !== serial.trim().toUpperCase();
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +50,7 @@ export function NewSignoffPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!chosen || !type || !serial.trim()) return;
+    if (!chosen || !type || !serial.trim() || typeBlock) return;
     setBusy(true);
     setError(null);
     const input = { id: crypto.randomUUID(), templateId: chosen.id, serialNumber: serial.trim(), typeId: type.id };
@@ -93,7 +96,9 @@ export function NewSignoffPage() {
                 key={t.id}
                 type="button"
                 onClick={() => setTypeId(t.id)}
+                title={blockOf(t) ?? undefined}
                 style={{
+                  opacity: blockOf(t) && type?.id !== t.id ? 0.4 : 1,
                   minHeight: 72,
                   borderRadius: "var(--radius-control)",
                   border: `1px solid ${type?.id === t.id ? "var(--accent)" : "var(--border)"}`,
@@ -106,6 +111,7 @@ export function NewSignoffPage() {
               >
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{t.name}</div>
                 {t.description && <div style={{ fontSize: 11.5, opacity: 0.8 }}>{t.description}</div>}
+                {blockOf(t) && <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>already used for this TopBox</div>}
               </button>
             ))}
           </div>
@@ -140,7 +146,8 @@ export function NewSignoffPage() {
             )}
           </div>
         )}
-        <button type="submit" disabled={busy || !chosen || !serial.trim()} style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !serial.trim() ? 0.6 : 1 }}>
+        {typeBlock && <div style={{ ...errorBox, marginBottom: 0 }}>{typeBlock}</div>}
+        <button type="submit" disabled={busy || !chosen || !serial.trim() || Boolean(typeBlock)} style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !serial.trim() || typeBlock ? 0.6 : 1 }}>
           {busy ? "Creating…" : "Start sign-off"}
         </button>
       </form>

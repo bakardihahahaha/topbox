@@ -485,3 +485,30 @@ describe("earlier visits are history", () => {
     expect((await admin("PATCH", `/api/signoffs/${old}`, { notes: "admin correction" })).statusCode).toBe(200);
   });
 });
+
+describe("types used only once per TopBox", () => {
+  it("refuses a second 'only once' visit (e.g. New) for the same TopBox; repeatable types are fine", async () => {
+    const t = await setup();
+    const op = t.as((await t.login("op", "2222")).token);
+    const start = (serial: string, typeId: string) => op("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: serial, typeId });
+    expect((await start("555", "new-uk")).statusCode).toBe(200);
+    const again = await start("555", "new-uk");
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toMatchObject({ error: "TYPE_ONCE_ONLY" });
+    expect(again.json().message).toMatch(/already in the database as New \(UK\).*choose another type/);
+    expect((await start("555R", "new-usa")).json().error).toBe("TYPE_ONCE_ONLY"); // same TopBox, any "only once" type
+    expect((await start("555", "service")).statusCode).toBe(200);
+    const service2 = (await start("555", "service")).json() as Signoff;
+    expect(service2.typeName).toBe("Service");
+    // …and a visit can't be switched to an "only once" type either.
+    expect((await op("PATCH", `/api/signoffs/${service2.id}`, { typeId: "new-usa" })).json().error).toBe("TYPE_ONCE_ONLY");
+
+    // Setup → Types decides: make Service "only once" and a third Service is refused.
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const types = (await admin("GET", "/api/signoff-types")).json() as { id: string; oncePerTopbox?: boolean }[];
+    expect(types.map((x) => x.oncePerTopbox)).toEqual([true, true, false]);
+    await admin("PUT", "/api/signoff-types", types.map((x) => ({ ...x, oncePerTopbox: true })));
+    expect((await start("777", "service")).statusCode).toBe(200);
+    expect((await start("777", "service")).json().error).toBe("TYPE_ONCE_ONLY");
+  });
+});

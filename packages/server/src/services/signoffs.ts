@@ -1,4 +1,4 @@
-import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, photoBlock, typeLocked, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, oncePerTopboxBlock, photoBlock, typeLocked, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import { PhotoFiles } from "./photoFiles.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
@@ -42,6 +42,15 @@ export class SignoffService {
     }
   }
 
+  /** "Only once per TopBox" types (Setup → Types), e.g. New: refused when the TopBox already had one. */
+  private async assertTypeAllowed(serial: string, typeId: string, selfId?: string): Promise<void> {
+    const types = await this.types.list();
+    const type = types.find((t) => t.id === typeId);
+    if (!type) return;
+    const block = oncePerTopboxBlock(serial, await this.visits(serial), type, types, selfId);
+    if (block) throw conflict("TYPE_ONCE_ONLY", block);
+  }
+
   /** The sign-off, if this person may change it (see assertCurrentVisit). */
   private async requireWritable(id: string, actor: Actor) {
     const s = await this.require(id);
@@ -82,6 +91,7 @@ export class SignoffService {
     const serialNumber = input.serialNumber.trim();
     if (!serialNumber) throw badRequest("Serial number is required.");
     const type = await this.types.resolve(input);
+    await this.assertTypeAllowed(serialNumber, type.typeId);
     const now = new Date().toISOString();
     // A number collision (two creates racing) just retries with the next number.
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -128,6 +138,7 @@ export class SignoffService {
     this.assertEditable(s, actor);
     if (patch.serialNumber !== undefined && !patch.serialNumber.trim()) throw badRequest("Serial number is required.");
     const type = patch.typeId !== undefined || patch.mode !== undefined ? await this.types.resolve(patch) : undefined;
+    if (type && type.typeId !== s.typeId) await this.assertTypeAllowed(s.serialNumber, type.typeId, s.id);
     if (type?.mode === "new" && s.parts.length > 0) {
       throw conflict("HAS_PARTS", `Remove the replaced parts before switching this sign-off to ${type.typeName || "a check-only type"}.`);
     }

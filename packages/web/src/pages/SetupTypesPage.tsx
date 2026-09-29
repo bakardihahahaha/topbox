@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { SignoffType } from "@biosite-signoff/shared";
+import { isOncePerTopbox, type SignoffType } from "@biosite-signoff/shared";
 import { fetchSignoffTypes, rememberSignoffTypes, saveSignoffTypes } from "../lib/signoffTypes.js";
 import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
@@ -59,7 +59,7 @@ export function SetupTypesPage() {
       <h1 style={h1}>Setup</h1>
       <SetupSubNav />
       <p style={hint}>
-        The type buttons on the New sign-off screen, in this order. Tick "Replaced parts" for service-style types — only those show the replaced-parts list. Renaming or deleting a type
+        The type buttons on the New sign-off screen, in this order. Tick "Replaced parts" for service-style types — only those show the replaced-parts list. Tick "Only once per TopBox" for types like New: once a TopBox has had a visit of such a type, no "only once" type can be picked for it again (it has to be one of the others). Renaming or deleting a type
         never changes sign-offs already made; they keep the name they were created with.
       </p>
       {error && <div style={errorBox}>{error}</div>}
@@ -73,6 +73,10 @@ export function SetupTypesPage() {
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, flex: "none", cursor: "pointer" }}>
               <input type="checkbox" checked={t.allowsParts} onChange={(e) => setAt(i, { allowsParts: e.target.checked })} style={{ width: 24, height: 24, accentColor: "var(--accent)" }} />
               Replaced parts
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, flex: "none", cursor: "pointer" }} title="Unticked = can be used for every visit">
+              <input type="checkbox" checked={isOncePerTopbox(t)} onChange={(e) => setAt(i, { oncePerTopbox: e.target.checked })} style={{ width: 24, height: 24, accentColor: "var(--accent)" }} />
+              Only once per TopBox
             </label>
             <div style={{ display: "flex", gap: 4, flex: "none" }}>
               <button style={iconButton} onClick={() => set(move(types, i, -1))} aria-label="Move up">
@@ -90,7 +94,7 @@ export function SetupTypesPage() {
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
-        <button style={{ ...ghost, height: 38 }} disabled={types.length >= 12} onClick={() => set([...types, { id: crypto.randomUUID(), name: "", description: "", allowsParts: false }])}>
+        <button style={{ ...ghost, height: 38 }} disabled={types.length >= 12} onClick={() => set([...types, { id: crypto.randomUUID(), name: "", description: "", allowsParts: false, oncePerTopbox: false }])}>
           + Add type
         </button>
         <button style={primary} onClick={() => void save()} disabled={saving}>

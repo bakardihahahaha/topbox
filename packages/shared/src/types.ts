@@ -79,12 +79,17 @@ export interface SignoffType {
   description: string;
   /** Service-style: replaced parts can be recorded. */
   allowsParts: boolean;
+  /** Only once per TopBox (e.g. "New"): once a TopBox has had a visit of such a type it can't get
+   * one again. Unset on types saved before this existed — then check-only types count as once. */
+  oncePerTopbox?: boolean;
 }
 
+export const isOncePerTopbox = (t: Pick<SignoffType, "allowsParts" | "oncePerTopbox">) => t.oncePerTopbox ?? !t.allowsParts;
+
 export const DEFAULT_SIGNOFF_TYPES: SignoffType[] = [
-  { id: "new-uk", name: "New (UK)", description: "Check only", allowsParts: false },
-  { id: "new-usa", name: "New (USA)", description: "Check only", allowsParts: false },
-  { id: "service", name: "Service", description: "Repair + replaced parts", allowsParts: true },
+  { id: "new-uk", name: "New (UK)", description: "Check only", allowsParts: false, oncePerTopbox: true },
+  { id: "new-usa", name: "New (USA)", description: "Check only", allowsParts: false, oncePerTopbox: true },
+  { id: "service", name: "Service", description: "Repair + replaced parts", allowsParts: true, oncePerTopbox: false },
 ];
 
 export const modeOf = (t: Pick<SignoffType, "allowsParts">): SignoffMode => (t.allowsParts ? "service" : "new");
