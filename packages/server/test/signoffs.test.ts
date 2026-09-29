@@ -137,3 +137,19 @@ describe("sign-off types", () => {
     expect(filtered.items.map((x: { typeName: string }) => x.typeName)).toEqual(["Rework"]);
   });
 });
+
+describe("parts enabled after a sign-off was started", () => {
+  it("can be recorded on that sign-off", async () => {
+    const t = await setup();
+    const admin = await t.login("admin", "1111");
+    const call = t.as(admin.token);
+    const id = randomUUID();
+    await call("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "LATE-1", typeId: "service" });
+    const part = await t.catalog.createPart({ partNumber: "LP-1", name: "Late part", description: "" });
+    expect((await call("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: part.id, qty: 1 })).statusCode).toBe(400);
+    await t.catalog.updateTemplate(t.template.id, { ...t.template, partIds: [part.id] });
+    const res = await call("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: part.id, qty: 2 });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as Signoff).parts).toMatchObject([{ name: "Late part", qty: 2 }]);
+  });
+});

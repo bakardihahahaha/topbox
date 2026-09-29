@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type TemplateCheck } from "@biosite-signoff/shared";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { isCheckFullyMarked, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -14,7 +14,7 @@ import { confirmDialog } from "../lib/confirmDialog.js";
 import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
-import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, input, label, page, primary } from "../lib/ui.js";
+import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
 const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fail: "na", na: null };
 
@@ -24,6 +24,7 @@ export function SignoffPage() {
   const navigate = useNavigate();
   const [signoff, setSignoff] = useState<Signoff | null>(null);
   const [parts, setParts] = useState<Part[]>([]);
+  const [liveTemplate, setLiveTemplate] = useState<Template | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [signing, setSigning] = useState<TemplateCheck | null>(null);
@@ -65,6 +66,19 @@ export function SignoffPage() {
     };
   }, [load]);
 
+  // Current version of the checklist (the sign-off holds a frozen copy) — only for its
+  // replaceable-parts list, so parts an admin enables later show up here too.
+  const templateId = signoff?.templateId;
+  useEffect(() => {
+    if (!templateId) return;
+    const fetchLive = () => {
+      void api.getTemplate(templateId).then(setLiveTemplate, () => {});
+      void api.listParts().then(setParts, () => {});
+    };
+    fetchLive();
+    return onDataChange(fetchLive);
+  }, [templateId]);
+
   async function mutate(action: QueuedAction, run: () => Promise<Signoff | unknown>) {
     setError(null);
     setSignoff((s) => {
@@ -100,8 +114,10 @@ export function SignoffPage() {
   const { done, total } = signoffProgress(s);
   const signedBy = (checkId: string) => s.signatures.find((g) => g.checkId === checkId);
   const markOf = (rowId: string, checkId: string) => s.marks.find((m) => m.rowId === rowId && m.checkId === checkId)?.value;
-  const allowedParts = parts.filter((p) => t.partIds.includes(p.id));
-  const showParts = s.mode === "service" && (t.partIds.length > 0 || s.parts.length > 0);
+  // The checklist's parts as frozen on this sign-off plus any enabled for it since.
+  const allowedIds = new Set([...t.partIds, ...(liveTemplate?.partIds ?? [])]);
+  const allowedParts = parts.filter((p) => allowedIds.has(p.id));
+  const showParts = s.mode === "service";
 
   function tap(rowId: string, checkId: string) {
     const value = NEXT[markOf(rowId, checkId) ?? "none"]!;
@@ -294,6 +310,22 @@ export function SignoffPage() {
         <div style={{ ...card, marginBottom: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>Replaced parts</div>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 10 }}>Tick every part that was replaced on this mechanism. Leave everything unticked if nothing was replaced.</div>
+          {allowedParts.length === 0 && s.parts.length === 0 && (
+            <div style={{ ...infoBox, marginBottom: 0 }}>
+              No replaceable parts are set up for this checklist yet.{" "}
+              {me.role === "admin" ? (
+                <>
+                  Add them in <Link to="/setup/parts" style={{ color: "inherit", fontWeight: 700 }}>Setup → Parts</Link>, then tick them in{" "}
+                  <Link to={`/setup/templates/${s.templateId}`} style={{ color: "inherit", fontWeight: 700 }}>
+                    Setup → Templates → this checklist
+                  </Link>
+                  . They appear here straight away.
+                </>
+              ) : (
+                "Ask an admin to add them (Setup → Parts, then Templates)."
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {allowedParts.map((p) => {
               const line = s.parts.find((l) => l.partId === p.id);

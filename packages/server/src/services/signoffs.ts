@@ -186,7 +186,12 @@ export class SignoffService {
   async setPart(id: string, partRowId: string, input: { partId: string; qty: number; note: string }): Promise<Signoff> {
     const s = await this.require(id);
     if (s.mode !== "service") throw conflict("NOT_SERVICE", `Parts can't be recorded on a ${typeNameOf(s)} sign-off — only on a type that allows replaced parts.`);
-    if (!s.template.partIds.includes(input.partId)) throw badRequest("This part isn't allowed for this template.");
+    // Allowed = the template as frozen on this sign-off OR as it is now — parts an admin enables for
+    // the template later must be usable on sign-offs already in progress too.
+    const live = await this.store.templates.get(s.templateId);
+    if (!s.template.partIds.includes(input.partId) && !live?.partIds.includes(input.partId)) {
+      throw badRequest("This part isn't allowed for this checklist — enable it in Setup → Templates.");
+    }
     if (!Number.isInteger(input.qty) || input.qty < 1 || input.qty > 999) throw badRequest("Quantity must be 1–999.");
     const existingLine = s.parts.find((p) => p.id === partRowId);
     // Snapshot the part's number/name — from the live catalog when first added, kept thereafter.
