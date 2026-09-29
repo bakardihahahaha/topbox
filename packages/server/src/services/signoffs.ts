@@ -1,4 +1,4 @@
-import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, typeLocked, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, photoBlock, typeLocked, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import { PhotoFiles } from "./photoFiles.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
@@ -8,7 +8,7 @@ export const PERMISSIONS_KEY = "permissions";
 
 export interface Actor {
   userId: string;
-  role: "admin" | "operator";
+  role: Role;
   name: string;
 }
 
@@ -285,6 +285,8 @@ export class SignoffService {
     this.assertCheck(s, input.checkId);
     if (s.photos.some((p) => p.id === input.photoId)) return s;
     this.assertEditable(s, actor);
+    const block = photoBlock(s, input.checkId, actor, await this.operatorCount());
+    if (block) throw forbidden(block);
     if (input.jpeg.length < 100 || input.jpeg[0] !== 0xff || input.jpeg[1] !== 0xd8) throw badRequest("The photo must be a JPEG image.");
     const now = new Date().toISOString();
     const takenAt = input.takenAt && !Number.isNaN(Date.parse(input.takenAt)) ? input.takenAt : now;

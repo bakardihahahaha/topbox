@@ -1,4 +1,4 @@
-import type { DocumentSettings, MechanismSummary, MarkValue, Part, PartInput, Signoff, SignoffMode, SignoffSummary, Template, TemplateInput } from "@biosite-signoff/shared";
+import type { Role, DocumentSettings, MechanismSummary, MarkValue, Part, PartInput, Signoff, SignoffMode, SignoffSummary, Template, TemplateInput } from "@biosite-signoff/shared";
 import { getJson, getJsonCached, sendJson } from "./client.js";
 
 export const listTemplates = () => getJsonCached<Template[]>("/api/templates");
@@ -51,15 +51,15 @@ export const removePartLine = (id: string, lineId: string) => sendJson<Signoff>(
 export interface UserSummary {
   id: string;
   name: string;
-  role: "admin" | "operator";
+  role: Role;
   locked: boolean;
   lockedUntil: string | null;
   activeSessions: { ip: string; lastActivityAt: string }[];
   createdAt: string;
 }
 export const listUsers = () => getJson<UserSummary[]>("/api/users");
-export const createUser = (input: { name: string; role: "admin" | "operator"; pin?: string }) => sendJson<{ id: string; pin: string }>("POST", "/api/users", input);
-export const updateUser = (id: string, patch: { name?: string; role?: "admin" | "operator"; locked?: boolean }) => sendJson<UserSummary>("PATCH", `/api/users/${id}`, patch);
+export const createUser = (input: { name: string; role: Role; pin?: string }) => sendJson<{ id: string; pin: string }>("POST", "/api/users", input);
+export const updateUser = (id: string, patch: { name?: string; role?: Role; locked?: boolean }) => sendJson<UserSummary>("PATCH", `/api/users/${id}`, patch);
 export const setUserPin = (id: string, pin?: string) => sendJson<{ pin: string }>("POST", `/api/users/${id}/pin`, pin ? { pin } : {});
 export const deleteUser = (id: string) => sendJson("DELETE", `/api/users/${id}`);
 export const endSessions = (id: string) => sendJson("POST", `/api/users/${id}/end-sessions`);

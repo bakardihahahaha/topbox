@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, crossCheckBlock, isCheckFullyMarked, mechanismKey, signoffProgress, signoffStatus, summarize, typeLocked, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, crossCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeLocked, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -16,7 +16,8 @@ import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount, usePermissions } from "../lib/permissions.js";
 import { localStamp, stamp } from "../lib/format.js";
-import { PhotosCard } from "../components/PhotosCard.js";
+import { CameraButton, PhotosCard } from "../components/PhotosCard.js";
+import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
 import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
 const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fail: "na", na: null };
@@ -34,6 +35,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [signing, setSigning] = useState<TemplateCheck | null>(null);
+  const [photoBusy, setPhotoBusy] = useState<string | null>(null);
   const types = useSignoffTypes();
   const permissions = usePermissions();
   const operators = useOperatorCount();
@@ -120,9 +122,11 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const t = s.template;
   const status = signoffStatus(s);
   const isAdmin = me.role === "admin";
-  // A completed sign-off is a closed record for operators (the server enforces the same).
-  const closed = status === "complete" && !isAdmin;
-  const canDelete = isAdmin || permissions.deleteSignoffs === "all";
+  const viewer = me.role === "viewer";
+  // A completed sign-off is a closed record for operators; a viewer only ever looks (the server
+  // enforces both).
+  const closed = (status === "complete" && !isAdmin) || viewer;
+  const canDelete = isAdmin || (permissions.deleteSignoffs === "all" && !viewer);
   const { done, total } = signoffProgress(s);
   const signedBy = (checkId: string) => s.signatures.find((g) => g.checkId === checkId);
   const markOf = (rowId: string, checkId: string) => s.marks.find((m) => m.rowId === rowId && m.checkId === checkId)?.value;
@@ -158,6 +162,23 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
       return;
     }
     await mutate({ kind: "updateHeader", id, patch: { typeId } }, () => api.updateSignoffHeader(id, { typeId }));
+  }
+
+  /** Camera → shrunk JPEG → shown at once, uploaded with the queue. */
+  async function takePhoto(checkId: string, file: File | undefined) {
+    if (!file) return;
+    setPhotoBusy(checkId);
+    try {
+      const dataUrl = await toJpegDataUrl(file);
+      const photoId = crypto.randomUUID();
+      const takenAt = new Date().toISOString();
+      await rememberPhoto(photoId, dataUrl);
+      await mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt));
+    } catch (err) {
+      setError(`Couldn't use that photo: ${errorMessage(err)}`);
+    } finally {
+      setPhotoBusy(null);
+    }
   }
 
   async function remove() {
@@ -277,7 +298,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                 return (
                   <th key={c.id} style={{ ...th, width: 92 }}>
                     <div>{c.label}</div>
-                    {!sig && !full && (
+                    {!sig && !full && !viewer && (
                       <button
                         onClick={() => void mutate({ kind: "fillCheck", id, checkId: c.id, value: "pass" }, () => api.fillCheck(id, c.id, "pass"))}
                         title="Tick every empty item in this check"
@@ -286,7 +307,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                         ✓ all
                       </button>
                     )}
-                    {!sig && full && (
+                    {!sig && full && !viewer && (
                       <button
                         onClick={() => void mutate({ kind: "clearCheck", id, checkId: c.id }, () => api.clearCheck(id, c.id))}
                         title="Untick every item in this check"
@@ -312,7 +333,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                     </td>
                   ) : (
                     <td key={c.id} style={{ padding: 3, borderLeft: "1px solid var(--border-soft)" }}>
-                      <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id))} onTap={() => tap(r.id, c.id)} />
+                      <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id)) || viewer} onTap={() => tap(r.id, c.id)} />
                     </td>
                   ),
                 )}
@@ -348,6 +369,8 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                             </button>
                           )}
                         </div>
+                      ) : viewer ? (
+                        <div style={{ color: "var(--text-4)", fontSize: 12, padding: "18px 0" }}>not signed</div>
                       ) : (
                         <button
                           disabled={!full}
@@ -357,6 +380,18 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                         >
                           {block ? "Other operator" : "Sign"}
                         </button>
+                      )}
+                      {!closed && (
+                        <div style={{ marginTop: 6 }}>
+                          <CameraButton
+                            checkLabel={c.label}
+                            count={(s.photos ?? []).filter((p) => p.checkId === c.id).length}
+                            busy={photoBusy === c.id}
+                            blocked={photoBlock(s, c.id, me, operators)}
+                            onBlocked={setError}
+                            onFile={(f) => void takePhoto(c.id, f)}
+                          />
+                        </div>
                       )}
                     </td>
                   );
@@ -422,9 +457,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
 
       <PhotosCard
         signoff={s}
-        canAdd={!closed}
         canRemove={isAdmin}
-        onAdd={(checkId, photoId, dataUrl, takenAt) => mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt))}
         onRemove={(photoId) => mutate({ kind: "removePhoto", id, photoId }, () => api.removePhoto(id, photoId))}
       />
 
@@ -438,7 +471,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
 
       {closed && (
         <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
-          🔒 Complete — this record is closed. Only an admin can change it.
+          {viewer ? "👁 View only — you can look and download the PDF." : "🔒 Complete — this record is closed. Only an admin can change it."}
         </div>
       )}
       {canDelete && (

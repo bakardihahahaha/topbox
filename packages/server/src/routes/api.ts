@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings } from "@biosite-signoff/shared";
+import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings, type Role } from "@biosite-signoff/shared";
 import type { AuthService } from "../services/auth.js";
 import type { CatalogService } from "../services/catalog.js";
 import type { SignoffService } from "../services/signoffs.js";
@@ -22,7 +22,7 @@ export interface Services {
 }
 
 const id = z.string().min(1).max(100);
-const role = z.enum(["admin", "operator"]);
+const role = z.enum(["admin", "operator", "viewer"]);
 const mode = z.enum(["new", "service"]);
 const markValue = z.enum(["pass", "fail", "na"]);
 
@@ -72,7 +72,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   const auth = requireAuth(s.auth);
   const authed = { preHandler: [auth] };
   const admin = { preHandler: [auth, requireAdmin()] };
-  const actor = (req: { user?: { userId: string; role: "admin" | "operator"; name: string } }) => req.user!;
+  const actor = (req: { user?: { userId: string; role: Role; name: string } }) => req.user!;
 
   // ---- auth ----------------------------------------------------------------------------------
 

@@ -1,3 +1,4 @@
+import type { Role } from "@biosite-signoff/shared";
 import { useState, type FormEvent } from "react";
 import { createUser, deleteUser, endSessions, listUsers, setUserPin, updateUser, type UserSummary } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
@@ -12,7 +13,7 @@ const PIN_RE = /^\d{4,8}$/;
 export function SetupUsersPage() {
   const me = useMe();
   const { data: users, error, setError, reload } = useData<UserSummary[]>(listUsers);
-  const [form, setForm] = useState({ name: "", pin: "", role: "operator" as "admin" | "operator" });
+  const [form, setForm] = useState({ name: "", pin: "", role: "operator" as Role });
   const [editing, setEditing] = useState<{ id: string; name: string; pin: string } | null>(null);
 
   async function run(fn: () => Promise<unknown>) {
@@ -70,9 +71,10 @@ export function SetupUsersPage() {
           <span className="mono" style={label}>
             Role
           </span>
-          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as "admin" | "operator" })} style={input}>
+          <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })} style={input}>
             <option value="operator">Operator</option>
             <option value="admin">Admin</option>
+            <option value="viewer">Viewer (view + PDFs only)</option>
           </select>
         </label>
         <button type="submit" style={{ ...primary, opacity: form.name.trim() && pinOk ? 1 : 0.5 }} disabled={!form.name.trim() || !pinOk}>
@@ -153,9 +155,11 @@ export function SetupUsersPage() {
                     Random PIN
                   </button>
                   {u.id !== me.userId && (
-                    <button style={ghost} onClick={() => run(() => updateUser(u.id, { role: u.role === "admin" ? "operator" : "admin" }))}>
-                      Make {u.role === "admin" ? "operator" : "admin"}
-                    </button>
+                    <select aria-label={`Role of ${u.name}`} value={u.role} onChange={(e) => run(() => updateUser(u.id, { role: e.target.value as Role }))} style={{ ...input, width: "auto", height: 44 }}>
+                      <option value="admin">Admin</option>
+                      <option value="operator">Operator</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
                   )}
                   {u.id !== me.userId && (u.locked || u.lockedUntil) && (
                     <button style={ghost} onClick={() => run(() => updateUser(u.id, { locked: false }))}>

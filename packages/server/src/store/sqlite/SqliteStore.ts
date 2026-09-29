@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
-import { mechanismKey, type Mark, type Part, type ReplacedPart, type Signature, type Signoff, type SignoffPhoto, type SignoffStatus, type Template } from "@biosite-signoff/shared";
+import { mechanismKey, type Mark, type Part, type ReplacedPart, type Signature, type Signoff, type SignoffPhoto, type SignoffStatus, type Template, type Role } from "@biosite-signoff/shared";
 import type {
   AppSettingsRepo,
   AuditEntry,
@@ -79,7 +79,7 @@ interface UserRow {
   username: string;
   name: string;
   password_hash: string;
-  role: "admin" | "operator";
+  role: Role;
   failed_attempts: number;
   lockouts: number;
   locked_until: string;

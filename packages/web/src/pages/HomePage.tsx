@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { SignoffSummary } from "@biosite-signoff/shared";
 import { getStock } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
+import { useMe } from "../lib/meContext.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { stamp, localStamp, topboxUrl } from "../lib/format.js";
 import { SignoffsListPage } from "./SignoffsListPage.js";
@@ -65,6 +66,7 @@ export function HomePage() {
 
 function StockTab({ typeId, typeName, service }: { typeId: string; typeName: string; service: boolean }) {
   const navigate = useNavigate();
+  const me = useMe();
   const stock = useData<SignoffSummary[]>(() => getStock(typeId), [typeId]);
   const items = stock.data ?? [];
   return (
@@ -78,9 +80,11 @@ function StockTab({ typeId, typeName, service }: { typeId: string; typeName: str
             First check done, waiting for the last check. {service ? "Newest first check first." : "Highest serial number first."} Once the last check is signed it leaves this list.
           </div>
         </div>
-        <button style={{ ...primary, height: 52 }} onClick={() => navigate(`/signoffs/new?typeId=${encodeURIComponent(typeId)}`)}>
-          + Start {typeName}
-        </button>
+        {me.role !== "viewer" && (
+          <button style={{ ...primary, height: 52 }} onClick={() => navigate(`/signoffs/new?typeId=${encodeURIComponent(typeId)}`)}>
+            + Start {typeName}
+          </button>
+        )}
       </div>
       {stock.error && <div style={errorBox}>{stock.error}</div>}
       {stock.data && items.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 14 }}>Nothing in stock for {typeName}.</div>}

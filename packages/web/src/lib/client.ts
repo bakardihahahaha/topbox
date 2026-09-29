@@ -1,3 +1,4 @@
+import type { Role } from "@biosite-signoff/shared";
 import type { LoginUser } from "@biosite-signoff/shared";
 
 const TOKEN_KEY = "biosite-signoff.token";
@@ -95,7 +96,7 @@ export async function sendJson<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", p
 export interface Me {
   userId: string;
   name: string;
-  role: "admin" | "operator";
+  role: Role;
   idleTimeoutMinutes: number;
 }
 

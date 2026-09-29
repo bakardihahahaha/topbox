@@ -181,14 +181,46 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX signoff_photos_signoff ON signoff_photos(signoff_id);
   `,
+  // 6: a third role, "viewer" (look + PDFs only). SQLite can't alter a CHECK constraint, so the
+  //    users table is rebuilt (migrate() runs with foreign keys off, as SQLite prescribes).
+  `
+  CREATE TABLE users_new (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'operator', 'viewer')),
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT NOT NULL DEFAULT '',
+    locked_until TEXT NOT NULL DEFAULT '',
+    lockouts INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO users_new (id, username, name, password_hash, role, failed_attempts, locked, created_at, updated_at, deleted_at, locked_until, lockouts)
+    SELECT id, username, name, password_hash, role, failed_attempts, locked, created_at, updated_at, deleted_at, locked_until, lockouts FROM users;
+  DROP TABLE users;
+  ALTER TABLE users_new RENAME TO users;
+  `,
 ];
 
 export function migrate(db: Database.Database): void {
   const current = db.pragma("user_version", { simple: true }) as number;
-  for (let i = current; i < MIGRATIONS.length; i++) {
-    db.transaction(() => {
-      db.exec(MIGRATIONS[i]!);
-      db.pragma(`user_version = ${i + 1}`);
-    })();
+  if (current >= MIGRATIONS.length) return;
+  // Table rebuilds (see 6) need foreign keys off — only switchable outside a transaction.
+  const fk = db.pragma("foreign_keys", { simple: true }) as number;
+  db.pragma("foreign_keys = OFF");
+  try {
+    for (let i = current; i < MIGRATIONS.length; i++) {
+      db.transaction(() => {
+        db.exec(MIGRATIONS[i]!);
+        const broken = db.pragma("foreign_key_check") as unknown[];
+        if (broken.length > 0) throw new Error(`Migration ${i + 1} broke ${broken.length} foreign key(s)`);
+        db.pragma(`user_version = ${i + 1}`);
+      })();
+    }
+  } finally {
+    if (fk) db.pragma("foreign_keys = ON");
   }
 }

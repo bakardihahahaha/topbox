@@ -4,6 +4,7 @@ import type { SignoffSummary, Template } from "@biosite-signoff/shared";
 import { getSignoffs, listTemplates } from "../lib/api.js";
 import { listSignoffsOfflineAware } from "../lib/offlineList.js";
 import { useData } from "../lib/useData.js";
+import { useMe } from "../lib/meContext.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { topboxUrl } from "../lib/format.js";
@@ -13,6 +14,7 @@ const PAGE_SIZE = 50;
 
 export function SignoffsListPage() {
   const navigate = useNavigate();
+  const me = useMe();
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -62,9 +64,11 @@ export function SignoffsListPage() {
     <div style={page}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <h1 style={h1}>Sign-offs</h1>
-        <button style={primary} onClick={() => navigate("/signoffs/new")}>
-          + New sign-off
-        </button>
+        {me.role !== "viewer" && (
+          <button style={primary} onClick={() => navigate("/signoffs/new")}>
+            + New sign-off
+          </button>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 12 }}>

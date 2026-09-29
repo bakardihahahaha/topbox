@@ -1,4 +1,4 @@
-import type { Signature, Signoff, SignoffStatus, SignoffSummary, Template } from "./types.js";
+import type { Role, Signature, Signoff, SignoffStatus, SignoffSummary, Template } from "./types.js";
 import { typeNameOf } from "./types.js";
 
 export function itemRows(template: Template) {
@@ -116,7 +116,7 @@ export function maxChecksPerOperator(checks: number, operators: number): number 
 }
 
 /** Why this operator may not sign `checkId` under the cross-check rule, or null if they may. */
-export function crossCheckBlock(s: Signoff, checkId: string, actor: { userId: string; role: "admin" | "operator" }, operators: number): string | null {
+export function crossCheckBlock(s: Signoff, checkId: string, actor: { userId: string; role: Role }, operators: number): string | null {
   if (actor.role === "admin") return null;
   const max = maxChecksPerOperator(s.template.checks.length, operators);
   const mine = s.signatures.filter((g) => g.checkId !== checkId && g.userId === actor.userId);
@@ -144,4 +144,20 @@ export function isRefurbishToggle(from: string, to: string): boolean {
 /** Once the first check is signed the sign-off type (New (UK) / Service…) is fixed for operators. */
 export function typeLocked(s: Pick<Signoff, "signatures">): boolean {
   return s.signatures.length > 0;
+}
+
+/** Why this person may not add a photo to `checkId`, or null if they may. A photo belongs to the
+ * check its taker is doing: the one they signed, or — before signing — the next unsigned check,
+ * provided the cross-check rule lets them sign it. So if John did check 1 and Mateusz is doing
+ * check 2, Mateusz can photograph check 2 only. Admins may add to any check; viewers to none. */
+export function photoBlock(s: Signoff, checkId: string, actor: { userId: string; role: Role }, operators: number): string | null {
+  if (actor.role === "viewer") return "Viewers can't add photos.";
+  if (actor.role === "admin") return null;
+  const check = s.template.checks.find((c) => c.id === checkId);
+  if (!check) return "Unknown check.";
+  const sig = s.signatures.find((g) => g.checkId === checkId);
+  if (sig) return sig.userId === actor.userId ? null : `${check.label} was done by ${sig.name} — only they can add its photos.`;
+  const next = s.template.checks.find((c) => !s.signatures.some((g) => g.checkId === c.id));
+  if (next && next.id !== checkId) return `The check being done now is ${next.label} — photos go to that check.`;
+  return crossCheckBlock(s, checkId, actor, operators);
 }

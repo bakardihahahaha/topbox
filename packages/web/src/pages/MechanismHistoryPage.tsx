@@ -4,6 +4,7 @@ import { getVisits } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { daysBetween, localStamp, stamp } from "../lib/format.js";
 import { SignoffPage } from "./SignoffPage.js";
+import { useMe } from "../lib/meContext.js";
 import { card, chip, errorBox, h1, page, primary } from "../lib/ui.js";
 
 /**
@@ -15,6 +16,7 @@ import { card, chip, errorBox, h1, page, primary } from "../lib/ui.js";
  */
 export function MechanismHistoryPage() {
   const { serial = "" } = useParams();
+  const me = useMe();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const visits = useData<Signoff[]>(() => getVisits(serial), [serial]);
@@ -41,7 +43,7 @@ export function MechanismHistoryPage() {
             {latest && (inWorkshop ? " · in the workshop now" : ` · at client since ${stamp(departedAt(latest))}`)}
           </div>
         </div>
-        {(!latest || !inWorkshop) && visits.data && (
+        {(!latest || !inWorkshop) && visits.data && me.role !== "viewer" && (
           <button style={{ ...primary, height: 56, fontSize: 15 }} onClick={startNewVisit}>
             {latest ? "Mechanism is back — start new visit" : "Start first sign-off"}
           </button>

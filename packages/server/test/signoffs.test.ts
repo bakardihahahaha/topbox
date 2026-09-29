@@ -372,9 +372,23 @@ describe("photos, refurbished serials and the fixed type", () => {
     expect(img.rawPayload.equals(FAKE_JPEG)).toBe(true);
     expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: "data:image/jpeg;base64,AAAA" })).statusCode).toBe(400);
 
+    // Photos go to the check being done: not check 2 while check 1 is still open…
+    const second = t.template.checks[1]!;
+    expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: second.id, dataUrl: FAKE_JPEG_URL })).statusCode).toBe(403);
+    // …and once Olga signed check 1, Otto (doing check 2) can't add to check 1, only to check 2.
+    await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: first.id, value: "pass" });
+    await op("PUT", `/api/signoffs/${id}/signatures/${first.id}`, { path: SIG, date: today });
+    const otto = t.as((await t.login("op2", "3333")).token);
+    expect((await otto("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: FAKE_JPEG_URL })).json().message).toMatch(/done by Olga Operator/);
+    const ottos = ((await otto("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: second.id, dataUrl: FAKE_JPEG_URL })).json() as Signoff).photos;
+    expect(ottos.at(-1)).toMatchObject({ checkId: second.id, takenByName: "Otto" });
+    // Olga can still add to her own check 1, not to check 2.
+    expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: FAKE_JPEG_URL })).statusCode).toBe(200);
+    expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: second.id, dataUrl: FAKE_JPEG_URL })).statusCode).toBe(403);
+
     expect((await op("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).statusCode).toBe(403);
     const admin = t.as((await t.login("admin", "1111")).token);
-    expect(((await admin("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).json() as Signoff).photos).toHaveLength(0);
+    expect(((await admin("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).json() as Signoff).photos).toHaveLength(2);
   });
 
   it("operators may only add/remove the refurbished R; 667R shares 667's history", async () => {
@@ -408,5 +422,32 @@ describe("photos, refurbished serials and the fixed type", () => {
     expect((await op("PATCH", `/api/signoffs/${id}`, { typeId: "new-uk" })).statusCode).toBe(403);
     const admin = t.as((await t.login("admin", "1111")).token);
     expect(((await admin("PATCH", `/api/signoffs/${id}`, { typeId: "new-uk" })).json() as Signoff).typeName).toBe("New (UK)");
+  });
+});
+
+describe("viewer role", () => {
+  it("can look and fetch sign-offs for a PDF, but every change is refused", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const created = (await admin("POST", "/api/users", { name: "Vera Viewer", role: "viewer", pin: "4444" })).json() as { id: string };
+    const id = randomUUID();
+    await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "V-1", typeId: "new-uk" });
+    const v = t.as((await t.login(created.id, "4444")).token);
+    expect((await v("GET", "/api/signoffs")).statusCode).toBe(200);
+    expect((await v("GET", `/api/signoffs/${id}`)).statusCode).toBe(200);
+    expect((await v("POST", "/api/signoffs/batch", { ids: [id] })).statusCode).toBe(200);
+    const first = t.template.checks[0]!;
+    for (const [method, url, body] of [
+      ["POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "V-2", typeId: "new-uk" }],
+      ["PUT", `/api/signoffs/${id}/marks`, { rowId: t.template.rows[1]!.id, checkId: first.id, value: "pass" }],
+      ["POST", `/api/signoffs/${id}/marks/fill`, { checkId: first.id, value: "pass" }],
+      ["PATCH", `/api/signoffs/${id}`, { notes: "x" }],
+      ["POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: FAKE_JPEG_URL }],
+      ["DELETE", `/api/signoffs/${id}`, undefined],
+    ] as const) {
+      const res = await v(method, url, body);
+      expect(res.statusCode, `${method} ${url}`).toBe(403);
+      expect(res.json().error).toBe("VIEW_ONLY");
+    }
   });
 });
