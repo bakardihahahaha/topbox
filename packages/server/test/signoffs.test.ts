@@ -386,9 +386,16 @@ describe("photos, refurbished serials and the fixed type", () => {
     expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: FAKE_JPEG_URL })).statusCode).toBe(200);
     expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: second.id, dataUrl: FAKE_JPEG_URL })).statusCode).toBe(403);
 
-    expect((await op("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).statusCode).toBe(403);
+    // Olga removes her own photo; Otto's is not hers to remove.
+    const ottoPhoto = ottos.at(-1)!.id;
+    expect((await op("DELETE", `/api/signoffs/${id}/photos/${ottoPhoto}`)).statusCode).toBe(403);
+    expect(((await op("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).json() as Signoff).photos.some((p) => p.id === photoId)).toBe(false);
+    // Only an admin removes someone else's photo, or adds one in another operator's name.
+    expect((await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first.id, dataUrl: FAKE_JPEG_URL, asUserId: t.ids.op2 })).statusCode).toBe(403);
     const admin = t.as((await t.login("admin", "1111")).token);
-    expect(((await admin("DELETE", `/api/signoffs/${id}/photos/${photoId}`)).json() as Signoff).photos).toHaveLength(2);
+    expect(((await admin("DELETE", `/api/signoffs/${id}/photos/${ottoPhoto}`)).json() as Signoff).photos).toHaveLength(1);
+    const asOtto = (await admin("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: second.id, dataUrl: FAKE_JPEG_URL, asUserId: t.ids.op2 })).json() as Signoff;
+    expect(asOtto.photos.at(-1)).toMatchObject({ checkId: second.id, takenBy: t.ids.op2, takenByName: "Otto" });
   });
 
   it("operators may only add/remove the refurbished R; 667R shares 667's history", async () => {

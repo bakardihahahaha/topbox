@@ -26,7 +26,8 @@ export type QueuedAction =
   | { kind: "unsign"; id: string; checkId: string }
   | { kind: "setPart"; id: string; lineId: string; partId: string; qty: number; note: string }
   | { kind: "removePart"; id: string; lineId: string }
-  | { kind: "addPhoto"; id: string; photoId: string; checkId: string; dataUrl: string; takenAt: string }
+  // asUserId/asName: an admin recording the photo in another operator's name.
+  | { kind: "addPhoto"; id: string; photoId: string; checkId: string; dataUrl: string; takenAt: string; asUserId?: string; asName?: string }
   | { kind: "removePhoto"; id: string; photoId: string }
   | { kind: "deleteSignoff"; id: string }
   | { kind: "createPart"; partId: string; input: PartInput }
@@ -104,7 +105,7 @@ async function apply(a: QueuedAction): Promise<unknown> {
     case "removePart":
       return api.removePartLine(a.id, a.lineId);
     case "addPhoto":
-      return api.addPhoto(a.id, a.photoId, a.checkId, a.dataUrl, a.takenAt);
+      return api.addPhoto(a.id, a.photoId, a.checkId, a.dataUrl, a.takenAt, a.asUserId);
     case "removePhoto":
       return api.removePhoto(a.id, a.photoId);
     case "deleteSignoff":

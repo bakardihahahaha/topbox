@@ -262,11 +262,12 @@ export function registerApi(app: FastifyInstance, s: Services): void {
         checkId: id,
         dataUrl: z.string().max(14 * 1024 * 1024).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, "The photo must be a JPEG image"),
         takenAt: z.string().datetime().optional(),
+        asUserId: id.optional(),
       }),
       req.body,
     );
     const jpeg = Buffer.from(body.dataUrl.slice(body.dataUrl.indexOf(",") + 1), "base64");
-    return s.signoffs.addPhoto(req.params.id, { photoId: body.photoId, checkId: body.checkId, jpeg, takenAt: body.takenAt }, actor(req));
+    return s.signoffs.addPhoto(req.params.id, { photoId: body.photoId, checkId: body.checkId, jpeg, takenAt: body.takenAt, asUserId: body.asUserId }, actor(req));
   });
 
   app.get<{ Params: { photoId: string } }>("/api/photos/:photoId", authed, async (req, reply) => {

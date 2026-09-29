@@ -165,7 +165,11 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   }
 
   /** Camera → shrunk JPEG → shown at once, uploaded with the queue. */
-  async function takePhotos(checkId: string, files: File[]) {
+  // Operators take back only their own photos (until the sign-off is complete); admins any.
+  const canRemovePhoto = (p: { takenBy: string }) => isAdmin || (!closed && p.takenBy === me.userId);
+  const removePhotoNow = (photoId: string) => mutate({ kind: "removePhoto", id, photoId }, () => api.removePhoto(id, photoId));
+
+  async function takePhotos(checkId: string, files: File[], as?: { userId: string; name: string }) {
     setPhotoBusy(checkId);
     try {
       // One after another — each is shrunk, shown and queued before the next is read.
@@ -174,7 +178,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
         const photoId = crypto.randomUUID();
         const takenAt = new Date().toISOString();
         await rememberPhoto(photoId, dataUrl);
-        await mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt));
+        await mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt, asUserId: as?.userId, asName: as?.name }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt, as?.userId));
       }
     } catch (err) {
       setError(`Couldn't use that photo: ${errorMessage(err)}`);
@@ -392,11 +396,15 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                             busy={photoBusy === c.id}
                             blocked={photoBlock(s, c.id, me, operators)}
                             onBlocked={setError}
-                            onFiles={(files) => takePhotos(c.id, files)}
+                            onFiles={(files, as) => takePhotos(c.id, files, as)}
+                            canRemove={canRemovePhoto}
+                            onRemove={removePhotoNow}
+                            isAdmin={isAdmin}
+                            me={me}
                           />
                         </div>
                       )}
-                      <PhotoStrip signoff={s} checkId={c.id} canRemove={isAdmin} onRemove={(photoId) => mutate({ kind: "removePhoto", id, photoId }, () => api.removePhoto(id, photoId))} />
+                      <PhotoStrip signoff={s} checkId={c.id} canRemove={canRemovePhoto} onRemove={removePhotoNow} />
                     </td>
                   );
                 })}
@@ -461,8 +469,8 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
 
       <PhotosCard
         signoff={s}
-        canRemove={isAdmin}
-        onRemove={(photoId) => mutate({ kind: "removePhoto", id, photoId }, () => api.removePhoto(id, photoId))}
+        canRemove={canRemovePhoto}
+        onRemove={removePhotoNow}
       />
 
       {/* Notes */}

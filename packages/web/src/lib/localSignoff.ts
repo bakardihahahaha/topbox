@@ -72,7 +72,7 @@ export function applyLocal(s: Signoff, a: QueuedAction, me: Me, parts: Part[], t
       return { ...s, parts: s.parts.filter((p) => p.id !== a.lineId) };
     case "addPhoto":
       if ((s.photos ?? []).some((p) => p.id === a.photoId)) return s;
-      return { ...s, photos: [...(s.photos ?? []), { id: a.photoId, checkId: a.checkId, takenBy: me.userId, takenByName: me.name, takenAt: a.takenAt }] };
+      return { ...s, photos: [...(s.photos ?? []), { id: a.photoId, checkId: a.checkId, takenBy: a.asUserId ?? me.userId, takenByName: a.asName ?? me.name, takenAt: a.takenAt }] };
     case "removePhoto":
       return { ...s, photos: (s.photos ?? []).filter((p) => p.id !== a.photoId) };
     default:

@@ -280,7 +280,7 @@ export class SignoffService {
 
   /** Stores a photo taken during one check. `photoId` comes from the client, so a retried upload
    * from the offline queue lands on the same photo. */
-  async addPhoto(id: string, input: { photoId: string; checkId: string; jpeg: Buffer; takenAt?: string }, actor: Actor): Promise<Signoff> {
+  async addPhoto(id: string, input: { photoId: string; checkId: string; jpeg: Buffer; takenAt?: string; asUserId?: string }, actor: Actor): Promise<Signoff> {
     const s = await this.require(id);
     this.assertCheck(s, input.checkId);
     if (s.photos.some((p) => p.id === input.photoId)) return s;
@@ -288,12 +288,20 @@ export class SignoffService {
     const block = photoBlock(s, input.checkId, actor, await this.operatorCount());
     if (block) throw forbidden(block);
     if (input.jpeg.length < 100 || input.jpeg[0] !== 0xff || input.jpeg[1] !== 0xd8) throw badRequest("The photo must be a JPEG image.");
+    // Only an admin may record a photo in another person's name.
+    let takenBy = { userId: actor.userId, name: actor.name };
+    if (input.asUserId && input.asUserId !== actor.userId) {
+      if (actor.role !== "admin") throw forbidden("Only an admin can add a photo as another operator.");
+      const u = await this.store.users.get(input.asUserId);
+      if (!u) throw notFound("User");
+      takenBy = { userId: u.id, name: u.name || u.username };
+    }
     const now = new Date().toISOString();
     const takenAt = input.takenAt && !Number.isNaN(Date.parse(input.takenAt)) ? input.takenAt : now;
     const check = s.template.checks.find((c) => c.id === input.checkId)!;
     const file = PhotoFiles.fileName(s.serialNumber, check.label, takenAt, input.photoId);
     await this.photoFiles.write(file, input.jpeg);
-    await this.store.signoffs.addPhoto(id, { id: input.photoId, checkId: input.checkId, takenBy: actor.userId, takenByName: actor.name, takenAt, file }, now);
+    await this.store.signoffs.addPhoto(id, { id: input.photoId, checkId: input.checkId, takenBy: takenBy.userId, takenByName: takenBy.name, takenAt, file }, now);
     return this.refresh(id);
   }
 
@@ -307,11 +315,16 @@ export class SignoffService {
     }
   }
 
-  /** Photos are evidence — like everything else, only an admin removes one. The file stays on the
-   * NAS; only the record is (soft-)deleted. */
+  /** An operator may take back their own photos (until the sign-off is complete); anyone else's
+   * only an admin. The file stays on the NAS; only the record is (soft-)deleted. */
   async removePhoto(id: string, photoId: string, actor: Actor): Promise<Signoff> {
-    if (actor.role !== "admin") throw forbidden("Only an admin can remove a photo.");
-    await this.require(id);
+    const s = await this.require(id);
+    const photo = s.photos.find((p) => p.id === photoId);
+    if (!photo) return s;
+    if (actor.role !== "admin") {
+      if (photo.takenBy !== actor.userId) throw forbidden(`This photo was taken by ${photo.takenByName} — only they or an admin can remove it.`);
+      this.assertEditable(s, actor);
+    }
     await this.store.signoffs.removePhoto(id, photoId, new Date().toISOString());
     return this.refresh(id);
   }
