@@ -1,0 +1,162 @@
+import { useEffect, useState } from "react";
+import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { fetchMe, logout, onUnauthorized, type Me } from "./lib/client.js";
+import { MeContext } from "./lib/meContext.js";
+import { useIdleLogout } from "./lib/idleLogout.js";
+import { connectLiveEvents, disconnectLiveEvents } from "./lib/liveEvents.js";
+import { useTheme } from "./theme/ThemeContext.js";
+import { SavingIndicator } from "./components/SavingIndicator.js";
+import { SignInPage } from "./pages/SignInPage.js";
+import { SignoffsListPage } from "./pages/SignoffsListPage.js";
+import { NewSignoffPage } from "./pages/NewSignoffPage.js";
+import { SignoffPage } from "./pages/SignoffPage.js";
+import { SetupTemplatesPage } from "./pages/SetupTemplatesPage.js";
+import { TemplateEditorPage } from "./pages/TemplateEditorPage.js";
+import { SetupPartsPage } from "./pages/SetupPartsPage.js";
+import { SetupUsersPage } from "./pages/SetupUsersPage.js";
+import { SetupSecurityPage } from "./pages/SetupSecurityPage.js";
+import { SetupBackupPage } from "./pages/SetupBackupPage.js";
+import { SetupAuditPage } from "./pages/SetupAuditPage.js";
+import { AccountPage } from "./pages/AccountPage.js";
+// Side effect: flushes the offline queue on load and whenever the device comes back online.
+import "./lib/offlineQueue.js";
+
+type Status = "checking" | "signedOut" | "signedIn";
+
+export function App() {
+  const [status, setStatus] = useState<Status>("checking");
+  const [me, setMe] = useState<Me | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { themeLabel, cycleTheme } = useTheme();
+
+  async function checkSession() {
+    const user = await fetchMe();
+    setMe(user);
+    setStatus(user ? "signedIn" : "signedOut");
+  }
+
+  useEffect(() => {
+    void checkSession();
+  }, []);
+
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        setMe(null);
+        setStatus("signedOut");
+        setMessage("Your session ended (timed out, ended by an admin, or your network changed) — sign in again. Unsaved changes are kept on this device and will sync.");
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    if (status === "signedIn") {
+      connectLiveEvents();
+      return disconnectLiveEvents;
+    }
+  }, [status]);
+
+  useIdleLogout(status === "signedIn" ? (me?.idleTimeoutMinutes ?? 0) : 0, () => {
+    void logout();
+    setMe(null);
+    setStatus("signedOut");
+    setMessage("You were signed out after being inactive for a while — sign in again to continue.");
+  });
+
+  if (status === "checking") return null;
+  if (status === "signedOut" || !me) {
+    return (
+      <SignInPage
+        onSignedIn={() => {
+          setMessage(null);
+          void checkSession();
+        }}
+        message={message ?? undefined}
+      />
+    );
+  }
+
+  const isAdmin = me.role === "admin";
+  return (
+    <MeContext.Provider value={me}>
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border-soft)", flex: "none", overflowX: "auto" }}>
+          <div style={{ display: "flex", gap: 16, alignItems: "center", flex: "none" }}>
+            <NavTab to="/signoffs" label="Sign-offs" />
+            <NavTab to={isAdmin ? "/setup/templates" : "/setup/account"} label="Setup" match="/setup" />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none", marginLeft: 16 }}>
+            <SavingIndicator />
+            <button onClick={cycleTheme} className="mono" style={navButton}>
+              {themeLabel}
+            </button>
+            <span className="mono" style={{ fontSize: 12, color: "var(--text-3)" }}>
+              {me.name} ({me.role})
+            </span>
+            <button
+              onClick={() => {
+                void logout();
+                setMe(null);
+                setStatus("signedOut");
+                navigate("/signoffs");
+              }}
+              className="mono"
+              style={navButton}
+            >
+              Log out
+            </button>
+          </div>
+        </nav>
+        <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/signoffs" replace />} />
+            <Route path="/signoffs" element={<SignoffsListPage />} />
+            <Route path="/signoffs/new" element={<NewSignoffPage />} />
+            <Route path="/signoffs/:id" element={<SignoffPage />} />
+            <Route path="/setup/account" element={<AccountPage />} />
+            {isAdmin && (
+              <>
+                <Route path="/setup/templates" element={<SetupTemplatesPage />} />
+                <Route path="/setup/templates/:id" element={<TemplateEditorPage />} />
+                <Route path="/setup/parts" element={<SetupPartsPage />} />
+                <Route path="/setup/users" element={<SetupUsersPage />} />
+                <Route path="/setup/security" element={<SetupSecurityPage />} />
+                <Route path="/setup/backup" element={<SetupBackupPage />} />
+                <Route path="/setup/audit" element={<SetupAuditPage />} />
+              </>
+            )}
+            <Route path="*" element={<Navigate to="/signoffs" replace />} />
+          </Routes>
+        </div>
+      </div>
+    </MeContext.Provider>
+  );
+}
+
+const navButton = {
+  background: "transparent",
+  border: "1px solid var(--border)",
+  color: "var(--text-2)",
+  borderRadius: "var(--radius-control)",
+  padding: "5px 10px",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+} as const;
+
+function NavTab({ to, label, match }: { to: string; label: string; match?: string }) {
+  return (
+    <NavLink
+      to={to}
+      style={({ isActive }) => ({
+        fontSize: 13,
+        fontWeight: 700,
+        color: isActive || (match && window.location.pathname.startsWith(match)) ? "var(--accent)" : "var(--text-2)",
+        textDecoration: "none",
+      })}
+    >
+      {label}
+    </NavLink>
+  );
+}

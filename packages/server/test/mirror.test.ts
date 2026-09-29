@@ -1,0 +1,106 @@
+import { randomUUID } from "node:crypto";
+import { describe, expect, it } from "vitest";
+import { SqliteStore } from "../src/store/sqlite/SqliteStore.js";
+import { MirrorService, SEED_TEMPLATE_SETTING } from "../src/mirror/MirrorService.js";
+import { SheetTable } from "../src/mirror/SheetTable.js";
+import { TABLES } from "../src/store/schema.js";
+import { setup } from "./helpers.js";
+
+describe("Google Sheets backup mirror", () => {
+  it("pushes every write via the outbox, upserting by id", async () => {
+    const t = await setup();
+    expect(await t.store.outbox.count()).toBeGreaterThan(0);
+    await t.mirror.flush();
+    expect(await t.store.outbox.count()).toBe(0);
+    const partsTab = () => t.sheets.tabs.get("sheet-1/parts") ?? [];
+
+    const part = await t.catalog.createPart({ partNumber: "P-1", name: "Spring", description: "" });
+    await t.mirror.flush();
+    expect(partsTab()).toHaveLength(2); // header + 1
+    await t.catalog.updatePart(part.id, { name: "Spring v2" });
+    await t.mirror.flush();
+    expect(partsTab()).toHaveLength(2); // overwritten in place, not appended
+    expect(partsTab()[1]).toContain("Spring v2");
+    await t.catalog.deletePart(part.id);
+    await t.mirror.flush();
+    expect(partsTab()[1]![partsTab()[0]!.indexOf("deleted_at")]).not.toBe("");
+  });
+
+  it("keeps changes queued and backs off when Google answers 429", async () => {
+    const t = await setup();
+    t.sheets.failNext(1);
+    await expect(t.mirror.flush()).rejects.toBeTruthy();
+    const status = await t.mirror.status();
+    expect(status.pending).toBeGreaterThan(0);
+    expect(status.lastError).toMatch(/quota/i);
+    expect(status.backoffUntil).not.toBeNull();
+    await t.mirror.flush(); // quota back
+    expect((await t.mirror.status()).pending).toBe(0);
+  });
+
+  it("translates a Google 429 on an admin action into 503 RATE_LIMITED + retry-after", async () => {
+    const t = await setup();
+    const { token } = await t.login("admin", "admin-pass");
+    t.sheets.failNext(10);
+    const res = await t.as(token)("POST", "/api/backup/sync-now");
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe("RATE_LIMITED");
+    expect(res.headers["retry-after"]).toBe("30");
+    expect(JSON.stringify(res.json())).not.toMatch(/Quota exceeded/);
+  });
+
+  it("serves repeated tab reads from cache and drops the cache on write", async () => {
+    const t = await setup();
+    await t.mirror.flush();
+    const table = new SheetTable(t.sheets, "sheet-1", "parts", 60_000);
+    const before = t.sheets.calls.read;
+    await Promise.all([table.readAll(), table.readAll(), table.readAll()]);
+    await table.readAll();
+    expect(t.sheets.calls.read - before).toBe(1);
+    await table.upsert(TABLES.find((x) => x.name === "parts")!.columns, [{ id: "p9", part_number: "Z", name: "Z", description: "", created_at: "", updated_at: "", deleted_at: "" }]);
+    const afterWrite = t.sheets.calls.read;
+    const rows = await table.readAll();
+    expect(t.sheets.calls.read).toBe(afterWrite + 1);
+    expect(rows.some((r) => r.id === "p9")).toBe(true);
+  });
+
+  it("restores a fresh database from the sheet", async () => {
+    const t = await setup();
+    const { token } = await t.login("op", "op-pass");
+    const id = randomUUID();
+    await t.as(token)("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "R-1", mode: "new" });
+    await t.as(token)("POST", `/api/signoffs/${id}/marks/fill`, { checkId: t.template.checks[0]!.id, value: "pass" });
+    await t.mirror.flush();
+
+    const fresh = new SqliteStore(":memory:");
+    const restorer = new MirrorService(fresh, t.sheets, "sheet-1");
+    await restorer.restore();
+    const restored = await fresh.signoffs.get(id);
+    expect(restored?.serialNumber).toBe("R-1");
+    expect(restored?.marks).toHaveLength(15);
+    expect((await fresh.templates.list())[0]!.rows).toHaveLength(16);
+    const op = await fresh.users.getByUsername("op");
+    expect(op?.locked).toBe(true); // restored accounts need a password reset
+    expect(await fresh.outbox.count()).toBe(0); // restore never re-mirrors
+  });
+
+  it("disaster recovery on a fresh install: seed template doesn't survive, restore allowed", async () => {
+    const t = await setup();
+    const { token } = await t.login("op", "op-pass");
+    await t.as(token)("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "D-1", mode: "new" });
+    await t.mirror.flush();
+
+    // A brand-new NAS database: bootstrap admin + seeded example template, pointed at the old sheet.
+    const n = await setup();
+    const seed = n.template;
+    await n.store.settings.set(SEED_TEMPLATE_SETTING, seed.id);
+    const mirror = new MirrorService(n.store, t.sheets, null);
+    expect(await mirror.setSpreadsheetId("sheet-1")).toBe(false); // first sheet: no full re-copy needed
+    await mirror.flush(); // the seed even reaches the old sheet before anyone presses restore
+    await mirror.restore();
+    const names = (await n.store.templates.list()).map((x) => x.id);
+    expect(names).toContain(t.template.id);
+    expect(names).not.toContain(seed.id);
+    expect((await n.store.signoffs.list({ limit: 10, offset: 0 })).items.map((x) => x.serialNumber)).toEqual(["D-1"]);
+  });
+});

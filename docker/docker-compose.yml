@@ -1,0 +1,29 @@
+services:
+  signoff-server:
+    # Built by .github/workflows/signoff.yml and pulled from GHCR — the NAS only pulls and runs.
+    # Update: Container Manager > Project > signoff > Action > Update (or ./deploy.sh on a shell).
+    image: ghcr.io/bakardihahahaha/signoff-server:latest
+    container_name: signoff-server
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      # The whole database — a single SQLite file on the NAS's own disk (bind-mounted ./data), so
+      # every read/write is local and fast. Visible in File Station; back it up like any file.
+      DB_PATH: /app/data/signoff.db
+      # DSM's reverse proxy is the only thing that can reach this container (port published on
+      # 127.0.0.1 only), so trusting its X-Forwarded-For is safe — and required for the
+      # one-IP-per-account rule and the login rate limit to see real client IPs.
+      TRUST_PROXY: "true"
+      # Google Sheets backup mirror. Remove both lines to run without a backup (not recommended).
+      GOOGLE_SERVICE_ACCOUNT_JSON_PATH: /run/secrets/service-account.json
+      # Optional — can also be set (and changed) later in Setup > Backup. Paste just the ID from
+      # https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit
+      SPREADSHEET_ID: ""
+      BOOTSTRAP_ADMIN_USERNAME: admin
+      # Leave empty to get a random password printed once in the container log on first start.
+      BOOTSTRAP_ADMIN_PASSWORD: ""
+    ports:
+      - "127.0.0.1:8084:8080" # DSM reverse proxy destination: http://127.0.0.1:8084
+    volumes:
+      - ./data:/app/data
+      - ./service-account.json:/run/secrets/service-account.json:ro

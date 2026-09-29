@@ -1,0 +1,107 @@
+import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import type { SignoffMode, Template } from "@biosite-signoff/shared";
+import { createSignoff, listTemplates } from "../lib/api.js";
+import { useData } from "../lib/useData.js";
+import { useMe } from "../lib/meContext.js";
+import { mutateOrQueue } from "../lib/offlineQueue.js";
+import { withSaving } from "../lib/savingStatus.js";
+import { cacheSignoff } from "../lib/signoffCache.js";
+import { draftSignoff } from "../lib/localSignoff.js";
+import { card, errorBox, errorMessage, h1, hint, input, label, page, primary } from "../lib/ui.js";
+
+export function NewSignoffPage() {
+  const navigate = useNavigate();
+  const me = useMe();
+  const templates = useData<Template[]>(listTemplates);
+  const [templateId, setTemplateId] = useState("");
+  const [mode, setMode] = useState<SignoffMode>("new");
+  const [serial, setSerial] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const chosen = templates.data?.find((t) => t.id === (templateId || templates.data?.[0]?.id));
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!chosen || !serial.trim()) return;
+    setBusy(true);
+    setError(null);
+    const input = { id: crypto.randomUUID(), templateId: chosen.id, serialNumber: serial.trim(), mode };
+    try {
+      const outcome = await withSaving(() => mutateOrQueue({ kind: "createSignoff", input }, () => createSignoff(input)));
+      cacheSignoff(outcome.synced ? outcome.result : draftSignoff(input, chosen, me));
+      navigate(`/signoffs/${input.id}`, { replace: true });
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ ...page, maxWidth: 560 }}>
+      <h1 style={h1}>New sign-off</h1>
+      <p style={hint}>Pick the checklist, say whether this is a new mechanism (check only) or a service one (repair, parts may be replaced), then enter its serial number.</p>
+      {(error || templates.error) && <div style={errorBox}>{error ?? templates.error}</div>}
+      {templates.data?.length === 0 && <div style={errorBox}>No templates yet — an admin needs to create one under Setup → Templates.</div>}
+
+      <form onSubmit={submit} style={{ ...card, display: "flex", flexDirection: "column", gap: 16 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span className="mono" style={label}>
+            Checklist
+          </span>
+          <select value={chosen?.id ?? ""} onChange={(e) => setTemplateId(e.target.value)} style={input}>
+            {templates.data?.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.documentId ? ` — ${t.documentId}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span className="mono" style={label}>
+            Type
+          </span>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {(["new", "service"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                style={{
+                  height: 58,
+                  borderRadius: "var(--radius-control)",
+                  border: `1px solid ${mode === m ? "var(--accent)" : "var(--border)"}`,
+                  background: mode === m ? "var(--accent-wash)" : "var(--bg-deep)",
+                  color: mode === m ? "var(--accent-wash-text)" : "var(--text-2)",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  padding: "0 12px",
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{m === "new" ? "New" : "Service"}</div>
+                <div style={{ fontSize: 11.5, opacity: 0.8 }}>{m === "new" ? "Check only" : "Repair + replaced parts"}</div>
+              </button>
+            ))}
+          </div>
+          {mode === "service" && chosen && chosen.partIds.length === 0 && (
+            <span style={{ fontSize: 12, color: "var(--text-3)" }}>This checklist has no replaceable parts defined — parts can be enabled for it in Setup → Templates.</span>
+          )}
+        </div>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span className="mono" style={label}>
+            {chosen?.serialLabel ?? "Serial Number"}
+          </span>
+          <input value={serial} onChange={(e) => setSerial(e.target.value)} autoFocus style={{ ...input, height: 46, fontSize: 16 }} className="mono" autoCapitalize="characters" />
+        </label>
+
+        <button type="submit" disabled={busy || !chosen || !serial.trim()} style={{ ...primary, height: 46, opacity: busy || !chosen || !serial.trim() ? 0.6 : 1 }}>
+          {busy ? "Creating…" : "Start sign-off"}
+        </button>
+      </form>
+    </div>
+  );
+}

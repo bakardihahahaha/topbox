@@ -1,0 +1,174 @@
+/* Design tokens — a straight copy of Biosite Decom's tokens.css (itself KPI's), so this app looks
+   like the rest of the suite: same three user-picked themes (dim default, dark, light), same
+   neutrals, one accent, one warning, one danger. Every component reads these custom properties,
+   never a literal colour. On screen a check mark uses --accent (pass), --danger (fail) and
+   --text-3 (N/A). */
+
+:root,
+:root[data-theme="dim"] {
+  --bg-deep: #33383c;
+  --bg-base: #3d4348;
+  --bg-bezel: #282d31;
+  --border: #565e64;
+  --border-soft: #454c51;
+  --surface-alt: #4a5157;
+  --head-row: #3a4045;
+
+  --accent: #93d13f;
+  --accent-hover: #aade65;
+  --accent-wash: #33401f;
+  --accent-wash-text: #d3e6ba;
+  --accent-chip: #3d4a28;
+
+  --text: #f5f6f6;
+  --text-2: #d4d9dc;
+  --text-3: #a3aab0;
+  --text-4: #848c92;
+
+  --warn: #e0b341;
+  --danger: #e2543c;
+  --danger-wash: #3d2a26;
+  --danger-text: #f2bdb0;
+  --danger-border: #6b473d;
+}
+
+:root[data-theme="dark"] {
+  --bg-deep: #1b1f22;
+  --bg-base: #24282c;
+  --bg-bezel: #12161a;
+  --border: #3b4247;
+  --border-soft: #2c3236;
+  --surface-alt: #333a3f;
+  --head-row: #20252a;
+
+  --accent: #93d13f;
+  --accent-hover: #aade65;
+  --accent-wash: #212b19;
+  --accent-wash-text: #cfe0b8;
+  --accent-chip: #2f3a22;
+
+  --text: #f2f4f5;
+  --text-2: #c6ccd1;
+  --text-3: #8b949b;
+  --text-4: #6f787f;
+
+  --warn: #e0b341;
+  --danger: #e2543c;
+  --danger-wash: #2e1e1c;
+  --danger-text: #f0b3a6;
+  --danger-border: #5c3a33;
+}
+
+:root[data-theme="light"] {
+  --bg-deep: #ffffff;
+  --bg-base: #f1f1f9;
+  --bg-bezel: #e7e8f2;
+  --border: #d7d8e8;
+  --border-soft: #e7e8f2;
+  --surface-alt: #eceefa;
+  --head-row: #f4f5fb;
+
+  --accent: #4f5fea;
+  --accent-hover: #3c4ce0;
+  --accent-wash: #e7e9fc;
+  --accent-wash-text: #33409e;
+  --accent-chip: #dfe2fa;
+
+  --text: #1c1d2e;
+  --text-2: #454761;
+  --text-3: #767893;
+  --text-4: #9698ab;
+
+  --warn: #a9720b;
+  --danger: #c2452f;
+  --danger-wash: #fbeae6;
+  --danger-text: #9c3320;
+  --danger-border: #f0c3b8;
+}
+
+:root {
+  --font-ui: "Archivo", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, monospace;
+
+  --radius-micro: 3px;
+  --radius-control: 5px;
+  --radius-card: 6px;
+  --radius-callout: 4px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+html {
+  overscroll-behavior-y: contain;
+  background: var(--bg-deep);
+}
+
+body {
+  background: var(--bg-deep);
+  font-family: var(--font-ui);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  overscroll-behavior-y: contain;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Portrait-only on phones/tablets — desktops (mouse + fine pointer) are never affected, even if
+   the browser window itself is wide and short. Installed PWA mode additionally requests this via
+   the manifest's own "orientation": "portrait", which the OS can enforce outright; this overlay
+   is the fallback for the far more common case of using the site directly in a mobile browser tab,
+   where no API can actually force a rotation back.
+   Gated on [data-orientation="landscape"] (set in main.tsx from screen.orientation.type — the
+   device's actual physical orientation) rather than the CSS `orientation` media feature, which is
+   purely a function of the current viewport's width vs height: on Android Chrome, opening the
+   on-screen keyboard can shrink the layout viewport's reported height below its width, flipping
+   `(orientation: landscape)` to true and showing this lock over a field the user is trying to
+   type into — even though the phone never physically rotated. */
+.orientation-lock {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  html[data-orientation="landscape"] .orientation-lock {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--bg-deep);
+    color: var(--text);
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    font-size: 15px;
+  }
+}

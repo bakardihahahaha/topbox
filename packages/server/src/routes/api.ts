@@ -1,0 +1,254 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import type { AuthService } from "../services/auth.js";
+import type { CatalogService } from "../services/catalog.js";
+import type { SignoffService } from "../services/signoffs.js";
+import type { MirrorService } from "../mirror/MirrorService.js";
+import type { Store } from "../store/Store.js";
+import { HttpError } from "../services/errors.js";
+import { bearerToken, requireAdmin, requireAuth } from "./authMiddleware.js";
+import { parse } from "./validate.js";
+import { dataChangeEmitter } from "../events.js";
+
+export interface Services {
+  store: Store;
+  auth: AuthService;
+  catalog: CatalogService;
+  signoffs: SignoffService;
+  mirror: MirrorService;
+}
+
+const id = z.string().min(1).max(100);
+const role = z.enum(["admin", "operator"]);
+const mode = z.enum(["new", "service"]);
+const markValue = z.enum(["pass", "fail", "na"]);
+
+const partInput = z.object({ partNumber: z.string().max(100), name: z.string().max(200), description: z.string().max(1000).default("") });
+
+const templateInput = z.object({
+  name: z.string().max(200),
+  documentRef: z.string().max(300).default(""),
+  documentId: z.string().max(100).default(""),
+  serialLabel: z.string().max(100).default("Serial Number"),
+  checks: z.array(z.object({ id, label: z.string().max(60) })).max(8),
+  rows: z.array(z.object({ id, kind: z.enum(["item", "section"]), text: z.string().max(500), bold: z.boolean(), indent: z.boolean() })).max(200),
+  signRowEnabled: z.boolean(),
+  signRowLabel: z.string().max(100).default("Sign and date here"),
+  distinctSigners: z.boolean().default(false),
+  partIds: z.array(id).max(500).default([]),
+});
+
+// Login throttled per IP on top of the 3-strike per-account lockout — the lockout stops guessing
+// one account, this stops one source trying many accounts.
+const LOGIN_RATE_LIMIT = { rateLimit: { max: 5, timeWindow: "1 minute" } };
+
+export function registerApi(app: FastifyInstance, s: Services): void {
+  const auth = requireAuth(s.auth);
+  const authed = { preHandler: [auth] };
+  const admin = { preHandler: [auth, requireAdmin()] };
+  const actor = (req: { user?: { userId: string; role: "admin" | "operator"; name: string } }) => req.user!;
+
+  // ---- auth ----------------------------------------------------------------------------------
+
+  app.post("/api/auth/login", { config: LOGIN_RATE_LIMIT }, async (req, reply) => {
+    const body = parse(z.object({ username: z.string().min(1).max(100), password: z.string().min(1).max(200) }), req.body);
+    const result = await s.auth.login(body.username, body.password, req.ip);
+    if (!result.ok) return reply.status(401).send({ error: result.reason });
+    return { token: result.token, role: result.role, userId: result.userId };
+  });
+
+  app.post("/api/auth/logout", async (req) => {
+    const token = bearerToken(req);
+    if (token) await s.auth.logout(token);
+    return { ok: true };
+  });
+
+  app.get("/api/auth/me", authed, async (req) => {
+    const user = await s.auth.getUser(req.user!.userId);
+    const sec = await s.auth.securitySettings();
+    return { userId: user!.id, username: user!.username, name: user!.name, role: user!.role, idleTimeoutMinutes: sec.idleTimeoutMinutes };
+  });
+
+  app.post("/api/auth/password", authed, async (req) => {
+    const body = parse(z.object({ current: z.string().min(1), next: z.string().min(1).max(200) }), req.body);
+    await s.auth.changeOwnPassword(req.user!.userId, body.current, body.next);
+    return { ok: true };
+  });
+
+  app.get("/api/security", admin, async () => s.auth.securitySettings());
+  app.patch("/api/security", admin, async (req) => {
+    const body = parse(z.object({ idleTimeoutMinutes: z.number().int().optional(), singleIp: z.boolean().optional() }), req.body);
+    return s.auth.setSecuritySettings(body, req.user!.userId);
+  });
+
+  // ---- users ---------------------------------------------------------------------------------
+
+  app.get("/api/users", admin, async () => s.auth.listUsers());
+  app.post("/api/users", admin, async (req) => {
+    const body = parse(z.object({ username: z.string(), name: z.string().max(100).default(""), role }), req.body);
+    return s.auth.createUser(body, req.user!.userId);
+  });
+  app.patch<{ Params: { id: string } }>("/api/users/:id", admin, async (req) => {
+    const body = parse(z.object({ name: z.string().max(100).optional(), role: role.optional(), locked: z.boolean().optional() }), req.body);
+    return s.auth.updateUser(req.params.id, body, req.user!.userId);
+  });
+  app.post<{ Params: { id: string } }>("/api/users/:id/reset-password", admin, async (req) => s.auth.resetPassword(req.params.id, req.user!.userId));
+  app.post<{ Params: { id: string } }>("/api/users/:id/end-sessions", admin, async (req) => {
+    await s.auth.endSessions(req.params.id, req.user!.userId);
+    return { ok: true };
+  });
+
+  app.get("/api/audit", admin, async (req) => {
+    const q = parse(z.object({ limit: z.coerce.number().int().min(1).max(1000).default(200) }), req.query);
+    const users = new Map((await s.store.users.list()).map((u) => [u.id, u.name || u.username]));
+    return (await s.store.audit.list(q.limit)).map((e) => ({ ...e, actorName: e.actorId ? (users.get(e.actorId) ?? e.actorId) : null }));
+  });
+
+  // ---- parts ---------------------------------------------------------------------------------
+
+  app.get("/api/parts", authed, async () => s.catalog.listParts());
+  app.post("/api/parts", admin, async (req) => {
+    const body = parse(partInput.extend({ id: id.optional() }), req.body);
+    return s.catalog.createPart(body, body.id);
+  });
+  app.patch<{ Params: { id: string } }>("/api/parts/:id", admin, async (req) => s.catalog.updatePart(req.params.id, parse(partInput.partial(), req.body)));
+  app.delete<{ Params: { id: string } }>("/api/parts/:id", admin, async (req) => {
+    await s.catalog.deletePart(req.params.id);
+    return { ok: true };
+  });
+
+  // ---- templates -----------------------------------------------------------------------------
+
+  app.get("/api/templates", authed, async () => s.catalog.listTemplates());
+  app.get<{ Params: { id: string } }>("/api/templates/:id", authed, async (req) => s.catalog.getTemplate(req.params.id));
+  app.post("/api/templates", admin, async (req) => {
+    const body = parse(templateInput.extend({ id: id.optional() }), req.body);
+    const { id: tid, ...input } = body;
+    return s.catalog.createTemplate(input, tid);
+  });
+  app.put<{ Params: { id: string } }>("/api/templates/:id", admin, async (req) => s.catalog.updateTemplate(req.params.id, parse(templateInput, req.body)));
+  app.post<{ Params: { id: string } }>("/api/templates/:id/duplicate", admin, async (req) => s.catalog.duplicateTemplate(req.params.id));
+  app.delete<{ Params: { id: string } }>("/api/templates/:id", admin, async (req) => {
+    await s.catalog.deleteTemplate(req.params.id);
+    return { ok: true };
+  });
+
+  // ---- sign-offs -----------------------------------------------------------------------------
+
+  app.get("/api/signoffs", authed, async (req) => {
+    const q = parse(
+      z.object({
+        q: z.string().max(100).optional(),
+        templateId: z.string().optional(),
+        status: z.enum(["draft", "complete"]).optional(),
+        mode: mode.optional(),
+        limit: z.coerce.number().int().min(1).max(200).default(50),
+        offset: z.coerce.number().int().min(0).default(0),
+      }),
+      req.query,
+    );
+    return s.signoffs.list({ search: q.q?.trim() || undefined, templateId: q.templateId || undefined, status: q.status, mode: q.mode, limit: q.limit, offset: q.offset });
+  });
+
+  /** Full records for several sign-offs at once — the multi-select "Generate PDF" on the list. */
+  app.post("/api/signoffs/batch", authed, async (req) => {
+    const body = parse(z.object({ ids: z.array(id).min(1).max(100) }), req.body);
+    return Promise.all(body.ids.map((i) => s.signoffs.get(i)));
+  });
+
+  app.post("/api/signoffs", authed, async (req) => {
+    const body = parse(z.object({ id: z.string().uuid(), templateId: id, serialNumber: z.string().max(100), mode }), req.body);
+    return s.signoffs.create(body, actor(req));
+  });
+
+  app.get<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => s.signoffs.get(req.params.id));
+
+  app.patch<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => {
+    const body = parse(z.object({ serialNumber: z.string().max(100).optional(), notes: z.string().max(5000).optional(), mode: mode.optional() }), req.body);
+    return s.signoffs.updateHeader(req.params.id, body);
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => {
+    await s.signoffs.remove(req.params.id, actor(req));
+    return { ok: true };
+  });
+
+  app.put<{ Params: { id: string } }>("/api/signoffs/:id/marks", authed, async (req) => {
+    const body = parse(z.object({ rowId: id, checkId: id, value: markValue.nullable() }), req.body);
+    return s.signoffs.setMark(req.params.id, body, actor(req));
+  });
+
+  app.post<{ Params: { id: string } }>("/api/signoffs/:id/marks/fill", authed, async (req) => {
+    const body = parse(z.object({ checkId: id, value: markValue }), req.body);
+    return s.signoffs.fillCheck(req.params.id, body, actor(req));
+  });
+
+  app.put<{ Params: { id: string; checkId: string } }>("/api/signoffs/:id/signatures/:checkId", authed, async (req) => {
+    const body = parse(z.object({ path: z.string().max(40_000), date: z.string() }), req.body);
+    return s.signoffs.sign(req.params.id, { checkId: req.params.checkId, ...body }, actor(req));
+  });
+
+  app.delete<{ Params: { id: string; checkId: string } }>("/api/signoffs/:id/signatures/:checkId", authed, async (req) => s.signoffs.unsign(req.params.id, req.params.checkId, actor(req)));
+
+  app.put<{ Params: { id: string; lineId: string } }>("/api/signoffs/:id/parts/:lineId", authed, async (req) => {
+    const body = parse(z.object({ partId: id, qty: z.number().int(), note: z.string().max(500).default("") }), req.body);
+    return s.signoffs.setPart(req.params.id, req.params.lineId, body);
+  });
+
+  app.delete<{ Params: { id: string; lineId: string } }>("/api/signoffs/:id/parts/:lineId", authed, async (req) => s.signoffs.removePart(req.params.id, req.params.lineId));
+
+  // ---- backup mirror -------------------------------------------------------------------------
+
+  app.get("/api/backup/status", admin, async () => s.mirror.status());
+
+  app.put("/api/backup/config", admin, async (req) => {
+    const body = parse(z.object({ spreadsheet: z.string().min(1).max(300) }), req.body);
+    // Accepts either the bare id or the whole docs.google.com URL pasted from the address bar.
+    const m = /\/spreadsheets\/d\/([A-Za-z0-9_-]+)/.exec(body.spreadsheet);
+    const spreadsheetId = m ? m[1]! : body.spreadsheet.trim();
+    if (!/^[A-Za-z0-9_-]{10,}$/.test(spreadsheetId)) throw new HttpError(400, "INVALID_REQUEST", "That doesn't look like a Google Sheets ID or URL.");
+    if (await s.mirror.setSpreadsheetId(spreadsheetId)) await s.mirror.resyncAll();
+    return s.mirror.status();
+  });
+
+  // These three call Google directly while the admin waits — a quota 429 surfaces through
+  // main.ts's global translator as 503 RATE_LIMITED with retry-after, never as Google's raw text.
+  app.post("/api/backup/sync-now", admin, async () => {
+    const mirrored = await s.mirror.flush();
+    return { mirrored, status: await s.mirror.status() };
+  });
+
+  app.post("/api/backup/resync-all", admin, async () => ({ queued: await s.mirror.resyncAll() }));
+
+  app.get("/api/backup/inspect", admin, async () => s.mirror.inspect());
+
+  app.post("/api/backup/restore", admin, async (req) => {
+    const body = parse(z.object({ confirm: z.literal("RESTORE") }), req.body);
+    void body;
+    const hasData = (await s.store.tables.countRows("signoffs")) > 0;
+    const force = (req.query as { force?: string }).force === "1";
+    if (hasData && !force) {
+      throw new HttpError(409, "NOT_EMPTY", "This database already has sign-offs. Restore is meant for a fresh NAS database — use force to merge anyway.");
+    }
+    return { restored: await s.mirror.restore() };
+  });
+
+  // ---- live events (SSE) ---------------------------------------------------------------------
+
+  // EventSource can't send an Authorization header, so the token travels as ?token= here only
+  // (redacted from logs in main.ts).
+  app.get<{ Querystring: { token?: string } }>("/api/events", async (req, reply) => {
+    const session = req.query.token ? await s.auth.resolveSession(req.query.token, req.ip) : null;
+    if (!session) return reply.status(401).send({ error: "UNAUTHENTICATED" });
+    reply.hijack();
+    reply.raw.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+    reply.raw.write(": connected\n\n");
+    const send = () => reply.raw.write("event: change\ndata: {}\n\n");
+    const heartbeat = setInterval(() => reply.raw.write(": ping\n\n"), 20_000);
+    dataChangeEmitter.on("change", send);
+    req.raw.on("close", () => {
+      clearInterval(heartbeat);
+      dataChangeEmitter.off("change", send);
+    });
+  });
+}

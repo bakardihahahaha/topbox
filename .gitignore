@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
+packages/server/data/
+packages/server/web-dist/
+docker/data/
+docker/service-account.json

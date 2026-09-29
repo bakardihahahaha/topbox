@@ -1,0 +1,137 @@
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import type { SignoffMode, SignoffSummary, Template } from "@biosite-signoff/shared";
+import { getSignoffs, listSignoffs, listTemplates } from "../lib/api.js";
+import { useData } from "../lib/useData.js";
+import { downloadPdf } from "../lib/pdfLazy.js";
+import { card, chip, errorBox, errorMessage, formatDateTime, ghost, h1, input, page, primary } from "../lib/ui.js";
+
+const PAGE_SIZE = 50;
+
+export function SignoffsListPage() {
+  const navigate = useNavigate();
+  const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [status, setStatus] = useState<"" | "draft" | "complete">("");
+  const [mode, setMode] = useState<"" | SignoffMode>("");
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q), 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const templates = useData<Template[]>(listTemplates);
+  const list = useData(() => listSignoffs({ q: debouncedQ, templateId, status: status || undefined, mode: mode || undefined, limit }), [debouncedQ, templateId, status, mode, limit]);
+
+  function toggle(id: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function generate() {
+    setBusy(true);
+    setPdfError(null);
+    try {
+      // Printed in SO-number order, oldest first — the order they'd sit in a paper file.
+      const full = await getSignoffs([...selected]);
+      full.sort((a, b) => a.number.localeCompare(b.number));
+      await downloadPdf(full);
+    } catch (err) {
+      setPdfError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const items = list.data?.items ?? [];
+
+  return (
+    <div style={page}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <h1 style={h1}>Sign-offs</h1>
+        <button style={primary} onClick={() => navigate("/signoffs/new")}>
+          + New sign-off
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 12 }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search serial or SO number" style={{ ...input, gridColumn: "1 / -1" }} />
+        <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} style={input}>
+          <option value="">All templates</option>
+          {templates.data?.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} style={input}>
+          <option value="">Any status</option>
+          <option value="draft">In progress</option>
+          <option value="complete">Complete</option>
+        </select>
+        <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} style={input}>
+          <option value="">New + service</option>
+          <option value="new">New</option>
+          <option value="service">Service</option>
+        </select>
+      </div>
+
+      {selected.size > 0 && (
+        <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, position: "sticky", top: 0, zIndex: 5 }}>
+          <span style={{ fontSize: 13 }}>{selected.size} selected</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={ghost} onClick={() => setSelected(new Set())}>
+              Clear
+            </button>
+            <button style={primary} onClick={generate} disabled={busy}>
+              {busy ? "Generating…" : "Generate PDF"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(list.error || pdfError) && <div style={errorBox}>{pdfError ?? list.error}</div>}
+      {!list.data && !list.error && <div style={{ color: "var(--text-3)", fontSize: 13 }}>Loading…</div>}
+      {list.data && items.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No sign-offs match.</div>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {items.map((s) => (
+          <Row key={s.id} s={s} selected={selected.has(s.id)} onToggle={() => toggle(s.id)} />
+        ))}
+      </div>
+
+      {list.data && list.data.total > items.length && (
+        <button style={{ ...ghost, marginTop: 12, width: "100%" }} onClick={() => setLimit((l) => l + PAGE_SIZE)}>
+          Load more ({list.data.total - items.length} more)
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; onToggle: () => void }) {
+  return (
+    <div style={{ ...card, padding: "10px 12px", display: "flex", alignItems: "center", gap: 12, borderColor: selected ? "var(--accent)" : "var(--border-soft)" }}>
+      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.number}`} style={{ width: 18, height: 18, accentColor: "var(--accent)", flex: "none" }} />
+      <Link to={`/signoffs/${s.id}`} style={{ flex: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 15, fontWeight: 700 }}>{s.serialNumber}</span>
+          <span style={chip(s.status === "complete" ? "accent" : "warn")}>{s.status === "complete" ? "Complete" : `In progress ${s.progress}`}</span>
+          <span style={chip("muted")}>{s.mode === "service" ? "Service" : "New"}</span>
+        </div>
+        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {s.number} · {s.templateName} · {s.createdByName} · {formatDateTime(s.updatedAt)}
+        </div>
+      </Link>
+    </div>
+  );
+}

@@ -1,0 +1,262 @@
+import { jsPDF } from "jspdf";
+import autoTable, { type CellHookData } from "jspdf-autotable";
+import { SIGNATURE_BOX, type Signoff } from "@biosite-signoff/shared";
+import { parseSignaturePath } from "./signaturePath.js";
+
+// The PDF is built entirely in the browser (jsPDF) on whatever device presses the button — the
+// NAS never renders anything, it only serves JSON. Layout follows the paper PA-DOC-189 form: the
+// Biosite masthead, document reference, a bordered checklist table per sign-off, and several
+// sign-offs stacked per A4 page (two of the standard mechanism checklist fit on one), each
+// separated by a hairline — exactly like the printed original.
+
+const COMPANY = {
+  name: "Biosite Systems Ltd.",
+  address: ["Lancaster House", "Drayton Road, Solihull, UK", "B90 4NG", "Tel: +44(0)121 374 2939", "www.biositesystems.com"],
+  footer: "Biosite Systems Ltd, registered in England and Wales. Reg. No. 7308880",
+};
+
+const PAGE = { w: 210, h: 297, margin: 14, top: 34, bottom: 24 };
+const INK: [number, number, number] = [16, 18, 21];
+const GREY: [number, number, number] = [110, 116, 122];
+const RED: [number, number, number] = [200, 40, 40];
+
+/** jsPDF's built-in Helvetica only covers Latin-1 — fold anything else (ł, ś, ą, “ ”) to its
+ * closest plain letter rather than printing garbage. */
+function pdfText(s: string): string {
+  return s
+    .replace(/[łŁ]/g, (c) => (c === "ł" ? "l" : "L"))
+    .replace(/[“”„]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, "-")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^\x20-\x7E\xA0-\xFF\n]/g, "");
+}
+
+function drawMasthead(doc: jsPDF, documentRef: string) {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(...RED);
+  doc.text("BIO", PAGE.margin, 22);
+  doc.setTextColor(60, 60, 60);
+  doc.text("SITE", PAGE.margin + doc.getTextWidth("BIO"), 22);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  if (documentRef) doc.text(pdfText(documentRef), PAGE.w / 2 + 8, 26, { align: "center" });
+
+  doc.setFontSize(7);
+  const lines = [COMPANY.name, ...COMPANY.address];
+  lines.forEach((l, i) => doc.text(l, PAGE.w - PAGE.margin, 11 + i * 3.2, { align: "right" }));
+  doc.setDrawColor(...GREY);
+  doc.setLineWidth(0.2);
+  doc.line(PAGE.margin, 29, PAGE.w - PAGE.margin, 29);
+}
+
+function drawFooter(doc: jsPDF, documentId: string, page: number, pages: number) {
+  const y = PAGE.h - 16;
+  doc.setDrawColor(...GREY);
+  doc.setLineWidth(0.2);
+  doc.line(PAGE.margin, y - 4, PAGE.w - PAGE.margin, y - 4);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...INK);
+  if (documentId) doc.text(`Document Identifier: ${pdfText(documentId)}`, PAGE.margin, y);
+  doc.text(`Page ${page} of ${pages}`, PAGE.w - PAGE.margin, y, { align: "right" });
+  doc.setFontSize(8);
+  doc.text(COMPANY.footer, PAGE.w / 2, y + 6, { align: "center" });
+}
+
+function drawTick(doc: jsPDF, cx: number, cy: number) {
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.45);
+  doc.line(cx - 1.6, cy, cx - 0.4, cy + 1.3);
+  doc.line(cx - 0.4, cy + 1.3, cx + 1.9, cy - 1.5);
+}
+
+function drawCross(doc: jsPDF, cx: number, cy: number) {
+  doc.setDrawColor(...RED);
+  doc.setLineWidth(0.45);
+  doc.line(cx - 1.4, cy - 1.4, cx + 1.4, cy + 1.4);
+  doc.line(cx - 1.4, cy + 1.4, cx + 1.4, cy - 1.4);
+}
+
+function drawSignature(doc: jsPDF, path: string, x: number, y: number, w: number, h: number) {
+  const scale = Math.min(w / SIGNATURE_BOX.width, h / SIGNATURE_BOX.height);
+  const ox = x + (w - SIGNATURE_BOX.width * scale) / 2;
+  doc.setDrawColor(20, 30, 90);
+  doc.setLineWidth(0.3);
+  for (const stroke of parseSignaturePath(path)) {
+    for (let i = 1; i < stroke.length; i++) {
+      doc.line(ox + stroke[i - 1]!.x * scale, y + stroke[i - 1]!.y * scale, ox + stroke[i]!.x * scale, y + stroke[i]!.y * scale);
+    }
+  }
+}
+
+/** Rough block height (mm) so a sign-off that won't fit starts on a fresh page instead of
+ * splitting its table across two. */
+const checkColWidth = (checks: number) => (checks > 3 ? 20 : 24);
+
+function estimateHeight(s: Signoff): number {
+  const itemWidth = PAGE.w - PAGE.margin * 2 - s.template.checks.length * checkColWidth(s.template.checks.length) - 3;
+  const charsPerLine = itemWidth / 1.45;
+  const lines = s.template.rows.reduce((n, r) => n + Math.max(1, Math.ceil(r.text.length / charsPerLine)), 0);
+  let h = 7 + 9 + 4.6 + lines * 4.4 + (s.template.signRowEnabled ? 13 : 0) + 4.5;
+  if (s.mode === "service" && s.parts.length) h += 6 + (s.parts.length + 1) * 4.6;
+  if (s.notes.trim()) h += 4 + Math.ceil(s.notes.length / 120) * 3.6;
+  return h;
+}
+
+type Cell = { content: string; styles?: Record<string, unknown>; colSpan?: number; kind?: string; value?: string; checkId?: string };
+
+function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
+  const t = s.template;
+  const checkW = checkColWidth(t.checks.length);
+  const width = PAGE.w - PAGE.margin * 2;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.setTextColor(...INK);
+  doc.text(pdfText(t.name), PAGE.w / 2, startY + 3.5, { align: "center" });
+
+  const markOf = (rowId: string, checkId: string) => s.marks.find((m) => m.rowId === rowId && m.checkId === checkId)?.value;
+  const body: Cell[][] = [];
+  body.push([
+    { content: pdfText(t.serialLabel), styles: { fontStyle: "bold", fontSize: 10, minCellHeight: 9, valign: "middle" } },
+    { content: pdfText(s.serialNumber), colSpan: t.checks.length, styles: { fontSize: 11, valign: "middle", halign: "center" } },
+  ]);
+  body.push([{ content: "Item", styles: { fontStyle: "bold" } }, ...t.checks.map((c) => ({ content: pdfText(c.label), styles: { fontStyle: "bold" } }))]);
+  for (const r of t.rows) {
+    const label = { content: `${r.indent ? "  " : ""}${pdfText(r.text)}`, styles: { fontStyle: r.bold ? "bold" : "normal" } };
+    if (r.kind === "section") {
+      body.push([label, ...t.checks.map(() => ({ content: "- - - - - - - - - -", styles: { halign: "center", textColor: GREY, fontSize: 7 } }))]);
+    } else {
+      body.push([label, ...t.checks.map((c) => ({ content: markOf(r.id, c.id) === "na" ? "N/A" : "", kind: "mark", value: markOf(r.id, c.id), styles: { halign: "center" } }))]);
+    }
+  }
+  if (t.signRowEnabled) {
+    body.push([
+      { content: pdfText(t.signRowLabel), styles: { minCellHeight: 13, valign: "bottom" } },
+      ...t.checks.map((c) => ({ content: "", kind: "sign", checkId: c.id })),
+    ]);
+  }
+
+  autoTable(doc, {
+    startY: startY + 5.5,
+    margin: { left: PAGE.margin, right: PAGE.margin, top: PAGE.top, bottom: PAGE.bottom },
+    tableWidth: width,
+    theme: "grid",
+    body: body as never,
+    styles: { font: "helvetica", fontSize: 8, textColor: INK, lineColor: [60, 60, 60], lineWidth: 0.15, cellPadding: { top: 0.6, bottom: 0.6, left: 1.5, right: 1.5 }, overflow: "linebreak" },
+    columnStyles: Object.fromEntries(t.checks.map((_, i) => [i + 1, { cellWidth: checkW }])),
+    rowPageBreak: "avoid",
+    didDrawCell: (data: CellHookData) => {
+      if (data.section !== "body") return;
+      const raw = data.cell.raw as Cell;
+      const { x, y, width: w, height: h } = data.cell;
+      if (raw?.kind === "mark") {
+        if (raw.value === "pass") drawTick(doc, x + w / 2, y + h / 2);
+        if (raw.value === "fail") drawCross(doc, x + w / 2, y + h / 2);
+      }
+      if (raw?.kind === "sign") {
+        const sig = s.signatures.find((g) => g.checkId === raw.checkId);
+        if (!sig) return;
+        drawSignature(doc, sig.path, x + 0.8, y + 0.4, w - 1.6, h - 6.4);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.5);
+        doc.setTextColor(...INK);
+        const fit = (text: string) => {
+          let t = text;
+          while (t.length > 3 && doc.getTextWidth(t) > w - 1.5) t = t.slice(0, -1);
+          return t === text ? t : `${t.slice(0, -1)}.`;
+        };
+        doc.text(sig.date.split("-").reverse().join("/"), x + w / 2, y + h - 3.6, { align: "center" });
+        doc.text(fit(pdfText(sig.name)), x + w / 2, y + h - 1.1, { align: "center" });
+      }
+    },
+  });
+
+  let y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 3;
+
+  doc.setFontSize(7);
+  doc.setTextColor(...GREY);
+  doc.setFont("helvetica", "normal");
+  doc.text(pdfText(`${s.number}  ·  ${s.mode === "service" ? "Service" : "New"}  ·  started by ${s.createdByName} on ${s.createdAt.slice(0, 10)}`), PAGE.margin, y + 1);
+  y += 3;
+
+  if (s.mode === "service" && s.parts.length > 0) {
+    autoTable(doc, {
+      startY: y + 1,
+      margin: { left: PAGE.margin, right: PAGE.margin, top: PAGE.top, bottom: PAGE.bottom },
+      theme: "grid",
+      head: [["Parts replaced — Part No.", "Name", "Qty", "Note"]],
+      body: s.parts.map((p) => [pdfText(p.partNumber), pdfText(p.name), String(p.qty), pdfText(p.note)]),
+      styles: { font: "helvetica", fontSize: 8, textColor: INK, lineColor: [60, 60, 60], lineWidth: 0.15, cellPadding: 1 },
+      headStyles: { fillColor: [240, 240, 240], textColor: INK, fontStyle: "bold" },
+      columnStyles: { 0: { cellWidth: 48 }, 2: { cellWidth: 12, halign: "center" } },
+    });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 2;
+  }
+
+  if (s.notes.trim()) {
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    const lines = doc.splitTextToSize(pdfText(`Notes: ${s.notes.trim()}`), width) as string[];
+    doc.text(lines, PAGE.margin, y + 3);
+    y += 3 + lines.length * 3.6;
+  }
+  return y;
+}
+
+export function buildSignoffsPdf(signoffs: Signoff[]): jsPDF {
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  // Each page's masthead/footer belongs to the first sign-off drawn on it.
+  const pageDocs: { ref: string; id: string }[] = [];
+  let y = PAGE.top;
+  signoffs.forEach((s, i) => {
+    const h = estimateHeight(s);
+    if (i > 0) {
+      if (y + 8 + h > PAGE.h - PAGE.bottom) {
+        doc.addPage();
+        y = PAGE.top;
+      } else {
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.3);
+        doc.line(0, y + 3, PAGE.w, y + 3);
+        y += 8;
+      }
+    }
+    const page = doc.getNumberOfPages();
+    if (!pageDocs[page - 1]) pageDocs[page - 1] = { ref: s.template.documentRef, id: s.template.documentId };
+    y = drawSignoff(doc, s, y);
+  });
+
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    const meta = pageDocs[p - 1] ?? pageDocs.filter(Boolean).at(-1) ?? { ref: "", id: "" };
+    drawMasthead(doc, meta.ref);
+    drawFooter(doc, meta.id, p, pages);
+  }
+  return doc;
+}
+
+export function pdfFileName(signoffs: Signoff[]): string {
+  if (signoffs.length === 1) {
+    const s = signoffs[0]!;
+    return `${s.template.name} ${s.serialNumber} ${s.number}.pdf`.replace(/[\\/:*?"<>|]+/g, "-");
+  }
+  return `Sign-offs ${new Date().toISOString().slice(0, 10)} (${signoffs.length}).pdf`;
+}
+
+/** Builds and downloads the PDF on this device. */
+export function downloadSignoffsPdf(signoffs: Signoff[]): void {
+  buildSignoffsPdf(signoffs).save(pdfFileName(signoffs));
+}
+
+/** Opens the PDF in a new tab (handy on desktops for printing straight away). */
+export function openSignoffsPdf(signoffs: Signoff[]): void {
+  const url = buildSignoffsPdf(signoffs).output("bloburl");
+  window.open(String(url), "_blank", "noopener");
+}

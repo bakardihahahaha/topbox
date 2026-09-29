@@ -1,0 +1,117 @@
+import { useState, type FormEvent } from "react";
+import type { Part } from "@biosite-signoff/shared";
+import { createPart, deletePart, listParts, updatePart } from "../lib/api.js";
+import { useData } from "../lib/useData.js";
+import { mutateOrQueue } from "../lib/offlineQueue.js";
+import { withSaving } from "../lib/savingStatus.js";
+import { confirmDialog } from "../lib/confirmDialog.js";
+import { SetupSubNav } from "../components/SetupSubNav.js";
+import { card, danger, errorBox, errorMessage, ghost, h1, hint, input, page, primary } from "../lib/ui.js";
+
+export function SetupPartsPage() {
+  const { data: parts, setData, error, setError, reload } = useData<Part[]>(listParts);
+  const [form, setForm] = useState({ partNumber: "", name: "", description: "" });
+  const [editing, setEditing] = useState<Part | null>(null);
+
+  async function add(e: FormEvent) {
+    e.preventDefault();
+    const input = { partNumber: form.partNumber.trim(), name: form.name.trim(), description: form.description.trim() };
+    if (!input.partNumber || !input.name) return;
+    const partId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    setError(null);
+    setData((ps) => [...(ps ?? []), { id: partId, ...input, createdAt: now, updatedAt: now }]);
+    setForm({ partNumber: "", name: "", description: "" });
+    try {
+      const outcome = await withSaving(() => mutateOrQueue({ kind: "createPart", partId, input }, () => createPart(partId, input)));
+      if (outcome.synced) await reload();
+    } catch (err) {
+      setError(errorMessage(err));
+      await reload();
+    }
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
+    const patch = { partNumber: editing.partNumber.trim(), name: editing.name.trim(), description: editing.description.trim() };
+    setError(null);
+    setData((ps) => ps?.map((p) => (p.id === editing.id ? { ...p, ...patch } : p)) ?? ps);
+    const id = editing.id;
+    setEditing(null);
+    try {
+      await withSaving(() => mutateOrQueue({ kind: "updatePart", partId: id, patch }, () => updatePart(id, patch)));
+    } catch (err) {
+      setError(errorMessage(err));
+      await reload();
+    }
+  }
+
+  async function remove(p: Part) {
+    if (!(await confirmDialog(`Delete part ${p.partNumber} "${p.name}"? Sign-offs that already recorded it keep it; it's removed from every template's list.`, { confirmLabel: "Delete", danger: true }))) return;
+    setData((ps) => ps?.filter((x) => x.id !== p.id) ?? ps);
+    try {
+      await withSaving(() => mutateOrQueue({ kind: "deletePart", partId: p.id }, () => deletePart(p.id)));
+    } catch (err) {
+      setError(errorMessage(err));
+      await reload();
+    }
+  }
+
+  return (
+    <div style={page}>
+      <h1 style={h1}>Setup</h1>
+      <SetupSubNav />
+      <p style={hint}>Every part that can be replaced during a service. Define them once here, then tick which ones apply to each template — operators only ever tick them, never type them.</p>
+
+      <form onSubmit={add} style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginBottom: 16 }}>
+        <input value={form.partNumber} onChange={(e) => setForm({ ...form, partNumber: e.target.value })} placeholder="Part number" className="mono" style={input} />
+        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" style={input} />
+        <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description (optional)" style={input} />
+        <button type="submit" style={primary} disabled={!form.partNumber.trim() || !form.name.trim()}>
+          Add part
+        </button>
+      </form>
+
+      {error && <div style={errorBox}>{error}</div>}
+      {parts?.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No parts yet — add one above.</div>}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {parts?.map((p) =>
+          editing?.id === p.id ? (
+            <div key={p.id} style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+              <input value={editing.partNumber} onChange={(e) => setEditing({ ...editing, partNumber: e.target.value })} className="mono" style={input} />
+              <input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} style={input} />
+              <input value={editing.description} onChange={(e) => setEditing({ ...editing, description: e.target.value })} placeholder="Description" style={input} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <button style={primary} onClick={() => void saveEdit()} disabled={!editing.partNumber.trim() || !editing.name.trim()}>
+                  Save
+                </button>
+                <button style={{ ...ghost, height: 38 }} onClick={() => setEditing(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div key={p.id} style={{ ...card, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <div style={{ minWidth: 0 }}>
+                <span className="mono" style={{ fontSize: 12.5, color: "var(--text-3)", marginRight: 10 }}>
+                  {p.partNumber}
+                </span>
+                <span style={{ fontWeight: 600 }}>{p.name}</span>
+                {p.description && <div style={{ fontSize: 12, color: "var(--text-3)" }}>{p.description}</div>}
+              </div>
+              <div style={{ display: "flex", gap: 6, flex: "none" }}>
+                <button style={ghost} onClick={() => setEditing(p)}>
+                  Edit
+                </button>
+                <button style={danger} onClick={() => void remove(p)}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
