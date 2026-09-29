@@ -249,3 +249,44 @@ describe("stock with more than two checks", () => {
     expect(await inStock()).toBeUndefined();
   });
 });
+
+describe("operator restrictions", () => {
+  it("empty signatures refused; serial/arrival admin-only; signatures & deletes admin-only; completed sign-offs closed to operators", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const op = t.as((await t.login("op", "2222", "10.0.0.1")).token);
+    const [c1, c2] = t.template.checks;
+    const id = randomUUID();
+    await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "LOCK-1", typeId: "service" });
+
+    // Empty / dot signature
+    await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c1!.id, value: "pass" });
+    const dot = await op("PUT", `/api/signoffs/${id}/signatures/${c1!.id}`, { path: "M100 50L101 50", date: "2026-09-10", time: "10:00" });
+    expect(dot.json().error).toBe("SIGNATURE_EMPTY");
+    expect((await op("PUT", `/api/signoffs/${id}/signatures/${c1!.id}`, { path: SIG, date: "2026-09-10", time: "10:00" })).statusCode).toBe(200);
+
+    // Serial / arrival: operator no, admin yes
+    expect((await op("PATCH", `/api/signoffs/${id}`, { serialNumber: "HACK" })).statusCode).toBe(403);
+    expect((await op("PATCH", `/api/signoffs/${id}`, { arrivedAt: "2026-01-01T00:00:00.000Z" })).statusCode).toBe(403);
+    expect(((await admin("PATCH", `/api/signoffs/${id}`, { serialNumber: "LOCK-1A" })).json() as Signoff).serialNumber).toBe("LOCK-1A");
+
+    // Signatures are permanent for operators — even their own
+    expect((await op("DELETE", `/api/signoffs/${id}/signatures/${c1!.id}`)).statusCode).toBe(403);
+
+    // Delete: admin-only by default; admin can open it to everyone
+    expect((await op("DELETE", `/api/signoffs/${id}`)).statusCode).toBe(403);
+    expect((await op("GET", "/api/permissions")).json()).toEqual({ deleteSignoffs: "admin" });
+    expect((await op("PUT", "/api/permissions", { deleteSignoffs: "all" })).statusCode).toBe(403);
+
+    // Complete it -> operators can't change parts/notes/type any more
+    const part = await t.catalog.createPart({ partNumber: "P1", name: "Spring", description: "" });
+    await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c2!.id, value: "pass" });
+    await admin("PUT", `/api/signoffs/${id}/signatures/${c2!.id}`, { path: SIG, date: "2026-09-10", time: "11:00" });
+    expect((await op("PATCH", `/api/signoffs/${id}`, { notes: "late edit" })).json().error).toBe("COMPLETED");
+    expect((await op("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: part.id, qty: 1 })).json().error).toBe("COMPLETED");
+    expect((await admin("PATCH", `/api/signoffs/${id}`, { notes: "admin fix" })).statusCode).toBe(200);
+
+    await admin("PUT", "/api/permissions", { deleteSignoffs: "all" });
+    expect((await op("DELETE", `/api/signoffs/${id}`)).statusCode).toBe(200);
+  });
+});

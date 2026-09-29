@@ -143,6 +143,11 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     return (await s.store.audit.list(q.limit)).map((e) => ({ ...e, actorName: e.actorId ? (users.get(e.actorId) ?? e.actorId) : null }));
   });
 
+  // ---- permissions ---------------------------------------------------------------------------
+
+  app.get("/api/permissions", authed, async () => s.signoffs.permissions());
+  app.put("/api/permissions", admin, async (req) => s.signoffs.setPermissions(parse(z.object({ deleteSignoffs: z.enum(["admin", "all"]) }), req.body)));
+
   // ---- sign-off types (the New sign-off screen's buttons) -------------------------------------
 
   app.get("/api/signoff-types", authed, async () => s.signoffTypes.list());
@@ -222,7 +227,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.patch<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => {
     const body = parse(z.object({ serialNumber: z.string().max(100).optional(), notes: z.string().max(5000).optional(), typeId: id.optional(), mode: mode.optional(), arrivedAt: z.string().datetime().optional() }), req.body);
-    return s.signoffs.updateHeader(req.params.id, body);
+    return s.signoffs.updateHeader(req.params.id, body, actor(req));
   });
 
   app.delete<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => {
@@ -263,10 +268,10 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.put<{ Params: { id: string; lineId: string } }>("/api/signoffs/:id/parts/:lineId", authed, async (req) => {
     const body = parse(z.object({ partId: id, qty: z.number().int(), note: z.string().max(500).default("") }), req.body);
-    return s.signoffs.setPart(req.params.id, req.params.lineId, body);
+    return s.signoffs.setPart(req.params.id, req.params.lineId, body, actor(req));
   });
 
-  app.delete<{ Params: { id: string; lineId: string } }>("/api/signoffs/:id/parts/:lineId", authed, async (req) => s.signoffs.removePart(req.params.id, req.params.lineId));
+  app.delete<{ Params: { id: string; lineId: string } }>("/api/signoffs/:id/parts/:lineId", authed, async (req) => s.signoffs.removePart(req.params.id, req.params.lineId, actor(req)));
 
   // ---- backup mirror -------------------------------------------------------------------------
 

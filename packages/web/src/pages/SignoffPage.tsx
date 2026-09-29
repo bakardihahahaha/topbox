@@ -14,6 +14,8 @@ import { confirmDialog } from "../lib/confirmDialog.js";
 import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
+import { usePermissions } from "../lib/permissions.js";
+import { localStamp } from "../lib/format.js";
 import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
 const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fail: "na", na: null };
@@ -32,6 +34,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const [loadError, setLoadError] = useState<string | null>(null);
   const [signing, setSigning] = useState<TemplateCheck | null>(null);
   const types = useSignoffTypes();
+  const permissions = usePermissions();
   const typesRef = useRef(types);
   typesRef.current = types;
   const inflight = useRef(0);
@@ -114,6 +117,10 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
   const s = signoff;
   const t = s.template;
   const status = signoffStatus(s);
+  const isAdmin = me.role === "admin";
+  // A completed sign-off is a closed record for operators (the server enforces the same).
+  const closed = status === "complete" && !isAdmin;
+  const canDelete = isAdmin || permissions.deleteSignoffs === "all";
   const { done, total } = signoffProgress(s);
   const signedBy = (checkId: string) => s.signatures.find((g) => g.checkId === checkId);
   const markOf = (rowId: string, checkId: string) => s.marks.find((m) => m.rowId === rowId && m.checkId === checkId)?.value;
@@ -182,10 +189,15 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
             <span className="mono" style={label}>
               {t.serialLabel}
             </span>
-            <HeaderField
-              value={s.serialNumber}
+            <LockedField
+              display={s.serialNumber}
+              initial={s.serialNumber}
+              canEdit={isAdmin}
               mono
-              onSave={(serialNumber) => mutate({ kind: "updateHeader", id, patch: { serialNumber } }, () => api.updateSignoffHeader(id, { serialNumber }))}
+              onSave={(serialNumber) => {
+                const next = serialNumber.trim();
+                if (next && next !== s.serialNumber) void mutate({ kind: "updateHeader", id, patch: { serialNumber: next } }, () => api.updateSignoffHeader(id, { serialNumber: next }));
+              }}
             />
           </label>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -199,6 +211,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                   <button
                     key={x.id}
                     onClick={() => void changeType(x.id)}
+                    disabled={closed}
                     style={{ ...ghost, height: 38, borderColor: on ? "var(--accent)" : "var(--border)", color: on ? "var(--accent)" : "var(--text-3)", background: on ? "var(--accent-wash)" : "transparent" }}
                   >
                     {x.name}
@@ -212,7 +225,18 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
             <span className="mono" style={label}>
               Arrived
             </span>
-            <ArrivedField value={s.arrivedAt} onSave={(arrivedAt) => mutate({ kind: "updateHeader", id, patch: { arrivedAt } }, () => api.updateSignoffHeader(id, { arrivedAt }))} />
+            <LockedField
+              display={localStamp(s.arrivedAt)}
+              initial={toLocalInput(s.arrivedAt)}
+              inputType="datetime-local"
+              canEdit={isAdmin}
+              onSave={(v) => {
+                const t = Date.parse(v);
+                if (Number.isNaN(t)) return;
+                const arrivedAt = new Date(t).toISOString();
+                if (toLocalInput(arrivedAt) !== toLocalInput(s.arrivedAt)) void mutate({ kind: "updateHeader", id, patch: { arrivedAt } }, () => api.updateSignoffHeader(id, { arrivedAt }));
+              }}
+            />
             {!embedded && (
               <Link to={`/signoff/${encodeURIComponent(s.serialNumber)}?id=${s.id}`} style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600 }}>
                 History of {s.serialNumber} →
@@ -293,7 +317,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                             {sig.date.split("-").reverse().join("/")}
                             {sig.time && <div>{sig.time}</div>}
                           </div>
-                          {(sig.userId === me.userId || me.role === "admin") && (
+                          {isAdmin && (
                             <button
                               onClick={async () => {
                                 if (await confirmDialog(`Remove ${sig.name}'s signature from ${c.label}? The check's marks become editable again.`, { confirmLabel: "Remove", danger: true })) {
@@ -355,6 +379,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
                   name={p.name}
                   description={p.description}
                   line={line}
+                  disabled={closed}
                   onToggle={(on) => {
                     if (on) {
                       const lineId = crypto.randomUUID();
@@ -371,7 +396,7 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
             {s.parts
               .filter((l) => !allowedParts.some((p) => p.id === l.partId))
               .map((l) => (
-                <PartRow key={l.id} number={l.partNumber} name={l.name} description="(no longer in this template's parts list)" line={l} onToggle={(on) => !on && void mutate({ kind: "removePart", id, lineId: l.id }, () => api.removePartLine(id, l.id))} onChange={() => {}} />
+                <PartRow key={l.id} number={l.partNumber} name={l.name} description="(no longer in this template's parts list)" line={l} disabled={closed} onToggle={(on) => !on && void mutate({ kind: "removePart", id, lineId: l.id }, () => api.removePartLine(id, l.id))} onChange={() => {}} />
               ))}
           </div>
         </div>
@@ -382,12 +407,19 @@ export function SignoffPage({ signoffId, embedded }: { signoffId?: string; embed
         <span className="mono" style={label}>
           Notes
         </span>
-        <NotesField value={s.notes} onSave={(notes) => mutate({ kind: "updateHeader", id, patch: { notes } }, () => api.updateSignoffHeader(id, { notes }))} />
+        <NotesField value={s.notes} readOnly={closed} onSave={(notes) => mutate({ kind: "updateHeader", id, patch: { notes } }, () => api.updateSignoffHeader(id, { notes }))} />
       </div>
 
-      <button style={danger} onClick={() => void remove()}>
-        Delete sign-off
-      </button>
+      {closed && (
+        <div className="mono" style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+          🔒 Complete — this record is closed. Only an admin can change it.
+        </div>
+      )}
+      {canDelete && (
+        <button style={danger} onClick={() => void remove()}>
+          Delete sign-off
+        </button>
+      )}
 
       {signing && (
         <SignModal
@@ -449,44 +481,57 @@ const toLocalInput = (iso: string) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-function ArrivedField({ value, onSave }: { value: string; onSave: (iso: string) => void }) {
-  const [v, setV] = useState(toLocalInput(value));
-  useEffect(() => setV(toLocalInput(value)), [value]);
+/** A value that's fixed once the sign-off is started. Operators only see it; an admin taps the
+ * pencil first, then edits and saves (or cancels) — never an accidental edit. */
+function LockedField(props: { display: string; initial: string; canEdit: boolean; onSave: (v: string) => void; mono?: boolean; inputType?: string }) {
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState(props.initial);
+  useEffect(() => {
+    if (!editing) setV(props.initial);
+  }, [props.initial, editing]);
+  if (!editing) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className={props.mono ? "mono" : undefined} style={{ ...input, display: "flex", alignItems: "center", background: "transparent", borderStyle: "dashed", fontWeight: 700, fontSize: 16 }}>
+          {props.display}
+        </div>
+        {props.canEdit && (
+          <button type="button" onClick={() => setEditing(true)} aria-label="Edit" title="Edit (admin)" style={{ ...ghost, width: 44, height: 44, padding: 0, fontSize: 18, flex: "none" }}>
+            ✎
+          </button>
+        )}
+      </div>
+    );
+  }
   return (
-    <input
-      type="datetime-local"
-      value={v}
-      onChange={(e) => setV(e.target.value)}
-      onBlur={() => {
-        const t = Date.parse(v);
-        if (Number.isNaN(t)) return setV(toLocalInput(value));
-        const iso = new Date(t).toISOString();
-        if (toLocalInput(iso) !== toLocalInput(value)) onSave(iso);
-      }}
-      style={input}
-    />
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <input autoFocus type={props.inputType ?? "text"} value={v} onChange={(e) => setV(e.target.value)} className={props.mono ? "mono" : undefined} style={{ ...input, flex: "1 1 160px", width: "auto" }} />
+      <button
+        type="button"
+        style={{ ...primary, height: 44 }}
+        onClick={() => {
+          props.onSave(v);
+          setEditing(false);
+        }}
+      >
+        Save
+      </button>
+      <button type="button" style={{ ...ghost, height: 44 }} onClick={() => setEditing(false)}>
+        Cancel
+      </button>
+    </div>
   );
 }
 
-function HeaderField({ value, onSave, mono }: { value: string; onSave: (v: string) => void; mono?: boolean }) {
-  const [v, setV] = useState(value);
-  useEffect(() => setV(value), [value]);
-  const commit = () => {
-    const next = v.trim();
-    if (!next) setV(value);
-    else if (next !== value) onSave(next);
-  };
-  return <input value={v} onChange={(e) => setV(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} className={mono ? "mono" : undefined} style={input} />;
-}
-
-function NotesField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+function NotesField({ value, onSave, readOnly }: { value: string; onSave: (v: string) => void; readOnly?: boolean }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
   return (
     <textarea
       value={v}
       onChange={(e) => setV(e.target.value)}
-      onBlur={() => v !== value && onSave(v)}
+      onBlur={() => !readOnly && v !== value && onSave(v)}
+      readOnly={readOnly}
       rows={3}
       placeholder="Anything worth recording — faults found, repairs done…"
       style={{ ...input, height: "auto", padding: 10, marginTop: 6, resize: "vertical", lineHeight: 1.4 }}
@@ -515,6 +560,7 @@ function PartRow(props: {
   line: { id: string; qty: number; note: string } | undefined;
   onToggle: (on: boolean) => void;
   onChange: (qty: number, note: string) => void;
+  disabled?: boolean;
 }) {
   const { line } = props;
   const [qty, setQty] = useState(String(line?.qty ?? 1));
@@ -539,7 +585,7 @@ function PartRow(props: {
   return (
     <div style={{ border: `1px solid ${line ? "var(--accent)" : "var(--border-soft)"}`, background: line ? "var(--accent-wash)" : "transparent", borderRadius: "var(--radius-control)", padding: "8px 10px" }}>
       <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-        <input type="checkbox" checked={Boolean(line)} onChange={(e) => props.onToggle(e.target.checked)} style={{ width: 26, height: 26, accentColor: "var(--accent)", flex: "none" }} />
+        <input type="checkbox" checked={Boolean(line)} disabled={props.disabled} onChange={(e) => props.onToggle(e.target.checked)} style={{ width: 26, height: 26, accentColor: "var(--accent)", flex: "none" }} />
         <span style={{ minWidth: 0 }}>
           <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", marginRight: 8 }}>
             {props.number}
@@ -551,23 +597,24 @@ function PartRow(props: {
       {line && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10, marginLeft: 36 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-            <button type="button" onClick={() => step(-1)} disabled={current <= 1} aria-label="Less" style={{ ...stepButton, opacity: current <= 1 ? 0.4 : 1 }}>
+            <button type="button" onClick={() => step(-1)} disabled={props.disabled || current <= 1} aria-label="Less" style={{ ...stepButton, opacity: current <= 1 ? 0.4 : 1 }}>
               −
             </button>
             <input
               value={qty}
               onChange={(e) => setQty(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              readOnly={props.disabled}
               onBlur={commit}
               inputMode="numeric"
               aria-label="Quantity"
               className="mono"
               style={{ ...input, width: 64, height: 48, textAlign: "center", fontSize: 18, fontWeight: 700 }}
             />
-            <button type="button" onClick={() => step(1)} disabled={current >= 999} aria-label="More" style={stepButton}>
+            <button type="button" onClick={() => step(1)} disabled={props.disabled || current >= 999} aria-label="More" style={stepButton}>
               +
             </button>
           </div>
-          <input value={note} onChange={(e) => setNote(e.target.value)} onBlur={commit} placeholder="Note (optional)" style={{ ...input, height: 48, flex: "1 1 180px", width: "auto" }} />
+          <input value={note} readOnly={props.disabled} onChange={(e) => setNote(e.target.value)} onBlur={commit} placeholder="Note (optional)" style={{ ...input, height: 48, flex: "1 1 180px", width: "auto" }} />
         </div>
       )}
     </div>

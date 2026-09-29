@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { MIN_SIGNATURE_LENGTH, signatureLength } from "@biosite-signoff/shared";
 import { SignaturePad, type SignaturePadHandle } from "./SignaturePad.js";
 import { ghost, input, label, primary } from "../lib/ui.js";
 
@@ -18,6 +19,8 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
   const [path, setPath] = useState<string | null>(null);
   const [date, setDate] = useState(todayLocal());
   const [time, setTime] = useState(nowTime());
+  // An empty box, a dot or a tiny flick isn't a signature (the server refuses it too).
+  const signed = Boolean(path) && signatureLength(path!) >= MIN_SIGNATURE_LENGTH;
 
   return (
     <div role="dialog" aria-modal="true" onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,.55)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -27,6 +30,7 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
           Signing as <strong style={{ color: "var(--text)" }}>{name}</strong>. Once signed, this check's marks are locked.
         </div>
         <SignaturePad ref={pad} onChange={setPath} />
+        {path && !signed && <div style={{ fontSize: 12.5, color: "var(--warn)" }}>That's too short to be a signature — please sign properly.</div>}
         <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 8 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="mono" style={label}>
@@ -49,7 +53,7 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
             <button style={ghost} onClick={onCancel}>
               Cancel
             </button>
-            <button style={{ ...primary, height: 38, opacity: path && date ? 1 : 0.5 }} disabled={!path || !date} onClick={() => path && onSave(path, date, time)}>
+            <button style={{ ...primary, height: 38, opacity: signed && date ? 1 : 0.5 }} disabled={!signed || !date} onClick={() => path && signed && onSave(path, date, time)}>
               Sign
             </button>
           </div>

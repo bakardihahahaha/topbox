@@ -14,7 +14,7 @@ describe("Store generic table access", () => {
     const call = t.as(token);
     await call("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "S", mode: "service" });
     await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: t.template.checks[0]!.id, value: "pass" });
-    await call("PUT", `/api/signoffs/${id}/signatures/${t.template.checks[0]!.id}`, { path: "M1 1L2 2", date: "2026-01-01" });
+    await call("PUT", `/api/signoffs/${id}/signatures/${t.template.checks[0]!.id}`, { path: "M10 10L90 60L150 20", date: "2026-01-01" });
     await call("PUT", `/api/signoffs/${id}/parts/${crypto.randomUUID()}`, { partId: part.id, qty: 1 });
 
     const copy = new SqliteStore(":memory:");

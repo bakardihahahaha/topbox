@@ -225,3 +225,11 @@ export interface MechanismSummary {
   /** Latest visit complete = it has left and is out at a client. */
   atClient: boolean;
 }
+
+/** Who may do what beyond the fixed rules (Setup → Security). */
+export interface Permissions {
+  /** Who sees and may use "Delete sign-off". */
+  deleteSignoffs: "admin" | "all";
+}
+
+export const DEFAULT_PERMISSIONS: Permissions = { deleteSignoffs: "admin" };

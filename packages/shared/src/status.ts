@@ -91,3 +91,19 @@ export function summarize(s: Signoff): SignoffSummary {
     updatedAt: s.updatedAt,
   };
 }
+
+/** Total drawn length of a signature path in its 300x100 box. A dot or a tiny flick is not a
+ * signature — both the Sign dialog and the server require at least MIN_SIGNATURE_LENGTH. */
+export const MIN_SIGNATURE_LENGTH = 60;
+export function signatureLength(path: string): number {
+  let total = 0;
+  let prev: { x: number; y: number } | null = null;
+  const re = /([ML])\s*(-?\d+(?:\.\d+)?)[\s,]+(-?\d+(?:\.\d+)?)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(path))) {
+    const pt = { x: Number(m[2]), y: Number(m[3]) };
+    if (m[1] === "L" && prev) total += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+    prev = pt;
+  }
+  return total;
+}

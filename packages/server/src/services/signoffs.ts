@@ -1,7 +1,9 @@
-import { allowedPartIds, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
-import { badRequest, conflict, forbidden, notFound } from "./errors.js";
+import { HttpError, badRequest, conflict, forbidden, notFound } from "./errors.js";
+
+export const PERMISSIONS_KEY = "permissions";
 
 export interface Actor {
   userId: string;
@@ -87,9 +89,14 @@ export class SignoffService {
     return this.require(input.id);
   }
 
-  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }): Promise<Signoff> {
+  async updateHeader(id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }, actor: Actor): Promise<Signoff> {
     if (patch.arrivedAt !== undefined && Number.isNaN(Date.parse(patch.arrivedAt))) throw badRequest("Invalid arrival time.");
     const s = await this.require(id);
+    // Serial number and arrival are fixed once a sign-off is started — only an admin corrects them.
+    if (actor.role !== "admin" && (patch.serialNumber !== undefined || patch.arrivedAt !== undefined)) {
+      throw forbidden("Only an admin can change the serial number or arrival time.");
+    }
+    this.assertEditable(s, actor);
     if (patch.serialNumber !== undefined && !patch.serialNumber.trim()) throw badRequest("Serial number is required.");
     const type = patch.typeId !== undefined || patch.mode !== undefined ? await this.types.resolve(patch) : undefined;
     if (type?.mode === "new" && s.parts.length > 0) {
@@ -102,10 +109,28 @@ export class SignoffService {
   async remove(id: string, actor: Actor): Promise<void> {
     const s = await this.store.signoffs.get(id);
     if (!s) return;
-    if (actor.role !== "admin" && (s.createdBy !== actor.userId || s.signatures.length > 0)) {
-      throw forbidden("Only an admin can delete a sign-off that someone else started or that already has signatures.");
+    if (actor.role !== "admin" && (await this.permissions()).deleteSignoffs !== "all") {
+      throw forbidden("Only an admin can delete sign-offs.");
     }
     await this.store.signoffs.softDelete(id, new Date().toISOString());
+  }
+
+  async permissions(): Promise<Permissions> {
+    const raw = await this.store.appSettings.get(PERMISSIONS_KEY);
+    return { ...DEFAULT_PERMISSIONS, ...(raw ? (JSON.parse(raw) as Partial<Permissions>) : {}) };
+  }
+
+  async setPermissions(p: Permissions): Promise<Permissions> {
+    await this.store.appSettings.set(PERMISSIONS_KEY, JSON.stringify(p));
+    return this.permissions();
+  }
+
+  /** A completed sign-off (every check signed) is a closed record — operators can't change its
+   * parts, notes or type any more; an admin still can. */
+  private assertEditable(s: Signoff, actor: Actor) {
+    if (actor.role !== "admin" && signoffStatus(s) === "complete") {
+      throw conflict("COMPLETED", "This sign-off is complete — only an admin can change it now.");
+    }
   }
 
   private assertCheck(s: Signoff, checkId: string) {
@@ -187,6 +212,7 @@ export class SignoffService {
     if (!DATE_RE.test(input.date)) throw badRequest("Date must be YYYY-MM-DD.");
     if (input.time !== undefined && input.time !== "" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) throw badRequest("Time must be HH:MM.");
     if (!input.path || input.path.length > 40_000 || !PATH_RE.test(input.path)) throw badRequest("Invalid signature.");
+    if (signatureLength(input.path) < MIN_SIGNATURE_LENGTH) throw new HttpError(400, "SIGNATURE_EMPTY", "Please sign properly — the signature box can't be empty or just a dot.");
     const existing = s.signatures.find((sig) => sig.checkId === input.checkId);
     // Re-sending the same user's signature (a retried request) just overwrites it; someone else's
     // signature is never silently replaced.
@@ -203,14 +229,16 @@ export class SignoffService {
     const s = await this.require(id);
     const existing = s.signatures.find((sig) => sig.checkId === checkId);
     if (!existing) return s;
-    if (existing.userId !== actor.userId && actor.role !== "admin") throw forbidden("Only the person who signed (or an admin) can remove this signature.");
+    // A signature is permanent — only an admin can take one back.
+    if (actor.role !== "admin") throw forbidden("Only an admin can remove a signature.");
     await this.store.signoffs.clearSignature(id, checkId, new Date().toISOString());
     return this.refresh(id);
   }
 
   /** `partRowId` is client-generated, so a retried add lands on the same row. */
-  async setPart(id: string, partRowId: string, input: { partId: string; qty: number; note: string }): Promise<Signoff> {
+  async setPart(id: string, partRowId: string, input: { partId: string; qty: number; note: string }, actor: Actor): Promise<Signoff> {
     const s = await this.require(id);
+    this.assertEditable(s, actor);
     if (s.mode !== "service") throw conflict("NOT_SERVICE", `Parts can't be recorded on a ${typeNameOf(s)} sign-off — only on a type that allows replaced parts.`);
     const allowed = allowedPartIds(s.template, await this.store.templates.get(s.templateId));
     if (allowed !== "all" && !allowed.has(input.partId)) {
@@ -232,8 +260,8 @@ export class SignoffService {
     return this.refresh(id);
   }
 
-  async removePart(id: string, partRowId: string): Promise<Signoff> {
-    await this.require(id);
+  async removePart(id: string, partRowId: string, actor: Actor): Promise<Signoff> {
+    this.assertEditable(await this.require(id), actor);
     await this.store.signoffs.removePart(id, partRowId, new Date().toISOString());
     return this.refresh(id);
   }
