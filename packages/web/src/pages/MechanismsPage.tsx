@@ -4,8 +4,8 @@ import type { MechanismSummary } from "@biosite-signoff/shared";
 import { listMechanisms } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { daysBetween, stamp, topboxUrl } from "../lib/format.js";
-import { card, chip, errorBox, errorMessage, ghost, h1, hint, infoBox, input, page, primary } from "../lib/ui.js";
-import { planMechanismPdf, type PdfScope } from "../lib/mechanismPdf.js";
+import { card, chip, errorBox, errorMessage, ghost, h1, hint, input, page, primary } from "../lib/ui.js";
+import { mechanismPdfSignoffs, type PdfScope } from "../lib/mechanismPdf.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 
 /** Every mechanism (serial number) and where it is now: in the workshop or out at a client. */
@@ -21,7 +21,6 @@ export function MechanismsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  const [pdfNotes, setPdfNotes] = useState<string[]>([]);
 
   function toggle(serial: string) {
     setSelected((s) => {
@@ -35,14 +34,8 @@ export function MechanismsPage() {
   async function generate(scope: PdfScope) {
     setBusy(true);
     setPdfError(null);
-    setPdfNotes([]);
     try {
-      const plan = await planMechanismPdf([...selected], scope);
-      if (plan.missing.length > 0) {
-        throw new Error(`Can't create the PDF — ${plan.missing.join(", ")} ${plan.missing.length === 1 ? "has" : "have"} no finished sign-off yet (every check must be signed). Untick ${plan.missing.length === 1 ? "it" : "them"} and try again.`);
-      }
-      await downloadPdf(plan.signoffs);
-      setPdfNotes(plan.notes);
+      await downloadPdf(await mechanismPdfSignoffs([...selected], scope));
     } catch (err) {
       setPdfError(errorMessage(err));
     } finally {
@@ -62,38 +55,28 @@ export function MechanismsPage() {
             <button style={ghost} onClick={() => setSelected(new Set())} disabled={busy}>
               Clear
             </button>
-            <button style={primary} onClick={() => void generate("latest")} disabled={busy} title="Each TopBox's most recent finished visit">
-              {busy ? "Generating…" : "PDF — last finished visit"}
+            <button style={primary} onClick={() => void generate("latest")} disabled={busy} title="Each TopBox's most recent visit">
+              {busy ? "Generating…" : "PDF — latest visit"}
             </button>
-            <button style={{ ...ghost, borderColor: "var(--accent)", color: "var(--accent)" }} onClick={() => void generate("all")} disabled={busy} title="Every finished visit of each TopBox — its whole history">
-              PDF — all finished visits
+            <button style={{ ...ghost, borderColor: "var(--accent)", color: "var(--accent)" }} onClick={() => void generate("all")} disabled={busy} title="Every visit of each TopBox — its whole history">
+              PDF — all visits
             </button>
           </div>
         </div>
       )}
       {pdfError && <div style={errorBox}>{pdfError}</div>}
-      {pdfNotes.length > 0 && (
-        <div style={infoBox}>
-          PDF downloaded. Not included:
-          {pdfNotes.map((n) => (
-            <div key={n}>• {n}</div>
-          ))}
-        </div>
-      )}
       {list.error && <div style={errorBox}>{list.error}</div>}
       {list.data?.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No mechanisms found.</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {list.data?.map((m) => (
           <div key={m.serialNumber} style={{ ...card, display: "flex", alignItems: "center", gap: 14, padding: 16, borderColor: selected.has(m.serialNumber) ? "var(--accent)" : "var(--border-soft)" }}>
-          {/* Selecting is for the PDF — only TopBoxes with at least one finished visit. */}
           <input
             type="checkbox"
             checked={selected.has(m.serialNumber)}
-            disabled={(m.completedVisits ?? 0) === 0}
             onChange={() => toggle(m.serialNumber)}
             aria-label={`Select ${m.serialNumber}`}
-            title={(m.completedVisits ?? 0) > 0 ? `Select for PDF (${m.completedVisits} finished visit${m.completedVisits === 1 ? "" : "s"})` : "No finished visit yet — nothing to print"}
-            style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none", opacity: (m.completedVisits ?? 0) > 0 ? 1 : 0.3 }}
+            title="Select for PDF"
+            style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none" }}
           />
           <Link
             to={topboxUrl(m.serialNumber)}

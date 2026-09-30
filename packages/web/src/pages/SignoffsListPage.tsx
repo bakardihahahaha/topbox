@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signoffStatus, type SignoffSummary, type Template } from "@biosite-signoff/shared";
+import type { SignoffSummary, Template } from "@biosite-signoff/shared";
 import { getSignoffs, listTemplates } from "../lib/api.js";
 import { listSignoffsOfflineAware } from "../lib/offlineList.js";
 import { useData } from "../lib/useData.js";
@@ -48,12 +48,7 @@ export function SignoffsListPage() {
     setPdfError(null);
     try {
       // Printed in SO-number order, oldest first — the order they'd sit in a paper file.
-      // Only finished sign-offs (every check signed) go into a PDF — anything else stops it.
       const full = await getSignoffs([...selected]);
-      const unfinished = full.filter((s) => signoffStatus(s) !== "complete");
-      if (unfinished.length > 0) {
-        throw new Error(`Can't create the PDF — not every check is signed on ${unfinished.map((s) => s.serialNumber).join(", ")}. Untick ${unfinished.length === 1 ? "it" : "them"} and try again.`);
-      }
       full.sort((a, b) => a.number.localeCompare(b.number));
       await downloadPdf(full);
     } catch (err) {
@@ -140,16 +135,7 @@ export function SignoffsListPage() {
 function Row({ s, selected, onToggle }: { s: SignoffSummary; selected: boolean; onToggle: () => void }) {
   return (
     <div style={{ ...card, padding: "14px 14px", display: "flex", alignItems: "center", gap: 14, borderColor: selected ? "var(--accent)" : "var(--border-soft)" }}>
-      {/* Selecting is for the PDF — only complete sign-offs can be printed. */}
-      <input
-        type="checkbox"
-        checked={selected}
-        disabled={s.status !== "complete"}
-        onChange={onToggle}
-        aria-label={`Select ${s.serialNumber}`}
-        title={s.status === "complete" ? "Select for PDF" : "PDF available once every check is signed"}
-        style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none", opacity: s.status === "complete" ? 1 : 0.3 }}
-      />
+      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${s.serialNumber}`} title="Select for PDF" style={{ width: 28, height: 28, accentColor: "var(--accent)", flex: "none" }} />
       <Link to={topboxUrl(s.serialNumber, s.id)} style={{ flex: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span className="mono" style={{ fontSize: 17, fontWeight: 700 }}>{s.serialNumber}</span>

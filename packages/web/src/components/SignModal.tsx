@@ -24,7 +24,7 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
 
   return (
     <div role="dialog" aria-modal="true" onClick={onCancel} style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,.55)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(94vw, 460px)", background: "var(--bg-base)", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-card)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(96vw, 900px)", maxHeight: "94vh", overflowY: "auto", background: "var(--bg-base)", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-card)", padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ fontSize: 15, fontWeight: 700 }}>Sign {checkLabel}</div>
         <div style={{ fontSize: 13, color: "var(--text-3)" }}>
           Signing as <strong style={{ color: "var(--text)" }}>{name}</strong>. Once signed, this check's marks are locked.
