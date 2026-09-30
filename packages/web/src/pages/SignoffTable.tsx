@@ -5,7 +5,7 @@ import { getAllSignoffSummaries, getSignoffs, getSignoffsOfType } from "../lib/a
 import { pendingCreates } from "../lib/offlineList.js";
 import { useData } from "../lib/useData.js";
 import { useMe } from "../lib/meContext.js";
-import { downloadPdf } from "../lib/pdfLazy.js";
+import { downloadPdf, openPdf } from "../lib/pdfLazy.js";
 import { stamp, topboxUrl } from "../lib/format.js";
 import { SerialInput } from "../components/SerialInput.js";
 import { card, chip, errorBox, errorMessage, ghost, input, page, primary } from "../lib/ui.js";
@@ -65,13 +65,15 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
     });
   }
 
-  /** One PDF, in the order shown on screen. */
-  async function pdf() {
+  /** One PDF, in the order shown on screen — downloaded, or opened in a new tab to view. */
+  async function pdf(view: boolean) {
     if (picked.length === 0) return;
     setBusy(true);
     setPdfError(null);
     try {
-      await downloadPdf(await getSignoffs(picked.map((s) => s.id)));
+      const load = () => getSignoffs(picked.map((s) => s.id));
+      if (view) await openPdf(load);
+      else await downloadPdf(await load());
     } catch (err) {
       setPdfError(errorMessage(err));
     } finally {
@@ -129,7 +131,10 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
           <button style={{ ...ghost, height: 52 }} onClick={() => setSelected(new Set())} disabled={picked.length === 0}>
             Clear
           </button>
-          <button style={{ ...primary, height: 52, opacity: picked.length === 0 ? 0.45 : 1 }} onClick={() => void pdf()} disabled={busy || picked.length === 0}>
+          <button style={{ ...ghost, height: 52, opacity: picked.length === 0 ? 0.45 : 1 }} onClick={() => void pdf(true)} disabled={busy || picked.length === 0} title="Open the PDF in a new tab">
+            View PDF
+          </button>
+          <button style={{ ...primary, height: 52, opacity: picked.length === 0 ? 0.45 : 1 }} onClick={() => void pdf(false)} disabled={busy || picked.length === 0} title="Download the PDF">
             {busy ? "Generating…" : "Generate PDF"}
           </button>
         </div>

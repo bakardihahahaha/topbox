@@ -55,13 +55,21 @@ export async function downloadPdf(signoffs: Signoff[]): Promise<void> {
   pdf.downloadSignoffsPdf(signoffs, b, photos);
 }
 
-/** `settings` lets Setup → Document preview unsaved changes. */
-export async function openPdf(signoffs: Signoff[], settings?: DocumentSettings): Promise<void> {
+/** Opens the PDF in a new tab to look at (nothing downloaded). `signoffs` may be a loader, for
+ * lists that fetch the full records first. `settings` lets Setup → Document preview unsaved
+ * changes. */
+export async function openPdf(signoffs: Signoff[] | (() => Promise<Signoff[]>), settings?: DocumentSettings): Promise<void> {
   // The tab is opened synchronously, inside the click — opened after the awaits below, popup
   // blockers would swallow it.
   const tab = window.open("about:blank", "_blank");
-  const [pdf, b, photos] = await Promise.all([import("./pdf.js"), branding(settings), loadPhotos(signoffs)]);
-  const url = pdf.signoffsPdfUrl(signoffs, b, photos);
-  if (tab) tab.location.href = url;
-  else window.location.href = url;
+  try {
+    const list = typeof signoffs === "function" ? await signoffs() : signoffs;
+    const [pdf, b, photos] = await Promise.all([import("./pdf.js"), branding(settings), loadPhotos(list)]);
+    const url = pdf.signoffsPdfUrl(list, b, photos);
+    if (tab) tab.location.href = url;
+    else window.location.href = url;
+  } catch (err) {
+    tab?.close();
+    throw err;
+  }
 }
