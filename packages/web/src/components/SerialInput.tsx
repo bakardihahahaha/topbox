@@ -35,7 +35,16 @@ export function SerialInput(props: {
       placeholder={props.placeholder}
       onChange={(e) => props.onChange(e.target.value.toUpperCase())}
       onClick={() => !props.inline && !letters && setOpen(true)}
-      onKeyDown={(e) => e.key === "Enter" && props.onDone?.()}
+      onKeyDown={(e) => {
+        // While the keypad is up (window or inline) it handles the keys itself.
+        if (open || (props.inline && !letters)) return;
+        if (e.key === "Enter") props.onDone?.();
+        // Typing on a laptop straight into the (closed) search field just types — no keypad needed.
+        else if (!letters && !props.inline && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          if (/^[0-9A-Za-z\-\/.]$/.test(e.key)) props.onChange(props.value + e.key.toUpperCase());
+          else if (e.key === "Backspace") props.onChange(props.value.slice(0, -1));
+        }
+      }}
       className="mono"
       style={{ ...inputStyle, height: 56, fontSize: 20, cursor: letters ? "text" : "pointer", ...props.style }}
     />
@@ -81,6 +90,7 @@ export function SerialInput(props: {
                 setOpen(false);
                 setLetters(true);
               }}
+              onClose={() => setOpen(false)}
             />
           </div>
         </div>
@@ -89,21 +99,34 @@ export function SerialInput(props: {
   );
 }
 
-function Keypad({ value, onChange, onOk, onLetters }: { value: string; onChange: (v: string) => void; onOk?: () => void; onLetters: () => void }) {
-  // Hardware keyboard still works while the keypad is up.
+function Keypad({ value, onChange, onOk, onLetters, onClose }: { value: string; onChange: (v: string) => void; onOk?: () => void; onLetters: () => void; onClose?: () => void }) {
+  // A laptop / hardware keyboard works too while the keypad is up: any letter, digit or dash is
+  // typed in, Backspace deletes, Enter = OK (closes the keypad window, e.g. shows the search
+  // results), Escape closes it without anything else.
   const valueRef = useRef(value);
   valueRef.current = value;
+  const cb = useRef({ onChange, onOk, onClose });
+  cb.current = { onChange, onOk, onClose };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement && !e.target.readOnly) return;
-      if (e.target instanceof HTMLTextAreaElement) return;
-      if (/^[0-9]$/.test(e.key)) onChange(valueRef.current + e.key);
-      else if (e.key === "Backspace") onChange(valueRef.current.slice(0, -1));
-      else if (e.key === "Enter") onOk?.();
+      if (e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (/^[0-9A-Za-z\-\/.]$/.test(e.key)) {
+        e.preventDefault();
+        cb.current.onChange(valueRef.current + e.key.toUpperCase());
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        cb.current.onChange(valueRef.current.slice(0, -1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        cb.current.onOk?.();
+      } else if (e.key === "Escape") {
+        cb.current.onClose?.();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onChange, onOk]);
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
