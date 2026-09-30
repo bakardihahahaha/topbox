@@ -157,6 +157,11 @@ async function withStore<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) =>
   });
 }
 
+/** Danger zone: drops every change still waiting on this device (the data it was for is gone). */
+export async function clearQueue(): Promise<void> {
+  await withStore("readwrite", (s) => s.clear());
+}
+
 export async function listQueue(): Promise<QueueEntry[]> {
   const all = ((await withStore("readonly", (s) => s.getAll())) ?? []) as QueueEntry[];
   return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));

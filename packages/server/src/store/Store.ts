@@ -190,6 +190,11 @@ export interface Store {
   signoffs: SignoffsRepo;
   outbox: OutboxRepo;
   tables: TableAccess;
+  /** Danger zone — deletes for good (not soft): "signoffs" = every sign-off with its marks,
+   * signatures, replaced parts and photo records; "everything" also templates, parts, app
+   * settings (types, document, permissions), the audit log and every user except `keepUserId`.
+   * Server settings (backup spreadsheet) stay. The mirror is reset separately. */
+  wipe(scope: "signoffs" | "everything", keepUserId: string): Promise<void>;
   close(): Promise<void>;
 }
 

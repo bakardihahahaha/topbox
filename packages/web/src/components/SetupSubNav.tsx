@@ -12,7 +12,7 @@ export function SetupSubNav() {
           { to: "/setup/document", label: "Document" },
           { to: "/setup/users", label: "Users" },
           { to: "/setup/security", label: "Security" },
-          { to: "/setup/backup", label: "Backup" },
+          { to: "/setup/backup", label: "Database" },
           { to: "/setup/audit", label: "Audit log" },
         ]
       : []),

@@ -214,6 +214,26 @@ export class MirrorService {
     this.timer = null;
   }
 
+  /** Danger zone: empties every data tab on the backup sheet (one call) and queues every row the
+   * database still has, so the sheet ends up exactly like the wiped database. */
+  async resetSheet(): Promise<"cleared" | "not configured"> {
+    const spreadsheetId = await this.spreadsheetId();
+    if (!this.api || !spreadsheetId) {
+      await this.store.outbox.enqueueAll();
+      return "not configured";
+    }
+    const ids = await this.sheetIdsFor(spreadsheetId);
+    const requests: SheetRequest[] = TABLES.filter((t) => ids.has(t.name)).map((t) => ({ updateCells: { range: { sheetId: ids.get(t.name)! }, fields: "userEnteredValue" } }));
+    try {
+      await this.api.batch(spreadsheetId, requests);
+    } finally {
+      this.forgetSheet();
+    }
+    await this.store.outbox.enqueueAll();
+    this.kick();
+    return "cleared";
+  }
+
   async resyncAll(): Promise<number> {
     return this.store.outbox.enqueueAll();
   }

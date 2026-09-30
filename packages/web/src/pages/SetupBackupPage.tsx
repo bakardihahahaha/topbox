@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { getBackupStatus, inspectBackup, resyncBackup, restoreBackup, setBackupSpreadsheet, syncBackupNow, type BackupStatus } from "../lib/api.js";
+import { getBackupStatus, inspectBackup, resyncBackup, restoreBackup, setBackupSpreadsheet, syncBackupNow, wipeDatabase, type BackupStatus } from "../lib/api.js";
+import { clearQueue } from "../lib/offlineQueue.js";
 import { ApiError } from "../lib/client.js";
 import { useData } from "../lib/useData.js";
-import { confirmDialog } from "../lib/confirmDialog.js";
+import { alertDialog, confirmDialog } from "../lib/confirmDialog.js";
 import { SetupSubNav } from "../components/SetupSubNav.js";
 import { card, chip, danger, errorBox, errorMessage, formatDateTime, ghost, h1, hint, infoBox, input, label, page, primary } from "../lib/ui.js";
 
@@ -138,6 +139,77 @@ export function SetupBackupPage() {
           Restore from sheet…
         </button>
       </div>
+
+      <DangerZone />
+    </div>
+  );
+}
+
+/** Wipe the test data (or everything) and start over. Typing DELETE is the safety catch. */
+function DangerZone() {
+  const [scope, setScope] = useState<"signoffs" | "everything" | null>(null);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function wipe() {
+    if (!scope || typed !== "DELETE") return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await wipeDatabase(scope);
+      // This device's copies of the old data go too (the sign-in stays).
+      await clearQueue().catch(() => {});
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith("biosite-signoff.cache") || k === "biosite-signoff.list-cache" || k === "biosite-signoff.document-settings") localStorage.removeItem(k);
+      }
+      if ("caches" in window) await caches.delete("topbox-photos").catch(() => false);
+      await alertDialog(`Done — ${scope === "everything" ? "everything was deleted; the app is back to a fresh start" : "all sign-offs, photos and parts used were deleted"}.\nBackup sheet: ${r.mirror}.`, { title: "Database wiped" });
+      window.location.href = "/signoffs";
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  const option = (id: "signoffs" | "everything", title: string, text: string) => (
+    <button
+      type="button"
+      onClick={() => {
+        setScope(id);
+        setTyped("");
+      }}
+      style={{ ...ghost, height: "auto", padding: "12px 14px", textAlign: "left", display: "block", width: "100%", borderColor: scope === id ? "var(--danger)" : "var(--border)", background: scope === id ? "rgba(200,40,40,.12)" : "transparent" }}
+    >
+      <div style={{ fontWeight: 700, color: "var(--danger)" }}>{title}</div>
+      <div style={{ fontSize: 12.5, color: "var(--text-3)", fontWeight: 400, marginTop: 2 }}>{text}</div>
+    </button>
+  );
+
+  return (
+    <div style={{ ...card, borderColor: "var(--danger)", marginTop: 12 }}>
+      <div style={{ fontWeight: 700, color: "var(--danger)", marginBottom: 4 }}>⚠ Danger zone — start over</div>
+      <p style={{ ...hint, margin: "0 0 10px" }}>
+        Deletes data for good — on the NAS, in the photos folder and on the backup sheet. There is no undo. Download anything you want to keep first.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+        {option("signoffs", "Delete all sign-offs", "Every sign-off, check, signature, photo and part used. Users, checklists, parts, types and settings stay — e.g. to clear test data before going live.")}
+        {option("everything", "Factory reset — delete everything", "All of the above plus checklists, parts, types, document settings, the audit log and every user except you. Like a fresh install.")}
+      </div>
+      {scope && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span className="mono" style={label}>
+              Type DELETE to confirm
+            </span>
+            <input value={typed} onChange={(e) => setTyped(e.target.value.toUpperCase())} placeholder="DELETE" autoCapitalize="characters" autoComplete="off" style={{ ...input, height: 52, fontSize: 18 }} />
+          </label>
+          {error && <div style={errorBox}>{error}</div>}
+          <button style={{ ...danger, height: 56, fontSize: 15, opacity: typed === "DELETE" && !busy ? 1 : 0.5 }} disabled={typed !== "DELETE" || busy} onClick={() => void wipe()}>
+            {busy ? "Deleting…" : scope === "everything" ? "Delete everything now" : "Delete all sign-offs now"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

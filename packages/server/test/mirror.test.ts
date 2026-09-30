@@ -4,7 +4,8 @@ import { SqliteStore } from "../src/store/sqlite/SqliteStore.js";
 import { MirrorService, SEED_TEMPLATE_SETTING } from "../src/mirror/MirrorService.js";
 import { SheetTable } from "../src/mirror/SheetTable.js";
 import { TABLES } from "../src/store/schema.js";
-import { setup } from "./helpers.js";
+import { FAKE_JPEG_URL, setup } from "./helpers.js";
+import { readdirSync } from "node:fs";
 
 describe("Google Sheets backup mirror", () => {
   it("pushes every write via the outbox, upserting by id", async () => {
@@ -143,5 +144,46 @@ describe("instant mirror", () => {
     await new Promise((r) => setTimeout(r, 1500));
     expect(JSON.stringify(t.sheets.tabs.get("sheet-1/parts"))).toContain("FAST-1");
     expect(await t.store.outbox.count()).toBe(0);
+  });
+});
+
+describe("danger zone", () => {
+  it("wipes sign-offs (keeps setup) or everything (keeps only me), and the backup sheet with it", async () => {
+    const t = await setup();
+    t.mirror.stop();
+    const op = t.as((await t.login("op", "2222")).token);
+    const admin = t.as((await t.login("admin", "1111")).token);
+    await t.catalog.createPart({ partNumber: "SP-01", name: "Spring", description: "" });
+    for (const serial of ["W-1", "W-2"]) {
+      const id = randomUUID();
+      await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: serial, typeId: "service" });
+      await op("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: t.template.checks[0]!.id, dataUrl: FAKE_JPEG_URL });
+    }
+    await t.mirror.flush();
+    expect(t.sheets.tabs.get("sheet-1/signoffs")!.length).toBe(3);
+
+    expect((await op("POST", "/api/admin/wipe", { scope: "signoffs", confirm: "DELETE" })).statusCode).toBe(403);
+    expect((await admin("POST", "/api/admin/wipe", { scope: "signoffs" })).statusCode).toBe(400);
+    expect((await admin("POST", "/api/admin/wipe", { scope: "signoffs", confirm: "DELETE" })).json()).toMatchObject({ ok: true, mirror: "cleared" });
+    expect(await t.store.tables.countRows("signoffs")).toBe(0);
+    expect(await t.store.tables.countRows("signoff_photos")).toBe(0);
+    expect(readdirSync(t.photosDir)).toEqual([]);
+    expect((await t.store.templates.list()).length).toBe(1);
+    expect((await t.store.parts.list()).length).toBe(1);
+    expect((await t.store.users.list()).length).toBe(3);
+    await t.mirror.flush();
+    expect(t.sheets.tabs.get("sheet-1/signoffs")).toEqual([]); // emptied — nothing left to write
+    expect(t.sheets.tabs.get("sheet-1/parts")!.length).toBe(2);
+
+    expect((await admin("POST", "/api/admin/wipe", { scope: "everything", confirm: "DELETE" })).json()).toMatchObject({ ok: true });
+    expect((await t.store.users.list()).map((u) => u.id)).toEqual([t.ids.admin]);
+    expect((await t.store.parts.list()).length).toBe(0);
+    const templates = await t.store.templates.list();
+    expect(templates).toHaveLength(1);
+    expect(templates[0]!.id).not.toBe(t.template.id); // a fresh example checklist
+    expect((await admin("GET", "/api/auth/me")).statusCode).toBe(200); // I stay signed in
+    await t.mirror.flush();
+    expect(t.sheets.tabs.get("sheet-1/users")!.length).toBe(2); // header + me
+    expect(t.sheets.tabs.get("sheet-1/parts")!.length).toBe(0); // emptied
   });
 });

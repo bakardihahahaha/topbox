@@ -9,7 +9,8 @@ import { GoogleAuth } from "google-auth-library";
  * sync (new tabs, overwritten rows, appended rows, across all tabs) as ONE such call. */
 export type SheetRequest =
   | { addSheet: { properties: { title: string; sheetId: number } } }
-  | { updateCells: { range: { sheetId: number; startRowIndex: number; endRowIndex: number; startColumnIndex: number; endColumnIndex: number }; rows: SheetRowData[]; fields: "userEnteredValue" } }
+  // No row/column bounds and no rows = clear the whole tab.
+  | { updateCells: { range: { sheetId: number; startRowIndex?: number; endRowIndex?: number; startColumnIndex?: number; endColumnIndex?: number }; rows?: SheetRowData[]; fields: "userEnteredValue" } }
   | { appendCells: { sheetId: number; rows: SheetRowData[]; fields: "userEnteredValue" } };
 
 export interface SheetRowData {
@@ -155,8 +156,12 @@ export class FakeSheetsApi implements SheetsApi {
         ids.set(key, req.addSheet.properties.sheetId);
       } else if ("updateCells" in req) {
         const key = titleOf(req.updateCells.range.sheetId);
-        const grid = next.get(key)!;
-        req.updateCells.rows.forEach((r, i) => (grid[req.updateCells.range.startRowIndex + i] = cells(r)));
+        if (!req.updateCells.rows) next.set(key, []);
+        else {
+          const grid = next.get(key)!;
+          const start = req.updateCells.range.startRowIndex ?? 0;
+          req.updateCells.rows.forEach((r, i) => (grid[start + i] = cells(r)));
+        }
       } else {
         const grid = next.get(titleOf(req.appendCells.sheetId))!;
         grid.push(...req.appendCells.rows.map(cells));

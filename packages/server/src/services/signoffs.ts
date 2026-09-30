@@ -364,6 +364,11 @@ export class SignoffService {
     return this.refresh(id);
   }
 
+  /** Danger zone: deletes every photo file on the NAS. */
+  wipePhotos(): Promise<void> {
+    return this.photoFiles.removeAll();
+  }
+
   async photoImage(photoId: string): Promise<Buffer> {
     const p = await this.store.signoffs.getPhoto(photoId);
     if (!p) throw notFound("Photo");

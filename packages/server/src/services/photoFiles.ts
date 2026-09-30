@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 /** Photo image files on the NAS's disk (PHOTOS_PATH, by default a `photos` folder next to the
@@ -32,5 +32,11 @@ export class PhotoFiles {
 
   read(file: string): Promise<Buffer> {
     return readFile(this.abs(file));
+  }
+
+  /** Danger zone: every photo file goes (the folder itself stays). */
+  async removeAll(): Promise<void> {
+    await rm(this.root, { recursive: true, force: true });
+    await mkdir(this.root, { recursive: true });
   }
 }

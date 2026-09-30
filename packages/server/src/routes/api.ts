@@ -2,7 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings, type Role } from "@biosite-signoff/shared";
 import type { AuthService } from "../services/auth.js";
-import type { CatalogService } from "../services/catalog.js";
+import { mechanismChecklistSeed, type CatalogService } from "../services/catalog.js";
+import { SEED_TEMPLATE_SETTING } from "../mirror/MirrorService.js";
+import { audit } from "../services/audit.js";
 import type { SignoffService } from "../services/signoffs.js";
 import type { SignoffTypesService } from "../services/signoffTypes.js";
 import type { MirrorService } from "../mirror/MirrorService.js";
@@ -340,6 +342,28 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   app.post("/api/backup/resync-all", admin, async () => ({ queued: await s.mirror.resyncAll() }));
 
   app.get("/api/backup/inspect", admin, async () => s.mirror.inspect());
+
+  /** Danger zone (Setup → Backup): wipe the sign-offs, or everything, and start over. */
+  app.post("/api/admin/wipe", admin, async (req) => {
+    const body = parse(z.object({ scope: z.enum(["signoffs", "everything"]), confirm: z.literal("DELETE") }), req.body);
+    const me = actor(req);
+    await s.store.wipe(body.scope, me.userId);
+    await s.signoffs.wipePhotos();
+    if (body.scope === "everything") {
+      // Like a first start: the example checklist again (types, document settings and
+      // permissions fall back to their defaults on their own).
+      const seed = await s.catalog.createTemplate(mechanismChecklistSeed());
+      await s.store.settings.set(SEED_TEMPLATE_SETTING, seed.id);
+    }
+    let mirror: string;
+    try {
+      mirror = await s.mirror.resetSheet();
+    } catch (err) {
+      mirror = `backup sheet not cleared yet (${err instanceof Error ? err.message : String(err)}) — it will be rewritten on the next sync`;
+    }
+    await audit(s.store, { actorId: me.userId, action: "WIPE", entity: body.scope, ip: req.ip });
+    return { ok: true, scope: body.scope, mirror };
+  });
 
   app.post("/api/backup/restore", admin, async (req) => {
     const body = parse(z.object({ confirm: z.literal("RESTORE") }), req.body);

@@ -81,6 +81,7 @@ export const setBackupSpreadsheet = (spreadsheet: string) => sendJson<BackupStat
 export const syncBackupNow = () => sendJson<{ mirrored: number; status: BackupStatus }>("POST", "/api/backup/sync-now");
 export const resyncBackup = () => sendJson<{ queued: number }>("POST", "/api/backup/resync-all");
 export const inspectBackup = () => getJson<{ table: string; sheetRows: number; localRows: number }[]>("/api/backup/inspect");
+export const wipeDatabase = (scope: "signoffs" | "everything") => sendJson<{ ok: true; scope: string; mirror: string }>("POST", "/api/admin/wipe", { scope, confirm: "DELETE" });
 export const restoreBackup = (force: boolean) => sendJson<{ restored: Record<string, number> }>("POST", `/api/backup/restore${force ? "?force=1" : ""}`, { confirm: "RESTORE" });
 
 export interface AuditRow {

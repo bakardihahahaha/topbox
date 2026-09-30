@@ -38,6 +38,26 @@ export class SqliteStore implements Store {
   outbox: OutboxRepo;
   tables: TableAccess;
 
+  async wipe(scope: "signoffs" | "everything", keepUserId: string) {
+    const signoffTables = ["signoff_photos", "signoff_parts", "signoff_signatures", "signoff_marks", "signoffs"];
+    this.db.transaction(() => {
+      for (const tbl of signoffTables) {
+        this.db.prepare(`DELETE FROM ${tbl}`).run();
+        this.db.prepare("DELETE FROM mirror_outbox WHERE tbl = ?").run(tbl);
+      }
+      if (scope === "everything") {
+        for (const tbl of ["templates", "parts", "app_settings"]) {
+          this.db.prepare(`DELETE FROM ${tbl}`).run();
+          this.db.prepare("DELETE FROM mirror_outbox WHERE tbl = ?").run(tbl);
+        }
+        this.db.prepare("DELETE FROM sessions WHERE user_id != ?").run(keepUserId);
+        this.db.prepare("DELETE FROM users WHERE id != ?").run(keepUserId);
+        this.db.prepare("DELETE FROM mirror_outbox WHERE tbl = 'users' AND row_id != ?").run(keepUserId);
+        this.db.prepare("DELETE FROM audit_log").run();
+      }
+    })();
+  }
+
   constructor(path: string) {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
