@@ -4,8 +4,8 @@ import { input as inputStyle } from "../lib/ui.js";
 /**
  * Serial-number entry with the app's own number keypad (the same keys as the PIN pad on the
  * sign-in screen) instead of the device's keyboard — operators only ever type digits; the
- * refurbished "R" has its own button. "ABC" switches to the device keyboard for the rare serial
- * with letters.
+ * refurbished "R" has its own button. "Letters" switches to the device keyboard (it opens at once,
+ * with the cursor in the field) for the rare serial with letters; "Number keypad" switches back.
  *
  *  - inline: the keypad sits right under the field (New sign-off screen — nothing to cover).
  *  - otherwise: tapping the field opens the keypad as a small window, with the value on top; the
@@ -23,11 +23,27 @@ export function SerialInput(props: {
 }) {
   const [open, setOpen] = useState(false);
   const [letters, setLetters] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Switching to letters puts the cursor in the field inside the same tap — iPad Safari only opens
+  // its keyboard for a focus that happens directly in the tap, not a moment later.
+  function enableLetters() {
+    const el = inputRef.current;
+    if (el) {
+      el.readOnly = false;
+      el.inputMode = "text";
+      el.focus();
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    }
+    setOpen(false);
+    setLetters(true);
+  }
   const field = (
     <input
+      ref={inputRef}
       value={props.value}
       readOnly={!letters}
-      // No device keyboard unless "ABC" was chosen.
+      // No device keyboard unless "Letters" was chosen.
       inputMode={letters ? "text" : "none"}
       autoCapitalize="characters"
       autoComplete="off"
@@ -56,10 +72,10 @@ export function SerialInput(props: {
         {field}
         {letters ? (
           <button type="button" onClick={() => setLetters(false)} style={{ ...modeButton, alignSelf: "flex-start" }}>
-            123 keypad
+            ⌨ Back to number keypad
           </button>
         ) : (
-          <Keypad value={props.value} onChange={props.onChange} onOk={props.onDone} onLetters={() => setLetters(true)} />
+          <Keypad value={props.value} onChange={props.onChange} onOk={props.onDone} onLetters={enableLetters} />
         )}
       </div>
     );
@@ -70,7 +86,7 @@ export function SerialInput(props: {
       {field}
       {letters && (
         <button type="button" onClick={() => setLetters(false)} style={{ ...modeButton, marginTop: 6 }}>
-          123 keypad
+          ⌨ Back to number keypad
         </button>
       )}
       {open && (
@@ -86,10 +102,7 @@ export function SerialInput(props: {
                 setOpen(false);
                 props.onDone?.();
               }}
-              onLetters={() => {
-                setOpen(false);
-                setLetters(true);
-              }}
+              onLetters={enableLetters}
               onClose={() => setOpen(false)}
             />
           </div>
@@ -150,8 +163,8 @@ function Keypad({ value, onChange, onOk, onLetters, onClose }: { value: string; 
         <button type="button" onClick={() => onChange("")} style={{ ...modeButton, flex: 1 }}>
           Clear
         </button>
-        <button type="button" onClick={onLetters} style={{ ...modeButton, flex: 1 }} title="Use the device keyboard (letters)">
-          ABC
+        <button type="button" onClick={onLetters} style={{ ...modeButton, flex: 1 }} title="Type letters with the device keyboard">
+          ABC Letters
         </button>
       </div>
     </div>
