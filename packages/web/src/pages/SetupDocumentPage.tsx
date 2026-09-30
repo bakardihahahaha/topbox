@@ -5,7 +5,7 @@ import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { rememberDocumentSettings } from "../lib/pdfLazy.js";
 import { withSaving } from "../lib/savingStatus.js";
 import { mechanismPreview } from "../lib/preview.js";
-import { openPdf } from "../lib/pdfLazy.js";
+import { viewPdf } from "../lib/pdfLazy.js";
 import { useMe } from "../lib/meContext.js";
 import { SetupSubNav } from "../components/SetupSubNav.js";
 import { card, errorBox, errorMessage, ghost, h1, hint, infoBox, input, label, page, primary } from "../lib/ui.js";
@@ -98,7 +98,7 @@ export function SetupDocumentPage() {
   function preview() {
     const first = templates[0];
     const sample: Signoff = mechanismPreview(first ? { ...first, ...fieldsOf(first) } : undefined, me);
-    void openPdf([sample], s!);
+    viewPdf([sample], s!);
   }
 
   return (

@@ -2,6 +2,7 @@ import { DEFAULT_DOCUMENT_SETTINGS, type DocumentSettings, type Signoff } from "
 import { getDocumentSettings } from "./api.js";
 import type { PdfBranding, PdfPhotos } from "./pdf.js";
 import { photoForPdf } from "./photos.js";
+import { showPdfViewer } from "./pdfViewerStore.js";
 
 // jsPDF is ~400 KB — loaded only the first time someone actually generates a PDF. The company
 // header (Setup → Document) is fetched fresh each time and remembered on the device, so a PDF
@@ -55,21 +56,13 @@ export async function downloadPdf(signoffs: Signoff[]): Promise<void> {
   pdf.downloadSignoffsPdf(signoffs, b, photos);
 }
 
-/** Opens the PDF in a new tab to look at (nothing downloaded). `signoffs` may be a loader, for
- * lists that fetch the full records first. `settings` lets Setup → Document preview unsaved
- * changes. */
-export async function openPdf(signoffs: Signoff[] | (() => Promise<Signoff[]>), settings?: DocumentSettings): Promise<void> {
-  // The tab is opened synchronously, inside the click — opened after the awaits below, popup
-  // blockers would swallow it.
-  const tab = window.open("about:blank", "_blank");
-  try {
+/** Shows the PDF on this page (in-app viewer: Save, Print, ✕ back to where you were).
+ * `signoffs` may be a loader, for lists that fetch the full records first. `settings` lets
+ * Setup → Document preview unsaved changes. */
+export function viewPdf(signoffs: Signoff[] | (() => Promise<Signoff[]>), settings?: DocumentSettings): void {
+  showPdfViewer(async () => {
     const list = typeof signoffs === "function" ? await signoffs() : signoffs;
     const [pdf, b, photos] = await Promise.all([import("./pdf.js"), branding(settings), loadPhotos(list)]);
-    const url = pdf.signoffsPdfUrl(list, b, photos);
-    if (tab) tab.location.href = url;
-    else window.location.href = url;
-  } catch (err) {
-    tab?.close();
-    throw err;
-  }
+    return { blob: pdf.signoffsPdfBlob(list, b, photos), fileName: pdf.pdfFileName(list) };
+  });
 }

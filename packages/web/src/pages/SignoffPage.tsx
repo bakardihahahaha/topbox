@@ -9,7 +9,7 @@ import { mutateOrQueue, onQueueSynced, pendingFor, type QueuedAction } from "../
 import { onDataChange } from "../lib/liveEvents.js";
 import { withSaving } from "../lib/savingStatus.js";
 import { cacheSignoff, cachedSignoff, forgetSignoff } from "../lib/signoffCache.js";
-import { downloadPdf, openPdf } from "../lib/pdfLazy.js";
+import { downloadPdf, viewPdf } from "../lib/pdfLazy.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
@@ -236,8 +236,8 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
             <button style={primary} onClick={() => void downloadPdf([s])}>
               Download PDF
             </button>
-            <button style={{ ...ghost, height: 38 }} onClick={() => void openPdf([s])}>
-              Open / print
+            <button style={{ ...ghost, height: 38 }} onClick={() => viewPdf([s])}>
+              View PDF
             </button>
           </div>
         </div>

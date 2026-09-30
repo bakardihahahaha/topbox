@@ -28,7 +28,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,woff2,svg,png}"],
+        globPatterns: ["**/*.{js,mjs,css,html,woff2,svg,png}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/api\//, /^\/health/],
       },

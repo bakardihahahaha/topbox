@@ -323,6 +323,7 @@ export function downloadSignoffsPdf(signoffs: Signoff[], branding: PdfBranding, 
 }
 
 /** Blob URL of the PDF, for opening in a tab (handy on desktops for printing straight away). */
-export function signoffsPdfUrl(signoffs: Signoff[], branding: PdfBranding, photos?: PdfPhotos): string {
-  return String(buildSignoffsPdf(signoffs, branding, photos).output("bloburl"));
+/** The PDF as a Blob — for the in-app viewer (look, then save or print). */
+export function signoffsPdfBlob(signoffs: Signoff[], branding: PdfBranding, photos?: PdfPhotos): Blob {
+  return buildSignoffsPdf(signoffs, branding, photos).output("blob");
 }

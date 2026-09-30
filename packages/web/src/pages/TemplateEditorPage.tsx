@@ -4,7 +4,7 @@ import type { Part, TemplateInput, TemplateRow } from "@biosite-signoff/shared";
 import { createTemplate, getTemplate, listParts, updateTemplate } from "../lib/api.js";
 import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
-import { openPdf } from "../lib/pdfLazy.js";
+import { viewPdf } from "../lib/pdfLazy.js";
 import { mechanismPreview } from "../lib/preview.js";
 import { useMe } from "../lib/meContext.js";
 import { SetupSubNav } from "../components/SetupSubNav.js";
@@ -128,7 +128,7 @@ export function TemplateEditorPage() {
     if (!draft) return;
     const now = new Date().toISOString();
     const t = { ...draft, id: "preview", createdAt: now, updatedAt: now };
-    void openPdf([mechanismPreview(t, me), mechanismPreview(t, me, "SAMPLE-0002")]);
+    viewPdf([mechanismPreview(t, me), mechanismPreview(t, me, "SAMPLE-0002")]);
   }
 
   return (
