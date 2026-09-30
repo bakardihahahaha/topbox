@@ -15,7 +15,7 @@ import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount, usePermissions } from "../lib/permissions.js";
-import { stamp } from "../lib/format.js";
+import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
 import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
 import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
 import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
@@ -52,6 +52,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   const types = useSignoffTypes();
   const permissions = usePermissions();
   const operators = useOperatorCount();
+  const showTime = useShowSignTime();
   const typesRef = useRef(types);
   typesRef.current = types;
   const inflight = useRef(0);
@@ -226,7 +227,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
               <span style={chip("muted")}>{typeNameOf(s)}</span>
             </div>
             <span className="mono" style={{ fontSize: 11.5, color: "var(--text-3)" }}>
-              started by {s.createdByName} · 1st check {firstCheckAt ? stamp(firstCheckAt) : "not done yet"}
+              started by {s.createdByName} · 1st check {firstCheckAt ? signStamp(firstCheckAt, showTime) : "not done yet"}
             </span>
           </div>
           {/* The PDF can be made at any stage — it shows the checklist as it is right now. */}
@@ -363,7 +364,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                           <div style={{ fontSize: 10.5, lineHeight: 1.2 }}>{sig.name}</div>
                           <div className="mono" style={{ fontSize: 10, color: "var(--text-3)" }}>
                             {sig.date.split("-").reverse().join("/")}
-                            {sig.time && <div>{sig.time}</div>}
+                            {sig.time && showTime && <div>{sig.time}</div>}
                           </div>
                           {isAdmin && (
                             <button
@@ -502,6 +503,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
       {signing && (
         <SignModal
           checkLabel={signing.label}
+          showTime={showTime}
           name={me.name}
           onCancel={() => setSigning(null)}
           onSave={(path, date, time) => {

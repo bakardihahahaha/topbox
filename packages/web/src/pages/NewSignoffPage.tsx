@@ -143,7 +143,7 @@ export function NewSignoffPage() {
               </>
             ) : (
               <>
-                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit))}. Type set to <b>{type?.name}</b>{canAddR ? " — add R if it was refurbished" : ""}.
+                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit)?.slice(0, 10))}. Type set to <b>{type?.name}</b>{canAddR ? " — add R if it was refurbished" : ""}.
               </>
             )}
           </div>

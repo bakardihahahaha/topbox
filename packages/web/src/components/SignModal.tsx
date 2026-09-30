@@ -14,7 +14,7 @@ const nowTime = () => {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
-export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: string; name: string; onCancel: () => void; onSave: (path: string, date: string, time: string) => void }) {
+export function SignModal({ checkLabel, name, onCancel, onSave, showTime = true }: { checkLabel: string; name: string; onCancel: () => void; onSave: (path: string, date: string, time: string) => void; showTime?: boolean }) {
   const pad = useRef<SignaturePadHandle>(null);
   const [path, setPath] = useState<string | null>(null);
   const [date, setDate] = useState(todayLocal());
@@ -31,19 +31,22 @@ export function SignModal({ checkLabel, name, onCancel, onSave }: { checkLabel: 
         </div>
         <SignaturePad ref={pad} onChange={setPath} />
         {path && !signed && <div style={{ fontSize: 12.5, color: "var(--warn)" }}>That's too short to be a signature — please sign properly.</div>}
-        <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 8 }}>
+        {/* With times hidden (Setup → Document) the time is still recorded — the current time. */}
+        <div style={{ display: "grid", gridTemplateColumns: showTime ? "3fr 2fr" : "1fr", gap: 8 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="mono" style={label}>
               Date
             </span>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
           </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span className="mono" style={label}>
-              Time
-            </span>
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={input} />
-          </label>
+          {showTime && (
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="mono" style={label}>
+                Time
+              </span>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={input} />
+            </label>
+          )}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <button style={ghost} onClick={() => pad.current?.clear()}>

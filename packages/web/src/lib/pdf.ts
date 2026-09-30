@@ -174,7 +174,7 @@ function estimateHeight(s: Signoff): number {
 
 type Cell = { content: string; styles?: Record<string, unknown>; colSpan?: number; kind?: string; value?: string; checkId?: string };
 
-function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
+function drawSignoff(doc: jsPDF, s: Signoff, startY: number, showTime: boolean): number {
   const t = s.template;
   const checkW = checkColWidth(t.checks.length);
   const width = PAGE.w - PAGE.margin * 2;
@@ -238,7 +238,7 @@ function drawSignoff(doc: jsPDF, s: Signoff, startY: number): number {
           while (t.length > 3 && doc.getTextWidth(t) > w - 1.5) t = t.slice(0, -1);
           return t === text ? t : `${t.slice(0, -1)}.`;
         };
-        doc.text(`${sig.date.split("-").reverse().join("/")}${sig.time ? ` ${sig.time}` : ""}`, x + w / 2, y + h - 3.6, { align: "center" });
+        doc.text(`${sig.date.split("-").reverse().join("/")}${sig.time && showTime ? ` ${sig.time}` : ""}`, x + w / 2, y + h - 3.6, { align: "center" });
         doc.text(fit(pdfText(sig.name)), x + w / 2, y + h - 1.1, { align: "center" });
       }
     },
@@ -290,7 +290,7 @@ export function buildSignoffsPdf(signoffs: Signoff[], branding: PdfBranding = { 
     }
     const page = doc.getNumberOfPages();
     if (!pageDocs[page - 1]) pageDocs[page - 1] = { ref: s.template.documentRef, id: s.template.documentId };
-    y = drawSignoff(doc, s, y);
+    y = drawSignoff(doc, s, y, branding.settings.showSignTime !== false);
     // Its photos follow on their own page(s); the next sign-off then starts on a fresh page.
     if (drawPhotos(doc, s, photos)) {
       const last = doc.getNumberOfPages();

@@ -219,6 +219,9 @@ export interface DocumentSettings {
   footerText: string;
   /** Printed before the template's document id in the footer. */
   documentIdLabel: string;
+  /** Show the time next to signature dates (screens and PDF). The time is always recorded; this
+   * only decides whether it's shown. */
+  showSignTime: boolean;
 }
 
 export const DEFAULT_DOCUMENT_SETTINGS: DocumentSettings = {
@@ -228,6 +231,7 @@ export const DEFAULT_DOCUMENT_SETTINGS: DocumentSettings = {
   address: "Lancaster House\nDrayton Road, Solihull, UK\nB90 4NG\nTel: +44(0)121 374 2939\nwww.biositesystems.com",
   footerText: "Biosite Systems Ltd, registered in England and Wales. Reg. No. 7308880",
   documentIdLabel: "Document Identifier:",
+  showSignTime: true,
 };
 
 /** One tile on the sign-in screen. */

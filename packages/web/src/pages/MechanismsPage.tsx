@@ -7,6 +7,7 @@ import { daysBetween, stamp, topboxUrl } from "../lib/format.js";
 import { card, chip, errorBox, errorMessage, ghost, h1, hint, input, page, primary } from "../lib/ui.js";
 import { mechanismPdfSignoffs, type PdfScope } from "../lib/mechanismPdf.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
+import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
 
 /** Every mechanism (serial number) and where it is now: in the workshop or out at a client. */
 export function MechanismsPage() {
@@ -18,6 +19,7 @@ export function MechanismsPage() {
   }, [q]);
   const list = useData<MechanismSummary[]>(() => listMechanisms(debounced || undefined), [debounced]);
   const now = new Date();
+  const showTime = useShowSignTime();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export function MechanismsPage() {
             </div>
             {m.atClient ? (
               <span style={chip("accent")}>
-                At client · left {stamp(m.last.departedAt)}
+                At client · left {signStamp(m.last.departedAt, showTime)}
                 {m.last.departedAt ? ` (${daysBetween(m.last.departedAt.replace(" ", "T"), now)} d)` : ""}
               </span>
             ) : (

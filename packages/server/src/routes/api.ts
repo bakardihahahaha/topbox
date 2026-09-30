@@ -57,6 +57,7 @@ const documentSettingsInput = z.object({
   address: z.string().max(1000),
   footerText: z.string().max(500),
   documentIdLabel: z.string().max(100),
+  showSignTime: z.boolean().default(true),
 });
 
 export async function readDocumentSettings(store: Store): Promise<DocumentSettings> {

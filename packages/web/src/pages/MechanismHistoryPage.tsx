@@ -3,7 +3,7 @@ import { checkDoneAt, departedAt, typeNameOf, type Signoff } from "@biosite-sign
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { getVisits } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
-import { stamp } from "../lib/format.js";
+import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
 import { SignoffPage } from "./SignoffPage.js";
 import { useMe } from "../lib/meContext.js";
 import { card, chip, errorBox, ghost, h1, page, primary } from "../lib/ui.js";
@@ -18,6 +18,7 @@ import { card, chip, errorBox, ghost, h1, page, primary } from "../lib/ui.js";
 export function MechanismHistoryPage() {
   const { serial = "" } = useParams();
   const me = useMe();
+  const showTime = useShowSignTime();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const visits = useData<Signoff[]>(() => getVisits(serial), [serial]);
@@ -41,7 +42,7 @@ export function MechanismHistoryPage() {
           </h1>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             {list.length} visit{list.length === 1 ? "" : "s"}
-            {latest && (inWorkshop ? " · in the workshop now" : ` · at client since ${stamp(departedAt(latest))}`)}
+            {latest && (inWorkshop ? " · in the workshop now" : ` · at client since ${signStamp(departedAt(latest), showTime)}`)}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -110,12 +111,12 @@ export function MechanismHistoryPage() {
                         {v.serialNumber}
                       </span>
                     </div>
-                    {left ? <span style={chip("accent")}>Left {stamp(left)}</span> : <span style={chip("warn")}>In workshop</span>}
+                    {left ? <span style={chip("accent")}>Left {signStamp(left, showTime)}</span> : <span style={chip("warn")}>In workshop</span>}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
                     {v.template.checks.map((c) => {
                       const done = checkDoneAt(v, c.id);
-                      return <Step key={c.id} label={c.label} value={done ? stamp(done.at) : "not done"} sub={done?.by} muted={!done} />;
+                      return <Step key={c.id} label={c.label} value={done ? signStamp(done.at, showTime) : "not done"} sub={done?.by} muted={!done} />;
                     })}
                   </div>
                 </Link>
