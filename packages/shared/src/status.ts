@@ -86,6 +86,7 @@ export function summarize(s: Signoff): SignoffSummary {
     firstCheckBy: first?.by ?? null,
     status: signoffStatus(s),
     progress: `${done}/${total}`,
+    checks: s.template.checks.map((c) => ({ label: c.label, at: checkDoneAt(s, c.id)?.at ?? null })),
     createdByName: s.createdByName,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,

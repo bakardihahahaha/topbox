@@ -4,6 +4,7 @@ import type { SignoffSummary, Template } from "@biosite-signoff/shared";
 import { getSignoffs, listTemplates } from "../lib/api.js";
 import { listSignoffsOfflineAware } from "../lib/offlineList.js";
 import { useData } from "../lib/useData.js";
+import { SerialInput } from "../components/SerialInput.js";
 import { useMe } from "../lib/meContext.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
@@ -72,7 +73,9 @@ export function SignoffsListPage() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 12 }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search serial number" style={{ ...input, gridColumn: "1 / -1" }} />
+        <div style={{ gridColumn: "1 / -1" }}>
+          <SerialInput value={q} onChange={setQ} placeholder="Search serial number" ariaLabel="Search serial number" style={{ height: 52, fontSize: 17 }} />
+        </div>
         {(templates.data?.length ?? 0) > 1 && (
           <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} style={input}>
             <option value="">All templates</option>
@@ -98,19 +101,18 @@ export function SignoffsListPage() {
         </select>
       </div>
 
-      {selected.size > 0 && (
-        <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, position: "sticky", top: 0, zIndex: 5 }}>
-          <span style={{ fontSize: 13 }}>{selected.size} selected</span>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button style={ghost} onClick={() => setSelected(new Set())}>
-              Clear
-            </button>
-            <button style={primary} onClick={generate} disabled={busy}>
-              {busy ? "Generating…" : "Generate PDF"}
-            </button>
-          </div>
+      {/* Always here (greyed until something is ticked), so ticking never shifts the list. */}
+      <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, position: "sticky", top: 0, zIndex: 5 }}>
+        <span style={{ fontSize: 13, color: selected.size ? "var(--text)" : "var(--text-3)" }}>{selected.size} selected</span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={ghost} onClick={() => setSelected(new Set())} disabled={selected.size === 0}>
+            Clear
+          </button>
+          <button style={{ ...primary, opacity: selected.size === 0 ? 0.45 : 1 }} onClick={generate} disabled={busy || selected.size === 0}>
+            {busy ? "Generating…" : "Generate PDF"}
+          </button>
         </div>
-      )}
+      </div>
 
       {(list.error || pdfError) && <div style={errorBox}>{pdfError ?? list.error}</div>}
       {list.data?.offline && <div style={infoBox}>No connection — showing the list as last seen on this device. Changes you make are saved here and sync automatically.</div>}

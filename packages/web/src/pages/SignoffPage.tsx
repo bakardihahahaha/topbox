@@ -17,6 +17,7 @@ import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount, usePermissions } from "../lib/permissions.js";
 import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
 import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
+import { SerialInput } from "../components/SerialInput.js";
 import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
 import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
@@ -251,6 +252,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
               initial={s.serialNumber}
               canEdit={isAdmin}
               mono
+              serial
               onSave={(serialNumber) => {
                 const next = serialNumber.trim();
                 if (next && next !== s.serialNumber) void mutate({ kind: "updateHeader", id, patch: { serialNumber: next } }, () => api.updateSignoffHeader(id, { serialNumber: next }));
@@ -565,7 +567,7 @@ function MarkCell({ value, locked, onTap }: { value: MarkValue | undefined; lock
 
 /** A value that's fixed once the sign-off is started. Operators only see it; an admin taps the
  * pencil first, then edits and saves (or cancels) — never an accidental edit. */
-function LockedField(props: { display: string; initial: string; canEdit: boolean; onSave: (v: string) => void; mono?: boolean; inputType?: string }) {
+function LockedField(props: { display: string; initial: string; canEdit: boolean; onSave: (v: string) => void; mono?: boolean; inputType?: string; serial?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(props.initial);
   useEffect(() => {
@@ -587,7 +589,13 @@ function LockedField(props: { display: string; initial: string; canEdit: boolean
   }
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-      <input autoFocus type={props.inputType ?? "text"} value={v} onChange={(e) => setV(e.target.value)} className={props.mono ? "mono" : undefined} style={{ ...input, flex: "1 1 160px", width: "auto" }} />
+      {props.serial ? (
+        <div style={{ flex: "1 1 160px" }}>
+          <SerialInput value={v} onChange={setV} />
+        </div>
+      ) : (
+        <input autoFocus type={props.inputType ?? "text"} value={v} onChange={(e) => setV(e.target.value)} className={props.mono ? "mono" : undefined} style={{ ...input, flex: "1 1 160px", width: "auto" }} />
+      )}
       <button
         type="button"
         style={{ ...primary, height: 44 }}

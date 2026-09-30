@@ -195,6 +195,8 @@ export interface SignoffSummary {
   status: SignoffStatus;
   /** "2/3" — checks signed (or fully marked when the sign row is off) out of total. */
   progress: string;
+  /** Every check column in order, with when it was done ("YYYY-MM-DD HH:MM", null = not yet). */
+  checks?: { label: string; at: string | null }[];
   createdByName: string;
   createdAt: string;
   updatedAt: string;

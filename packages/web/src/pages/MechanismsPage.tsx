@@ -3,8 +3,9 @@ import { Link } from "react-router-dom";
 import type { MechanismSummary } from "@biosite-signoff/shared";
 import { listMechanisms } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
+import { SerialInput } from "../components/SerialInput.js";
 import { daysBetween, stamp, topboxUrl } from "../lib/format.js";
-import { card, chip, errorBox, errorMessage, ghost, h1, hint, input, page, primary } from "../lib/ui.js";
+import { card, chip, errorBox, errorMessage, ghost, h1, hint, page, primary } from "../lib/ui.js";
 import { mechanismPdfSignoffs, type PdfScope } from "../lib/mechanismPdf.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
 import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
@@ -49,23 +50,26 @@ export function MechanismsPage() {
     <div style={page}>
       <h1 style={h1}>Mechanisms</h1>
       <p style={hint}>Each serial number with all its visits: when each check was done and when it left again. Tap one for its full history.</p>
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search serial number" style={{ ...input, height: 52, fontSize: 16, marginBottom: 12 }} />
-      {selected.size > 0 && (
-        <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, position: "sticky", top: 0, zIndex: 5, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13 }}>{selected.size} TopBox{selected.size === 1 ? "" : "es"} selected</span>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={ghost} onClick={() => setSelected(new Set())} disabled={busy}>
-              Clear
-            </button>
-            <button style={primary} onClick={() => void generate("latest")} disabled={busy} title="Each TopBox's most recent visit">
-              {busy ? "Generating…" : "PDF — latest visit"}
-            </button>
-            <button style={{ ...ghost, borderColor: "var(--accent)", color: "var(--accent)" }} onClick={() => void generate("all")} disabled={busy} title="Every visit of each TopBox — its whole history">
-              PDF — all visits
-            </button>
-          </div>
+      <div style={{ marginBottom: 12 }}>
+        <SerialInput value={q} onChange={setQ} placeholder="Search serial number" ariaLabel="Search serial number" style={{ height: 52, fontSize: 17 }} />
+      </div>
+      {/* Always here (greyed until something is ticked), so ticking never shifts the list. */}
+      <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, position: "sticky", top: 0, zIndex: 5, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, color: selected.size ? "var(--text)" : "var(--text-3)" }}>
+          {selected.size} TopBox{selected.size === 1 ? "" : "es"} selected
+        </span>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button style={ghost} onClick={() => setSelected(new Set())} disabled={busy || selected.size === 0}>
+            Clear
+          </button>
+          <button style={{ ...primary, opacity: selected.size === 0 ? 0.45 : 1 }} onClick={() => void generate("latest")} disabled={busy || selected.size === 0} title="Each TopBox's most recent visit">
+            {busy ? "Generating…" : "PDF — latest visit"}
+          </button>
+          <button style={{ ...ghost, borderColor: "var(--accent)", color: "var(--accent)", opacity: selected.size === 0 ? 0.45 : 1 }} onClick={() => void generate("all")} disabled={busy || selected.size === 0} title="Every visit of each TopBox — its whole history">
+            PDF — all visits
+          </button>
         </div>
-      )}
+      </div>
       {pdfError && <div style={errorBox}>{pdfError}</div>}
       {list.error && <div style={errorBox}>{list.error}</div>}
       {list.data?.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No mechanisms found.</div>}

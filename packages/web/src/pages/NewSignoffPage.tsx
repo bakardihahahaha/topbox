@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { SerialInput } from "../components/SerialInput.js";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { allowsRefurbishedR, departedAt, isOncePerTopbox, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
@@ -47,6 +48,7 @@ export function NewSignoffPage() {
   const canAddR = Boolean(type && allowsRefurbishedR(type)) && /\d$/.test(key) && !hasR;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const startRef = useRef<HTMLButtonElement>(null);
 
   const chosen = templates.data?.find((t) => t.id === (templateId || templates.data?.[0]?.id));
 
@@ -119,12 +121,13 @@ export function NewSignoffPage() {
           </div>
         </div>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span className="mono" style={label}>
             {chosen?.serialLabel ?? "Serial Number"}
           </span>
-          <input value={serial} onChange={(e) => setSerial(e.target.value)} autoFocus style={{ ...input, height: 56, fontSize: 18 }} className="mono" autoCapitalize="characters" />
-        </label>
+          {/* The app's own number keypad — no device keyboard popping up over the form. */}
+          <SerialInput inline value={serial} onChange={setSerial} placeholder="Type the serial number" onDone={() => startRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })} />
+        </div>
         {(canAddR || hasR) && (
           <button type="button" onClick={() => setSerial(hasR ? serial.trim().slice(0, -1) : `${serial.trim()}R`)} style={{ ...ghost, height: 48, alignSelf: "flex-start" }} title="R = refurbished">
             {hasR ? "Remove R" : "+R refurbished"}
@@ -149,7 +152,7 @@ export function NewSignoffPage() {
           </div>
         )}
         {typeBlock && <div style={{ ...errorBox, marginBottom: 0 }}>{typeBlock}</div>}
-        <button type="submit" disabled={busy || !chosen || !serial.trim() || Boolean(typeBlock)} style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !serial.trim() || typeBlock ? 0.6 : 1 }}>
+        <button ref={startRef} type="submit" disabled={busy || !chosen || !serial.trim() || Boolean(typeBlock)} style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !serial.trim() || typeBlock ? 0.6 : 1 }}>
           {busy ? "Creating…" : "Start sign-off"}
         </button>
       </form>
