@@ -13,21 +13,6 @@ export const createPart = (id: string, input: PartInput) => sendJson<Part>("POST
 export const updatePart = (id: string, patch: Partial<PartInput>) => sendJson<Part>("PATCH", `/api/parts/${id}`, patch);
 export const deletePart = (id: string) => sendJson("DELETE", `/api/parts/${id}`);
 
-export interface SignoffFilter {
-  q?: string;
-  templateId?: string;
-  status?: "draft" | "complete";
-  mode?: SignoffMode;
-  typeId?: string;
-  limit?: number;
-  offset?: number;
-}
-
-export function listSignoffs(f: SignoffFilter) {
-  const params = new URLSearchParams();
-  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== "") params.set(k, String(v));
-  return getJson<{ items: SignoffSummary[]; total: number }>(`/api/signoffs?${params}`);
-}
 export const getSignoff = (id: string) => getJson<Signoff>(`/api/signoffs/${id}`);
 /** Full records for many sign-offs (for a PDF) — fetched 100 at a time, in the order given. */
 export async function getSignoffs(ids: string[]): Promise<Signoff[]> {
@@ -43,8 +28,8 @@ export const fillCheck = (id: string, checkId: string, value: MarkValue) => send
 export const signCheck = (id: string, checkId: string, path: string, date: string, time?: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/signatures/${checkId}`, { path, date, time });
 export const clearCheck = (id: string, checkId: string) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/clear`, { checkId });
 export const listMechanisms = (q?: string) => getJsonCached<MechanismSummary[]>(`/api/mechanisms${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+export const getAllSignoffSummaries = () => getJsonCached<SignoffSummary[]>("/api/signoff-summaries");
 export const getSignoffsOfType = (typeId: string) => getJsonCached<SignoffSummary[]>(`/api/types/${encodeURIComponent(typeId)}/signoffs`);
-export const getStock = (typeId: string) => getJsonCached<SignoffSummary[]>(`/api/stock/${encodeURIComponent(typeId)}`);
 export const getVisits = (serial: string) => getJsonCached<Signoff[]>(`/api/mechanisms/${encodeURIComponent(serial)}/visits`);
 export const unsignCheck = (id: string, checkId: string) => sendJson<Signoff>("DELETE", `/api/signoffs/${id}/signatures/${checkId}`);
 export const setPartLine = (id: string, lineId: string, partId: string, qty: number, note: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/parts/${lineId}`, { partId, qty, note });

@@ -240,8 +240,8 @@ export class SignoffService {
 
   /** Every sign-off (visit) ever made as this type — the home screen's type tabs. Highest serial
    * number first (numbers compared as numbers); the screen re-sorts and filters. */
-  async ofType(typeId: string): Promise<SignoffSummary[]> {
-    const items = (await this.store.signoffs.list({ typeId, limit: 100_000, offset: 0 })).items.map((s) => summarize(s));
+  async ofType(typeId?: string): Promise<SignoffSummary[]> {
+    const items = (await this.store.signoffs.list({ typeId: typeId || undefined, limit: 100_000, offset: 0 })).items.map((s) => summarize(s));
     return items.sort((a, b) => b.serialNumber.localeCompare(a.serialNumber, undefined, { numeric: true, sensitivity: "base" }));
   }
 

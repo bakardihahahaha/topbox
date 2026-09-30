@@ -298,6 +298,8 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   });
   app.get<{ Params: { typeId: string } }>("/api/stock/:typeId", authed, async (req) => s.signoffs.stock(req.params.typeId));
   app.get<{ Params: { typeId: string } }>("/api/types/:typeId/signoffs", authed, async (req) => s.signoffs.ofType(req.params.typeId));
+  /** Every sign-off as a list row — the All sign-offs tab (it searches, filters and sorts itself). */
+  app.get("/api/signoff-summaries", authed, async () => s.signoffs.ofType());
   app.get<{ Params: { serial: string } }>("/api/mechanisms/:serial/visits", authed, async (req) => s.signoffs.visits(req.params.serial));
 
   app.put<{ Params: { id: string; checkId: string } }>("/api/signoffs/:id/signatures/:checkId", authed, async (req) => {

@@ -287,6 +287,7 @@ describe("home screen stock tabs", () => {
     expect(svc.map((s) => s.serialNumber)).toEqual(["SV-2", "SV-3", "SV-1"]);
     expect(svc[0]!.firstCheckAt).toBe("2026-09-05 07:00");
     expect((await call("GET", "/api/stock/new-usa")).json()).toEqual([]);
+    expect(((await call("GET", "/api/signoff-summaries")).json() as unknown[]).length).toBeGreaterThanOrEqual(6);
     // The type tab lists every TopBox ever made as that type, whatever its stage.
     const all = (await call("GET", "/api/types/new-uk/signoffs")).json() as { serialNumber: string; status: string }[];
     expect(all.map((s) => s.serialNumber)).toEqual(expect.arrayContaining(["TB-11", "TB-10", "TB-9"]));
