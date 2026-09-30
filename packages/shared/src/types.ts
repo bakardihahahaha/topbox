@@ -241,6 +241,30 @@ export interface LoginUser {
 export const PIN_PATTERN = /^\d{4,8}$/;
 
 /** One physical mechanism (serial number) across all its visits to the workshop. */
+/** One replaced-part line, as listed on the Parts used page (for booking parts out of stock in
+ * the stock system). */
+export interface PartUsageLine {
+  lineId: string;
+  signoffId: string;
+  serialNumber: string;
+  typeName: string;
+  status: SignoffStatus;
+  partId: string;
+  partNumber: string;
+  name: string;
+  qty: number;
+  note: string;
+  /** When the part was ticked on the sign-off (ISO). */
+  recordedAt: string;
+  /** When an admin last marked it as booked out of stock ('' = never). */
+  bookedOutAt: string;
+  /** How many were booked out then. `qty - bookedOutQty` is what's still to book (negative = to
+   * return to stock, e.g. the part was unticked or the quantity lowered afterwards). */
+  bookedOutQty: number;
+  /** The part was unticked (or its sign-off deleted) after being booked out — qty is 0 now. */
+  removed: boolean;
+}
+
 export interface MechanismSummary {
   serialNumber: string;
   visits: number;

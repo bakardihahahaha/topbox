@@ -238,6 +238,18 @@ export class SignoffService {
     return items.sort((a, b) => b.serialNumber.localeCompare(a.serialNumber, undefined, { numeric: true, sensitivity: "base" }));
   }
 
+  /** Parts used — replaced-part lines recorded in [from, to), for booking them out of stock. */
+  partsUsage(from: string, to: string) {
+    return this.store.signoffs.partsUsage(from, to);
+  }
+
+  /** Admin: mark lines as booked out of stock in the stock system (or undo). */
+  async setPartsBookedOut(lineIds: string[], booked: boolean, actor: Actor): Promise<number> {
+    if (actor.role !== "admin") throw forbidden("Only an admin can mark parts as booked out.");
+    const now = new Date().toISOString();
+    return this.store.signoffs.setPartsBookedOut(lineIds, booked ? now : "", now);
+  }
+
   /** All visits of one mechanism, oldest first. */
   async visits(serial: string): Promise<Signoff[]> {
     return (await this.store.signoffs.list({ serial, order: "arrived_asc", limit: 1000, offset: 0 })).items;

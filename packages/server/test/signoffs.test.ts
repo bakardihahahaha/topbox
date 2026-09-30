@@ -532,3 +532,49 @@ describe("refurbished R only on types that allow it", () => {
     expect((await start("558R", "new-usa")).statusCode).toBe(200);
   });
 });
+
+describe("parts used", () => {
+  it("lists replaced parts in a date range; admin marks them booked out; a changed qty needs booking again", async () => {
+    const t = await setup();
+    const spring = await t.catalog.createPart({ partNumber: "SP-01", name: "Plunger spring", description: "" });
+    const bolt = await t.catalog.createPart({ partNumber: "BT-02", name: "Cam bolt", description: "" });
+    const op = t.as((await t.login("op", "2222")).token);
+    const lines: string[] = [];
+    for (const serial of ["P-1", "P-2"]) {
+      const id = randomUUID();
+      await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: serial, typeId: "service" });
+      const a = randomUUID();
+      const b = randomUUID();
+      await op("PUT", `/api/signoffs/${id}/parts/${a}`, { partId: spring.id, qty: 2 });
+      await op("PUT", `/api/signoffs/${id}/parts/${b}`, { partId: bolt.id, qty: 1 });
+      lines.push(a, b);
+    }
+    const range = "from=2000-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z";
+    const used = (await op("GET", `/api/parts-usage?${range}`)).json() as { lineId: string; serialNumber: string; partNumber: string; qty: number; bookedOutAt: string }[];
+    expect(used.map((u) => `${u.serialNumber} ${u.partNumber} x${u.qty}`)).toEqual(["P-1 SP-01 x2", "P-1 BT-02 x1", "P-2 SP-01 x2", "P-2 BT-02 x1"]);
+    expect((await op("GET", "/api/parts-usage?from=2000-01-01T00:00:00.000Z&to=2000-02-01T00:00:00.000Z")).json()).toEqual([]);
+
+    expect((await op("POST", "/api/parts-usage/booked-out", { lineIds: lines, booked: true })).statusCode).toBe(403);
+    const admin = t.as((await t.login("admin", "1111")).token);
+    expect((await admin("POST", "/api/parts-usage/booked-out", { lineIds: lines.slice(0, 3), booked: true })).json()).toEqual({ changed: 3 });
+    const after = (await admin("GET", `/api/parts-usage?${range}`)).json() as { lineId: string; bookedOutAt: string }[];
+    expect(after.map((u) => Boolean(u.bookedOutAt))).toEqual([true, true, true, false]);
+
+    // Olga changes P-1's spring 2 → 3: one more to book. She unticks P-1's bolt: one back to stock.
+    const p1 = (await op("GET", "/api/signoffs?q=P-1")).json().items[0].id as string;
+    await op("PUT", `/api/signoffs/${p1}/parts/${lines[0]}`, { partId: spring.id, qty: 3 });
+    await op("DELETE", `/api/signoffs/${p1}/parts/${lines[1]}`);
+    const changed = (await admin("GET", `/api/parts-usage?${range}`)).json() as { lineId: string; qty: number; bookedOutQty: number; removed: boolean }[];
+    expect(changed.map((u) => [u.qty, u.bookedOutQty, u.removed])).toEqual([
+      [3, 2, false],
+      [0, 1, true],
+      [2, 2, false],
+      [1, 0, false],
+    ]);
+    // Booking them all settles every line (the removed one disappears).
+    await admin("POST", "/api/parts-usage/booked-out", { lineIds: changed.map((u) => u.lineId), booked: true });
+    const settled = (await admin("GET", `/api/parts-usage?${range}`)).json() as { qty: number; bookedOutQty: number }[];
+    expect(settled.every((u) => u.qty === u.bookedOutQty)).toBe(true);
+    expect(settled).toHaveLength(3);
+  });
+});

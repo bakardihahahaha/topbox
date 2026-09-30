@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
-import { mechanismKey, type Mark, type Part, type ReplacedPart, type Signature, type Signoff, type SignoffPhoto, type SignoffStatus, type Template, type Role } from "@biosite-signoff/shared";
+import { mechanismKey, type Mark, type Part, type ReplacedPart, type Signature, type Signoff, type SignoffPhoto, type SignoffStatus, type PartUsageLine, type Template, type Role } from "@biosite-signoff/shared";
 import type {
   AppSettingsRepo,
   AuditEntry,
@@ -737,6 +737,59 @@ class SqliteSignoffs implements SignoffsRepo {
       const res = this.db.prepare("UPDATE signoff_photos SET deleted_at = ?, updated_at = ? WHERE id = ? AND signoff_id = ? AND deleted_at = ''").run(at, at, photoId, signoffId);
       if (res.changes > 0) this.enqueue("signoff_photos", photoId);
       this.touch(signoffId, at);
+    });
+  }
+
+  async partsUsage(from: string, to: string) {
+    // Lines still ticked, plus unticked/deleted ones that had been booked out (to return to stock).
+    const rows = this.db
+      .prepare(
+        `SELECT p.id, p.signoff_id, p.part_id, p.part_number, p.name, p.qty, p.note, p.created_at, p.booked_out_at, p.booked_out_qty,
+                (p.deleted_at != '' OR s.deleted_at != '') AS removed, s.serial_number, s.type_name, s.mode, s.status
+         FROM signoff_parts p JOIN signoffs s ON s.id = p.signoff_id
+         WHERE p.created_at >= ? AND p.created_at < ?
+           AND ((p.deleted_at = '' AND s.deleted_at = '') OR CAST(p.booked_out_qty AS INTEGER) != 0)
+         ORDER BY p.created_at`,
+      )
+      .all(from, to) as (PartLineRow & { created_at: string; booked_out_at: string; booked_out_qty: string; removed: number; serial_number: string; type_name: string; mode: "new" | "service"; status: SignoffStatus })[];
+    return rows.map(
+      (r): PartUsageLine => ({
+        lineId: r.id,
+        signoffId: r.signoff_id,
+        serialNumber: r.serial_number,
+        typeName: r.type_name || (r.mode === "service" ? "Service" : "New"),
+        status: r.status,
+        partId: r.part_id,
+        partNumber: r.part_number,
+        name: r.name,
+        qty: r.removed ? 0 : Number(r.qty) || 1,
+        note: r.note,
+        recordedAt: r.created_at,
+        bookedOutAt: r.booked_out_at,
+        bookedOutQty: Number(r.booked_out_qty) || 0,
+        removed: Boolean(r.removed),
+      }),
+    );
+  }
+
+  async setPartsBookedOut(lineIds: string[], bookedOutAt: string, at: string) {
+    return this.tx(() => {
+      // Booked = the current quantity (0 for a removed line) is what's out of stock now.
+      const upd = this.db.prepare(
+        `UPDATE signoff_parts SET booked_out_at = ?, updated_at = ?,
+           booked_out_qty = CASE WHEN ? = '' THEN '0'
+             WHEN deleted_at != '' OR (SELECT deleted_at FROM signoffs WHERE id = signoff_parts.signoff_id) != '' THEN '0'
+             ELSE qty END
+         WHERE id = ?`,
+      );
+      let n = 0;
+      for (const id of lineIds) {
+        if (upd.run(bookedOutAt, at, bookedOutAt, id).changes > 0) {
+          this.enqueue("signoff_parts", id);
+          n++;
+        }
+      }
+      return n;
     });
   }
 

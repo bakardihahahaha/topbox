@@ -278,6 +278,17 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.delete<{ Params: { id: string; photoId: string } }>("/api/signoffs/:id/photos/:photoId", authed, async (req) => s.signoffs.removePhoto(req.params.id, req.params.photoId, actor(req)));
 
+  // ---- parts used (for booking parts out of stock in the stock system) ------------------------
+
+  app.get("/api/parts-usage", authed, async (req) => {
+    const q = parse(z.object({ from: z.string().datetime(), to: z.string().datetime() }), req.query);
+    return s.signoffs.partsUsage(q.from, q.to);
+  });
+  app.post("/api/parts-usage/booked-out", admin, async (req) => {
+    const body = parse(z.object({ lineIds: z.array(id).min(1).max(2000), booked: z.boolean() }), req.body);
+    return { changed: await s.signoffs.setPartsBookedOut(body.lineIds, body.booked, actor(req)) };
+  });
+
   // ---- mechanisms (one serial number across all its visits) ----------------------------------
 
   app.get("/api/mechanisms", authed, async (req) => {

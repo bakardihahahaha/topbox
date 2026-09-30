@@ -203,6 +203,12 @@ const MIGRATIONS: string[] = [
   DROP TABLE users;
   ALTER TABLE users_new RENAME TO users;
   `,
+  // 7: parts used — which replaced-part lines have been booked out of stock in the stock system.
+  `
+  ALTER TABLE signoff_parts ADD COLUMN booked_out_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE signoff_parts ADD COLUMN booked_out_qty TEXT NOT NULL DEFAULT '0';
+  CREATE INDEX signoff_parts_created ON signoff_parts(created_at);
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

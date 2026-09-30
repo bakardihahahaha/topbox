@@ -1,4 +1,4 @@
-import type { Mark, MarkValue, Part, ReplacedPart, Role, Signature, Signoff, SignoffMode, SignoffPhoto, SignoffStatus, Template } from "@biosite-signoff/shared";
+import type { Mark, MarkValue, Part, ReplacedPart, Role, Signature, Signoff, SignoffMode, SignoffPhoto, PartUsageLine, SignoffStatus, Template } from "@biosite-signoff/shared";
 import type { MirroredTable, Row } from "./schema.js";
 
 // The ONLY thing the rest of the server knows about persistence. Services and routes depend on
@@ -150,6 +150,10 @@ export interface SignoffsRepo {
 
   upsertPart(signoffId: string, part: ReplacedPart, at: string): Promise<void>;
   removePart(signoffId: string, partRowId: string, at: string): Promise<void>;
+  /** Replaced-part lines recorded in [from, to) on sign-offs that still exist, oldest first. */
+  partsUsage(from: string, to: string): Promise<PartUsageLine[]>;
+  /** Marks lines as booked out of stock at `bookedOutAt` ('' = undo). Returns how many changed. */
+  setPartsBookedOut(lineIds: string[], bookedOutAt: string, at: string): Promise<number>;
 
   /** Idempotent on photo id. `file` is relative to the photos folder. */
   addPhoto(signoffId: string, photo: SignoffPhoto & { file: string }, at: string): Promise<void>;
