@@ -29,7 +29,12 @@ export function listSignoffs(f: SignoffFilter) {
   return getJson<{ items: SignoffSummary[]; total: number }>(`/api/signoffs?${params}`);
 }
 export const getSignoff = (id: string) => getJson<Signoff>(`/api/signoffs/${id}`);
-export const getSignoffs = (ids: string[]) => sendJson<Signoff[]>("POST", "/api/signoffs/batch", { ids });
+/** Full records for many sign-offs (for a PDF) — fetched 100 at a time, in the order given. */
+export async function getSignoffs(ids: string[]): Promise<Signoff[]> {
+  const out: Signoff[] = [];
+  for (let i = 0; i < ids.length; i += 100) out.push(...(await sendJson<Signoff[]>("POST", "/api/signoffs/batch", { ids: ids.slice(i, i + 100) })));
+  return out;
+}
 export const createSignoff = (input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }) => sendJson<Signoff>("POST", "/api/signoffs", input);
 export const updateSignoffHeader = (id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }) => sendJson<Signoff>("PATCH", `/api/signoffs/${id}`, patch);
 export const deleteSignoff = (id: string) => sendJson("DELETE", `/api/signoffs/${id}`);
