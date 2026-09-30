@@ -296,6 +296,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     return s.signoffs.mechanisms(q.q?.trim() || undefined, q.limit);
   });
   app.get<{ Params: { typeId: string } }>("/api/stock/:typeId", authed, async (req) => s.signoffs.stock(req.params.typeId));
+  app.get<{ Params: { typeId: string } }>("/api/types/:typeId/signoffs", authed, async (req) => s.signoffs.ofType(req.params.typeId));
   app.get<{ Params: { serial: string } }>("/api/mechanisms/:serial/visits", authed, async (req) => s.signoffs.visits(req.params.serial));
 
   app.put<{ Params: { id: string; checkId: string } }>("/api/signoffs/:id/signatures/:checkId", authed, async (req) => {

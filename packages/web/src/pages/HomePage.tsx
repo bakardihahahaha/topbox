@@ -1,18 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { SignoffSummary } from "@biosite-signoff/shared";
-import { getStock } from "../lib/api.js";
+import { getSignoffsOfType } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { useMe } from "../lib/meContext.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { stamp, topboxUrl } from "../lib/format.js";
 import { SignoffsListPage } from "./SignoffsListPage.js";
-import { card, chip, errorBox, page, primary } from "../lib/ui.js";
+import { card, chip, errorBox, ghost, input, page, primary } from "../lib/ui.js";
 
-// The home screen: one tab per sign-off type (Setup → Types) showing what's in stock right now —
-// mechanisms with the first check done but not the last one yet. Finishing the last check makes
-// a mechanism drop off (it has left). "All sign-offs" is the full searchable list — and the tab
-// the screen always opens on.
+// The home screen: one tab per sign-off type (Setup → Types) listing every TopBox made as that
+// type, filterable by completed / not completed and sorted by serial number. "All sign-offs" is
+// the full searchable list — and the tab the screen always opens on.
 const ALL = "__all";
 
 export function HomePage() {
@@ -45,26 +44,38 @@ export function HomePage() {
           ))}
         </div>
       </div>
-      {active === ALL ? <SignoffsListPage /> : <StockTab typeId={active} typeName={types.find((t) => t.id === active)?.name ?? ""} service={Boolean(types.find((t) => t.id === active)?.allowsParts)} />}
+      {active === ALL ? <SignoffsListPage /> : <TypeTab typeId={active} typeName={types.find((t) => t.id === active)?.name ?? ""} />}
     </div>
   );
 }
 
-function StockTab({ typeId, typeName, service }: { typeId: string; typeName: string; service: boolean }) {
+type StatusFilter = "all" | "open" | "done";
+
+/** One sign-off type: every TopBox (visit) ever made as that type, whatever its stage — filtered
+ * by completed / not completed, sorted by serial number either way. */
+function TypeTab({ typeId, typeName }: { typeId: string; typeName: string }) {
   const navigate = useNavigate();
   const me = useMe();
-  const stock = useData<SignoffSummary[]>(() => getStock(typeId), [typeId]);
-  const items = stock.data ?? [];
+  const list = useData<SignoffSummary[]>(() => getSignoffsOfType(typeId), [typeId]);
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [descending, setDescending] = useState(true);
+  const all = list.data ?? [];
+  const open = all.filter((s) => s.status !== "complete").length;
+  const items = all
+    .filter((s) => (status === "all" ? true : status === "done" ? s.status === "complete" : s.status !== "complete"))
+    .sort((a, b) => (descending ? -1 : 1) * a.serialNumber.localeCompare(b.serialNumber, undefined, { numeric: true, sensitivity: "base" }));
   return (
     <div style={page}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>
-            {typeName} — in stock: {stock.data ? items.length : "…"}
+            {typeName} — {list.data ? items.length : "…"} TopBox{items.length === 1 ? "" : "es"}
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
-            First check done, waiting for the last check. {service ? "Newest first check first." : "Highest serial number first."} Once the last check is signed it leaves this list.
-          </div>
+          {list.data && (
+            <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>
+              {all.length} made as {typeName} · {all.length - open} completed · {open} not completed
+            </div>
+          )}
         </div>
         {me.role !== "viewer" && (
           <button style={{ ...primary, height: 52 }} onClick={() => navigate(`/signoffs/new?typeId=${encodeURIComponent(typeId)}`)}>
@@ -72,8 +83,18 @@ function StockTab({ typeId, typeName, service }: { typeId: string; typeName: str
           </button>
         )}
       </div>
-      {stock.error && <div style={errorBox}>{stock.error}</div>}
-      {stock.data && items.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 14 }}>Nothing in stock for {typeName}.</div>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} aria-label="Status" style={{ ...input, width: "auto", minWidth: 200, height: 52 }}>
+          <option value="all">All</option>
+          <option value="open">Not completed</option>
+          <option value="done">Completed</option>
+        </select>
+        <button style={{ ...ghost, height: 52, minWidth: 200 }} onClick={() => setDescending((d) => !d)} title="Sort by serial number">
+          Serial number {descending ? "↓ high → low" : "↑ low → high"}
+        </button>
+      </div>
+      {list.error && <div style={errorBox}>{list.error}</div>}
+      {list.data && items.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 14 }}>No {status === "done" ? "completed " : status === "open" ? "unfinished " : ""}{typeName} TopBoxes.</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
         {items.map((s) => (
           <Link key={s.id} to={topboxUrl(s.serialNumber, s.id)} style={{ ...card, color: "inherit", textDecoration: "none", display: "flex", flexDirection: "column", gap: 6, padding: 16 }}>
@@ -81,11 +102,10 @@ function StockTab({ typeId, typeName, service }: { typeId: string; typeName: str
               <span className="mono" style={{ fontSize: 22, fontWeight: 700 }}>
                 {s.serialNumber}
               </span>
-              <span style={chip("warn")}>{s.progress}</span>
+              <span style={chip(s.status === "complete" ? "accent" : "warn")}>{s.status === "complete" ? "Complete" : s.progress}</span>
             </div>
             <div style={{ fontSize: 13, color: "var(--text-2)" }}>
-              1st check: <b>{stamp(s.firstCheckAt)}</b>
-              {s.firstCheckBy ? ` · ${s.firstCheckBy}` : ""}
+              1st check: <b>{s.firstCheckAt ? stamp(s.firstCheckAt.slice(0, 10)) : "—"}</b>
             </div>
           </Link>
         ))}

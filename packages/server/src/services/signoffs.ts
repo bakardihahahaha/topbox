@@ -238,6 +238,13 @@ export class SignoffService {
     return items.sort((a, b) => b.serialNumber.localeCompare(a.serialNumber, undefined, { numeric: true, sensitivity: "base" }));
   }
 
+  /** Every sign-off (visit) ever made as this type — the home screen's type tabs. Highest serial
+   * number first (numbers compared as numbers); the screen re-sorts and filters. */
+  async ofType(typeId: string): Promise<SignoffSummary[]> {
+    const items = (await this.store.signoffs.list({ typeId, limit: 100_000, offset: 0 })).items.map((s) => summarize(s));
+    return items.sort((a, b) => b.serialNumber.localeCompare(a.serialNumber, undefined, { numeric: true, sensitivity: "base" }));
+  }
+
   /** Parts used — replaced-part lines recorded in [from, to), for booking them out of stock. */
   partsUsage(from: string, to: string) {
     return this.store.signoffs.partsUsage(from, to);

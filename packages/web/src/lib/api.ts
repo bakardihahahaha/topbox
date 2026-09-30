@@ -38,6 +38,7 @@ export const fillCheck = (id: string, checkId: string, value: MarkValue) => send
 export const signCheck = (id: string, checkId: string, path: string, date: string, time?: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/signatures/${checkId}`, { path, date, time });
 export const clearCheck = (id: string, checkId: string) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/clear`, { checkId });
 export const listMechanisms = (q?: string) => getJsonCached<MechanismSummary[]>(`/api/mechanisms${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+export const getSignoffsOfType = (typeId: string) => getJsonCached<SignoffSummary[]>(`/api/types/${encodeURIComponent(typeId)}/signoffs`);
 export const getStock = (typeId: string) => getJsonCached<SignoffSummary[]>(`/api/stock/${encodeURIComponent(typeId)}`);
 export const getVisits = (serial: string) => getJsonCached<Signoff[]>(`/api/mechanisms/${encodeURIComponent(serial)}/visits`);
 export const unsignCheck = (id: string, checkId: string) => sendJson<Signoff>("DELETE", `/api/signoffs/${id}/signatures/${checkId}`);
