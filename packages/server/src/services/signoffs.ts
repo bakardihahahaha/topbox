@@ -250,9 +250,9 @@ export class SignoffService {
     return this.store.signoffs.partsUsage(from, to);
   }
 
-  /** Admin: mark lines as booked out of stock in the stock system (or undo). */
+  /** Admin or a "parts" account: mark lines as booked out of stock in the stock system (or undo). */
   async setPartsBookedOut(lineIds: string[], booked: boolean, actor: Actor): Promise<number> {
-    if (actor.role !== "admin") throw forbidden("Only an admin can mark parts as booked out.");
+    if (actor.role !== "admin" && actor.role !== "parts") throw forbidden("Only an admin or a Parts used account can mark parts as booked out.");
     const now = new Date().toISOString();
     return this.store.signoffs.setPartsBookedOut(lineIds, booked ? now : "", now);
   }

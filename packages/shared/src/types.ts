@@ -204,8 +204,9 @@ export interface SignoffSummary {
 
 export type SignoffStatus = "draft" | "complete";
 
-/** admin: everything · operator: does the checks · viewer: looks and downloads PDFs, nothing else. */
-export type Role = "admin" | "operator" | "viewer";
+/** admin: everything · operator: does the checks · viewer: looks and downloads PDFs, nothing else ·
+ * parts: only the Parts used page (sees it and marks parts booked out / not booked out). */
+export type Role = "admin" | "operator" | "viewer" | "parts";
 
 /** Company details printed on every PDF page — edited in Setup → Document, shared by all
  * templates (each template keeps its own title, document reference and id). */

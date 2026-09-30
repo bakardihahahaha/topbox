@@ -85,15 +85,23 @@ export function App() {
   }
 
   const isAdmin = me.role === "admin";
+  // A "parts" account sees the Parts used page and nothing else (the server enforces the same).
+  const partsOnly = me.role === "parts";
   return (
     <MeContext.Provider value={me}>
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border-soft)", flex: "none", overflowX: "auto" }}>
           <div style={{ display: "flex", gap: 16, alignItems: "center", flex: "none" }}>
-            <NavTab to="/signoffs" label="Sign-offs" />
-            <NavTab to="/mechanisms" label="Mechanisms" />
-            <NavTab to="/parts-used" label="Parts used" />
-            <NavTab to={isAdmin ? "/setup/templates" : "/setup/account"} label="Setup" match="/setup" />
+            {partsOnly ? (
+              <NavTab to="/parts-used" label="Parts used" />
+            ) : (
+              <>
+                <NavTab to="/signoffs" label="Sign-offs" />
+                <NavTab to="/mechanisms" label="Mechanisms" />
+                <NavTab to="/parts-used" label="Parts used" />
+                <NavTab to={isAdmin ? "/setup/templates" : "/setup/account"} label="Setup" match="/setup" />
+              </>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none", marginLeft: 16 }}>
             <SavingIndicator />
@@ -121,6 +129,12 @@ export function App() {
           </div>
         </nav>
         <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+          {partsOnly ? (
+            <Routes>
+              <Route path="/parts-used" element={<PartsUsagePage />} />
+              <Route path="*" element={<Navigate to="/parts-used" replace />} />
+            </Routes>
+          ) : (
           <Routes>
             <Route path="/" element={<Navigate to="/signoffs" replace />} />
             <Route path="/signoffs" element={<HomePage />} />
@@ -146,6 +160,7 @@ export function App() {
             )}
             <Route path="*" element={<Navigate to="/signoffs" replace />} />
           </Routes>
+          )}
         </div>
       </div>
     </MeContext.Provider>

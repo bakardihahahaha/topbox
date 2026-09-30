@@ -583,3 +583,30 @@ describe("parts used", () => {
     expect(settled).toHaveLength(3);
   });
 });
+
+describe("parts role", () => {
+  it("sees and books out parts, and nothing else", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const created = (await admin("POST", "/api/users", { name: "Stores", role: "parts", pin: "5555" })).json() as { id: string };
+    const part = await t.catalog.createPart({ partNumber: "SP-01", name: "Spring", description: "" });
+    const id = randomUUID();
+    await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "PR-1", typeId: "service" });
+    const line = randomUUID();
+    await admin("PUT", `/api/signoffs/${id}/parts/${line}`, { partId: part.id, qty: 2 });
+    const p = t.as((await t.login(created.id, "5555")).token);
+    const range = "from=2000-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z";
+    expect(((await p("GET", `/api/parts-usage?${range}`)).json() as unknown[]).length).toBe(1);
+    expect((await p("POST", "/api/parts-usage/booked-out", { lineIds: [line], booked: true })).json()).toEqual({ changed: 1 });
+    expect((await p("POST", "/api/parts-usage/booked-out", { lineIds: [line], booked: false })).json()).toEqual({ changed: 1 });
+    expect((await p("GET", "/api/auth/me")).statusCode).toBe(200);
+    for (const url of ["/api/signoffs", `/api/signoffs/${id}`, "/api/mechanisms", "/api/templates", "/api/signoff-summaries"]) {
+      const res = await p("GET", url);
+      expect(res.statusCode, url).toBe(403);
+      expect(res.json().error).toBe("PARTS_ONLY");
+    }
+    // An operator still can't book parts out.
+    const op = t.as((await t.login("op", "2222")).token);
+    expect((await op("POST", "/api/parts-usage/booked-out", { lineIds: [line], booked: true })).statusCode).toBe(403);
+  });
+});

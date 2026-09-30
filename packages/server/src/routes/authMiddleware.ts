@@ -14,6 +14,8 @@ export function bearerToken(req: FastifyRequest): string | undefined {
 }
 
 const VIEWER_POSTS = new Set(["/api/signoffs/batch", "/api/auth/logout", "/api/auth/pin"]);
+/** Everything a "parts" account may call — the Parts used page and its own session. */
+const PARTS_ROUTES = new Set(["/api/parts-usage", "/api/parts-usage/booked-out", "/api/auth/me", "/api/auth/logout", "/api/auth/pin"]);
 
 export function requireAuth(auth: AuthService) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
@@ -24,6 +26,9 @@ export function requireAuth(auth: AuthService) {
     // A viewer only looks: every write is refused here, in one place, whatever the route — except
     // the few POSTs that don't change anything (fetching sign-offs for a PDF, signing out, their
     // own PIN).
+    if (session.role === "parts" && !PARTS_ROUTES.has(req.routeOptions.url ?? "")) {
+      return reply.status(403).send({ error: "PARTS_ONLY", message: "This account can only use the Parts used page." });
+    }
     if (session.role === "viewer" && req.method !== "GET" && req.method !== "HEAD" && !VIEWER_POSTS.has(req.routeOptions.url ?? "")) {
       return reply.status(403).send({ error: "VIEW_ONLY", message: "Viewers can look and download PDFs only." });
     }

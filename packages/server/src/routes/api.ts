@@ -22,7 +22,7 @@ export interface Services {
 }
 
 const id = z.string().min(1).max(100);
-const role = z.enum(["admin", "operator", "viewer"]);
+const role = z.enum(["admin", "operator", "viewer", "parts"]);
 const mode = z.enum(["new", "service"]);
 const markValue = z.enum(["pass", "fail", "na"]);
 
@@ -285,7 +285,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     const q = parse(z.object({ from: z.string().datetime(), to: z.string().datetime() }), req.query);
     return s.signoffs.partsUsage(q.from, q.to);
   });
-  app.post("/api/parts-usage/booked-out", admin, async (req) => {
+  app.post("/api/parts-usage/booked-out", authed, async (req) => {
     const body = parse(z.object({ lineIds: z.array(id).min(1).max(2000), booked: z.boolean() }), req.body);
     return { changed: await s.signoffs.setPartsBookedOut(body.lineIds, body.booked, actor(req)) };
   });

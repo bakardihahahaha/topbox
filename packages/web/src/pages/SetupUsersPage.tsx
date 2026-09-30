@@ -75,6 +75,7 @@ export function SetupUsersPage() {
             <option value="operator">Operator</option>
             <option value="admin">Admin</option>
             <option value="viewer">Viewer (view + PDFs only)</option>
+            <option value="parts">Parts used (parts page only)</option>
           </select>
         </label>
         <button type="submit" style={{ ...primary, opacity: form.name.trim() && pinOk ? 1 : 0.5 }} disabled={!form.name.trim() || !pinOk}>
@@ -159,6 +160,7 @@ export function SetupUsersPage() {
                       <option value="admin">Admin</option>
                       <option value="operator">Operator</option>
                       <option value="viewer">Viewer</option>
+                      <option value="parts">Parts used</option>
                     </select>
                   )}
                   {u.id !== me.userId && (u.locked || u.lockedUntil) && (

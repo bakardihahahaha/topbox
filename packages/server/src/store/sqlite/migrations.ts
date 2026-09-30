@@ -209,6 +209,28 @@ const MIGRATIONS: string[] = [
   ALTER TABLE signoff_parts ADD COLUMN booked_out_qty TEXT NOT NULL DEFAULT '0';
   CREATE INDEX signoff_parts_created ON signoff_parts(created_at);
   `,
+  // 8: a fourth role, "parts" (Parts used page only). The role is no longer pinned by a CHECK
+  //    constraint (the API validates it), so a new role never needs another table rebuild.
+  `
+  CREATE TABLE users_new (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    deleted_at TEXT NOT NULL DEFAULT '',
+    locked_until TEXT NOT NULL DEFAULT '',
+    lockouts INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO users_new (id, username, name, password_hash, role, failed_attempts, locked, created_at, updated_at, deleted_at, locked_until, lockouts)
+    SELECT id, username, name, password_hash, role, failed_attempts, locked, created_at, updated_at, deleted_at, locked_until, lockouts FROM users;
+  DROP TABLE users;
+  ALTER TABLE users_new RENAME TO users;
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

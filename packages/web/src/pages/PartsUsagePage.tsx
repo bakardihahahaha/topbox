@@ -52,7 +52,9 @@ const csvCell = (v: string | number) => (typeof v === "number" ? String(v) : `"$
 
 export function PartsUsagePage() {
   const me = useMe();
-  const isAdmin = me.role === "admin";
+  // Admins and "parts" accounts book parts out (and back); everyone else only looks.
+  const isAdmin = me.role === "admin" || me.role === "parts";
+  const partsOnly = me.role === "parts";
   const [period, setPeriod] = useState<Period>("thisWeek");
   const [customFrom, setCustomFrom] = useState(() => ymd(addDays(new Date(), -30)));
   const [customTo, setCustomTo] = useState(() => ymd(new Date()));
@@ -143,11 +145,15 @@ export function PartsUsagePage() {
   const th = { textAlign: "left" as const, padding: "8px 10px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase" as const, color: "var(--text-3)", borderBottom: "1px solid var(--border)" };
   const td = { padding: "8px 10px", borderBottom: "1px solid var(--border-soft)", fontSize: 13.5, verticalAlign: "top" as const };
   const selectedIds = lines.filter((l) => selected.has(l.lineId)).map((l) => l.lineId);
+  const selectedLines = lines.filter((l) => selected.has(l.lineId));
+  // Booking applies to the ticked lines, or — nothing ticked — to every line shown.
+  const bookable = (selectedLines.length ? selectedLines : lines).filter((l) => toBook(l) !== 0).map((l) => l.lineId);
+  const unbookable = selectedLines.filter((l) => l.bookedOutAt).map((l) => l.lineId);
 
   return (
     <div style={page}>
       <h1 style={h1}>Parts used</h1>
-      <p style={hint}>Every part ticked as replaced on a sign-off, for booking them out of stock. {isAdmin ? "Mark lines as booked out once they're done — the default view shows only what's still to book." : "An admin marks what has been booked out."}</p>
+      <p style={hint}>Every part ticked as replaced on a sign-off, for booking them out of stock. {isAdmin ? "Mark lines as booked out once they're done — the default view shows only what's still to book." : "An admin or the Parts used account marks what has been booked out."}</p>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
         {PERIODS.map((p) => (
@@ -236,24 +242,17 @@ export function PartsUsagePage() {
             <div style={{ ...card, padding: 0, overflowX: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 14px", flexWrap: "wrap" }}>
                 <div style={{ fontWeight: 700 }}>By TopBox ({lines.length})</div>
+                {/* Always the same buttons in the same place (greyed when they don't apply), so ticking
+                    never shifts the table. Booked out view: tick lines → "Mark … as not booked out". */}
                 {isAdmin && (
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {selectedIds.length > 0 ? (
-                      <>
-                        <button style={primary} disabled={busy} onClick={() => void markBooked(selectedIds.filter((id) => { const l = lines.find((x) => x.lineId === id); return l && toBook(l) !== 0; }), true)}>
-                          Mark {selectedIds.length} as booked out
-                        </button>
-                        <button style={ghost} disabled={busy} onClick={() => void markBooked(selectedIds.filter((id) => Boolean(lines.find((l) => l.lineId === id)?.bookedOutAt)), false)}>
-                          Undo
-                        </button>
-                      </>
-                    ) : (
-                      booked !== "done" && (
-                        <button style={primary} disabled={busy} onClick={() => void markBooked(lines.filter((l) => toBook(l) !== 0).map((l) => l.lineId), true)}>
-                          Mark all shown as booked out
-                        </button>
-                      )
-                    )}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, color: selectedIds.length ? "var(--text)" : "var(--text-3)" }}>{selectedIds.length} selected</span>
+                    <button style={{ ...primary, height: 48, opacity: bookable.length ? 1 : 0.45 }} disabled={busy || bookable.length === 0} onClick={() => void markBooked(bookable, true)}>
+                      {selectedIds.length ? `Mark ${bookable.length} as booked out` : "Mark all shown as booked out"}
+                    </button>
+                    <button style={{ ...ghost, height: 48, opacity: unbookable.length ? 1 : 0.45 }} disabled={busy || unbookable.length === 0} onClick={() => void markBooked(unbookable, false)}>
+                      Mark {unbookable.length || ""} as not booked out
+                    </button>
                   </div>
                 )}
               </div>
@@ -303,9 +302,15 @@ export function PartsUsagePage() {
                         {localStamp(l.recordedAt).slice(0, 10)}
                       </td>
                       <td style={td}>
-                        <Link to={topboxUrl(l.serialNumber, l.signoffId)} className="mono" style={{ color: "var(--accent)", fontWeight: 700, textDecoration: "none" }}>
-                          {l.serialNumber}
-                        </Link>
+                        {partsOnly ? (
+                          <span className="mono" style={{ fontWeight: 700 }}>
+                            {l.serialNumber}
+                          </span>
+                        ) : (
+                          <Link to={topboxUrl(l.serialNumber, l.signoffId)} className="mono" style={{ color: "var(--accent)", fontWeight: 700, textDecoration: "none" }}>
+                            {l.serialNumber}
+                          </Link>
+                        )}
                         <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>
                           {l.typeName}
                           {l.status !== "complete" ? " · in progress" : ""}
