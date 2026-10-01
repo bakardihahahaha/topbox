@@ -223,11 +223,16 @@ export class SignoffService {
   }
 
   /** Marks / signature of a check: the 1st only for people allowed to start sign-offs; later ones only once the check before is signed. */
-  private assertMayDoCheck(s: Signoff, checkId: string, actor: Actor) {
+  private async assertMayDoCheck(s: Signoff, checkId: string, actor: Actor, opts: { crossCheck?: boolean } = {}) {
     const block = firstCheckBlock(s, checkId, actor);
     if (block) throw new HttpError(403, "FIRST_CHECK_NOT_ALLOWED", block);
     const order = checkOrderBlock(s, checkId, actor);
     if (order) throw new HttpError(409, "CHECK_NOT_ACTIVE", order);
+    // Someone who may not sign this check (cross-check: they already did their share) can't tick
+    // it either — the next operator does the whole check.
+    if (opts.crossCheck === false) return;
+    const cross = crossCheckBlock(s, checkId, actor, await this.operatorCount());
+    if (cross) throw conflict("CROSS_CHECK", cross);
   }
 
   private assertNotSigned(s: Signoff, checkId: string) {
@@ -240,7 +245,7 @@ export class SignoffService {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     if (!itemRows(s.template).some((r) => r.id === input.rowId)) throw badRequest("Unknown item row.");
-    this.assertMayDoCheck(s, input.checkId, actor);
+    await this.assertMayDoCheck(s, input.checkId, actor);
     this.assertNotSigned(s, input.checkId);
     const at = new Date().toISOString();
     if (input.value === null) await this.store.signoffs.clearMark(id, input.rowId, input.checkId, at);
@@ -253,7 +258,7 @@ export class SignoffService {
   async clearCheck(id: string, checkId: string, actor: Actor): Promise<Signoff> {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, checkId);
-    this.assertMayDoCheck(s, checkId, actor);
+    await this.assertMayDoCheck(s, checkId, actor);
     this.assertNotSigned(s, checkId);
     await this.store.signoffs.clearMarks(id, checkId, new Date().toISOString());
     return this.refresh(id);
@@ -309,7 +314,7 @@ export class SignoffService {
   async fillCheck(id: string, input: { checkId: string; value: MarkValue }, actor: Actor): Promise<Signoff> {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
-    this.assertMayDoCheck(s, input.checkId, actor);
+    await this.assertMayDoCheck(s, input.checkId, actor);
     this.assertNotSigned(s, input.checkId);
     const marked = new Set(s.marks.filter((m) => m.checkId === input.checkId).map((m) => m.rowId));
     const at = new Date().toISOString();
@@ -324,7 +329,8 @@ export class SignoffService {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     if (!s.template.signRowEnabled) throw badRequest("This template has no sign row.");
-    this.assertMayDoCheck(s, input.checkId, actor);
+    // Signing runs its own cross-check below, after the clearer "already signed" answers.
+    await this.assertMayDoCheck(s, input.checkId, actor, { crossCheck: false });
     if (!DATE_RE.test(input.date)) throw badRequest("Date must be YYYY-MM-DD.");
     if (input.time !== undefined && input.time !== "" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) throw badRequest("Time must be HH:MM.");
     if (!input.path || input.path.length > 40_000 || !PATH_RE.test(input.path)) throw badRequest("Invalid signature.");

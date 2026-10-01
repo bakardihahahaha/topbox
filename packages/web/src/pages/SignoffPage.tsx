@@ -177,7 +177,9 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
 
   /** Why this column is locked for me: the 1st check is only for people allowed to start
    * sign-offs (Setup → Users); later checks open one at a time, once the one before is signed. */
-  const lockReason = (checkId: string) => firstCheckBlock(s, checkId, me) ?? checkOrderBlock(s, checkId, me);
+  // Also locked: a check this person may not sign under the cross-check rule (they already did
+  // their share) — another operator does that whole check, ticks included.
+  const lockReason = (checkId: string) => crossCheckBlock(s, checkId, me, operators);
   const notMine = (checkId: string) => lockReason(checkId) !== null;
 
   function tap(rowId: string, checkId: string) {
@@ -353,7 +355,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                     {sig && <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>🔒 signed</div>}
                     {!sig && !closed && notMine(c.id) && (
                       <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }} title={lockReason(c.id) ?? ""}>
-                        {firstCheckBlock(s, c.id, me) ? "🔒 starters only" : "🔒 not yet"}
+                        {firstCheckBlock(s, c.id, me) ? "🔒 starters only" : checkOrderBlock(s, c.id, me) ? "🔒 not yet" : "🔒 other operator"}
                       </div>
                     )}
                   </th>

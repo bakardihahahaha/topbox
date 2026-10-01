@@ -61,7 +61,9 @@ describe("sign-off flow", () => {
     const b = t.as((await t.login("op2", "3333")).token);
     // Checks go in order: each column is ticked just before it's signed.
     const sign = async (call: typeof a, id: string, n: number) => {
-      await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: `c${n}`, value: "pass" });
+      // Someone who may not sign a check can't tick it either — that refusal is the answer.
+      const fill = await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: `c${n}`, value: "pass" });
+      if (fill.statusCode !== 200) return fill;
       return call("PUT", `/api/signoffs/${id}/signatures/c${n}`, { path: SIG, date: today });
     };
     const start = async (call: typeof a) => {
@@ -122,7 +124,9 @@ describe("sign-off flow", () => {
     await call("POST", "/api/signoffs", { id, templateId: tpl.id, serialNumber: "X", mode: "new" });
     await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: tpl.checks[0]!.id, value: "pass" });
     expect((await call("PUT", `/api/signoffs/${id}/signatures/${tpl.checks[0]!.id}`, { path: SIG, date: today })).statusCode).toBe(200);
-    await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: tpl.checks[1]!.id, value: "pass" });
+    // Ticked by an admin, so the signing rule itself is what refuses Olga.
+    const admin = t.as((await t.login("admin", "1111")).token);
+    await admin("POST", `/api/signoffs/${id}/marks/fill`, { checkId: tpl.checks[1]!.id, value: "pass" });
     expect((await call("PUT", `/api/signoffs/${id}/signatures/${tpl.checks[1]!.id}`, { path: SIG, date: today })).json().error).toBe("SAME_SIGNER");
   });
 
@@ -349,7 +353,9 @@ describe("operator restrictions", () => {
 
     // Complete it -> operators can't change parts/notes/type any more
     const part = await t.catalog.createPart({ partNumber: "P1", name: "Spring", description: "" });
-    await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c2!.id, value: "pass" });
+    // Olga did the 1st check, so with 2 operators she can't even tick the 2nd (cross-check).
+    expect((await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c2!.id, value: "pass" })).json().error).toBe("CROSS_CHECK");
+    await admin("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c2!.id, value: "pass" });
     await admin("PUT", `/api/signoffs/${id}/signatures/${c2!.id}`, { path: SIG, date: "2026-09-10", time: "11:00" });
     expect((await op("PATCH", `/api/signoffs/${id}`, { notes: "late edit" })).json().error).toBe("COMPLETED");
     expect((await op("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: part.id, qty: 1 })).json().error).toBe("COMPLETED");
