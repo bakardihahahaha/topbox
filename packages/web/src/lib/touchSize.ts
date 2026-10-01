@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 // Whole-interface size for big touch screens (24–30" kiosks, operators in gloves). Scales every
 // button, field, check box and the PIN keypad together via CSS zoom on #root (see tokens.css), so
-// no screen needs its own "big mode". Chosen per device and remembered there.
+// no screen needs its own "big mode". Starts at Normal on every fresh page load.
 export type TouchSize = "normal" | "large" | "xl";
 
 const KEY = "biosite-signoff.touch-size";
@@ -10,23 +10,15 @@ const ZOOM: Record<TouchSize, number> = { normal: 1, large: 1.35, xl: 1.65 };
 const LABEL: Record<TouchSize, string> = { normal: "Size: Normal", large: "Size: Large", xl: "Size: XL" };
 const ORDER: TouchSize[] = ["normal", "large", "xl"];
 
-/** A touch screen that's also a big screen (not a phone) starts at Large. */
-function autoSize(): TouchSize {
-  try {
-    const touch = window.matchMedia("(any-pointer: coarse)").matches;
-    return touch && Math.min(window.screen.width, window.screen.height) >= 700 ? "large" : "normal";
-  } catch {
-    return "normal";
-  }
-}
-
+/** Every fresh page load starts at Normal — Large / XL last only until the page is reloaded or
+ * opened again. (Older builds remembered the choice; that is cleared.) */
 function stored(): TouchSize {
   try {
-    const v = localStorage.getItem(KEY);
-    return v === "normal" || v === "large" || v === "xl" ? v : autoSize();
+    localStorage.removeItem(KEY);
   } catch {
-    return autoSize();
+    // best-effort
   }
+  return "normal";
 }
 
 let current: TouchSize = typeof window === "undefined" ? "normal" : stored();
@@ -42,11 +34,6 @@ export function initTouchSize(): void {
 
 export function cycleTouchSize(): void {
   current = ORDER[(ORDER.indexOf(current) + 1) % ORDER.length]!;
-  try {
-    localStorage.setItem(KEY, current);
-  } catch {
-    // best-effort
-  }
   apply();
   listeners.forEach((l) => l());
 }

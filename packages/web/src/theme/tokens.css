@@ -176,3 +176,34 @@ button {
     font-size: 15px;
   }
 }
+
+/* Scrollbars in the app's own colours — thin, rounded, no arrows — instead of the system grey
+   bar. Firefox uses the two standard properties (only there: Chrome ignores the ::-webkit styles
+   once they are set); Chrome / Edge / Safari the ::-webkit ones. */
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-4);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
