@@ -151,3 +151,41 @@ describe("document settings — logo text", () => {
     expect(d).not.toHaveProperty("logoTextAccent");
   });
 });
+
+describe("operating hours", () => {
+  it("open: normal; closed: no names, non-admins refused everywhere and signed out, admins still in via name + PIN", async () => {
+    // Monday 5 Oct 2026 — London is on summer time (UTC+1).
+    let now = Date.parse("2026-10-05T09:00:00Z"); // 10:00 in London
+    const t = await setup({ now: () => now });
+    const admin = t.as((await t.login("admin", "1111")).token);
+    await admin("PATCH", "/api/security", { idleTimeoutMinutes: 0 }); // the clock jumps hours below
+    const op = t.as((await t.login("op", "2222", "10.0.0.2")).token, "10.0.0.2");
+    const hours = { enabled: true, timeZone: "Europe/London", from: "07:00", to: "16:00", days: [1, 2, 3, 4, 5] };
+    expect((await admin("PUT", "/api/operating-hours", hours)).statusCode).toBe(200);
+    expect((await admin("PUT", "/api/operating-hours", { ...hours, timeZone: "Mars/Base" })).statusCode).toBe(400);
+    expect((await t.app.inject({ method: "GET", url: "/api/auth/status" })).json()).toEqual({ open: true });
+    expect((await op("GET", "/api/signoff-summaries")).statusCode).toBe(200);
+
+    now = Date.parse("2026-10-05T15:30:00Z"); // 16:30 in London — closed
+    expect((await t.app.inject({ method: "GET", url: "/api/auth/status" })).json()).toEqual({ open: false });
+    expect((await t.app.inject({ method: "GET", url: "/api/auth/users" })).json()).toEqual([]);
+    const refused = await op("GET", "/api/signoff-summaries");
+    expect(refused.statusCode).toBe(503);
+    expect(refused.json().error).toBe("SERVICE_CLOSED");
+    // That session is over: even back in hours it has to sign in again.
+    expect((await t.login("op", "2222", "10.0.0.3")).res.json().error).toBe("SERVICE_CLOSED");
+    // The admin carries on, and can sign in after hours by name.
+    expect((await admin("GET", "/api/signoff-summaries")).statusCode).toBe(200);
+    const byName = (name: string, pin: string, ip = "10.0.0.1") => t.app.inject({ method: "POST", url: "/api/auth/login-name", payload: { name, pin }, remoteAddress: ip });
+    expect((await byName("admin", "1111")).statusCode).toBe(200);
+    // Same answer for an operator, a wrong PIN and a made-up name.
+    for (const [n, p] of [["Olga Operator", "2222"], ["admin", "9999"], ["nobody", "1234"]]) expect((await byName(n!, p!, "10.0.0.5")).json().error).toBe("INVALID_LOGIN");
+
+    // Saturday: closed all day; over-midnight hours work.
+    now = Date.parse("2026-10-10T10:00:00Z");
+    expect((await t.app.inject({ method: "GET", url: "/api/auth/status" })).json().open).toBe(false);
+    await t.as((await byName("admin", "1111")).json().token)("PUT", "/api/operating-hours", { ...hours, from: "22:00", to: "06:00", days: [5] });
+    now = Date.parse("2026-10-10T03:00:00Z"); // Sat 04:00 London — Friday's night shift
+    expect((await t.app.inject({ method: "GET", url: "/api/auth/status" })).json().open).toBe(true);
+  });
+});

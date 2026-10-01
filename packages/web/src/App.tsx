@@ -51,10 +51,14 @@ export function App() {
 
   useEffect(
     () =>
-      onUnauthorized(() => {
+      onUnauthorized((reason) => {
         setMe(null);
         setStatus("signedOut");
-        setMessage("Your session ended (timed out, ended by an admin, or your network changed) — sign in again. Unsaved changes are kept on this device and will sync.");
+        setMessage(
+          reason === "closed"
+            ? "The service has closed for today — you've been signed out."
+            : "Your session ended (timed out, ended by an admin, or your network changed) — sign in again. Unsaved changes are kept on this device and will sync.",
+        );
       }),
     [],
   );

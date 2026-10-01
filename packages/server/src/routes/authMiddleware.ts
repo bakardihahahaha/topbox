@@ -22,6 +22,11 @@ export function requireAuth(auth: AuthService) {
     const token = bearerToken(req);
     const session = token ? await auth.resolveSession(token, req.ip) : null;
     if (!session) return reply.status(401).send({ error: "UNAUTHENTICATED", message: "Please sign in again." });
+    // Outside operating hours only admins get anything; anyone else's session ends here.
+    if (session.role !== "admin" && (await auth.isClosed())) {
+      await auth.logout(token!);
+      return reply.status(503).send({ error: "SERVICE_CLOSED", message: "This service is closed." });
+    }
     req.user = session;
     // A viewer only looks: every write is refused here, in one place, whatever the route — except
     // the few POSTs that don't change anything (fetching sign-offs for a PDF, signing out, their

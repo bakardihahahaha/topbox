@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import type { LoginUser } from "@biosite-signoff/shared";
 import { useTheme } from "../theme/ThemeContext.js";
-import { fetchLoginUsers, login } from "../lib/client.js";
+import { fetchLoginUsers, fetchServiceOpen, login, loginByName } from "../lib/client.js";
 import { APP_VERSION, clearCacheAndCookies } from "../lib/clearCache.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 import { cycleTouchSize, useTouchSizeLabel } from "../lib/touchSize.js";
@@ -49,8 +49,19 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
   const anyLocked = Boolean(users?.some((u) => u.lockedUntil));
   const now = useNow(anyLocked || Boolean(selected?.lockedUntil));
 
+  // Operating hours: closed = no names at all. "#admin" in the address opens the admin sign-in
+  // (name + PIN), which works after hours too.
+  const [open, setOpen] = useState(true);
+  const [adminMode, setAdminMode] = useState(() => window.location.hash === "#admin");
+  useEffect(() => {
+    const onHash = () => setAdminMode(window.location.hash === "#admin");
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
   async function load() {
     try {
+      setOpen(await fetchServiceOpen());
       setUsers(await fetchLoginUsers());
       setLoadError(null);
     } catch (err) {
@@ -94,12 +105,19 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
           </div>
         )}
 
-        <div style={{ fontSize: 13, color: "var(--text-3)" }}>Tap your name, then enter your PIN.</div>
+        {adminMode && <AdminSignIn onSignedIn={onSignedIn} />}
+        {!open && !adminMode && (
+          <div style={{ background: "var(--bg-base)", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-card)", padding: "40px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 6 }}>Service closed</div>
+            <div style={{ fontSize: 14, color: "var(--text-3)" }}>This service is currently closed. Please come back during working hours.</div>
+          </div>
+        )}
+        {open && !adminMode && <div style={{ fontSize: 13, color: "var(--text-3)" }}>Tap your name, then enter your PIN.</div>}
         {users && users.length > 12 && (
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find your name…" style={{ ...input, height: 44 }} />
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+        <div style={{ display: adminMode || !open ? "none" : "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
           {users === null && !loadError && <div style={{ color: "var(--text-3)", fontSize: 13 }}>Loading…</div>}
           {visible.map((u) => {
             const locked = u.lockedUntil && Date.parse(u.lockedUntil) > now;
@@ -323,3 +341,46 @@ const errorBox: CSSProperties = {
   fontSize: 13,
   color: "var(--danger-text)",
 };
+
+/** The admin sign-in behind "#admin": name + PIN — the way in after operating hours. */
+function AdminSignIn({ onSignedIn }: { onSignedIn: () => void }) {
+  const [name, setName] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (busy || !name.trim() || pin.length < 4) return;
+    setBusy(true);
+    setError(null);
+    const result = await loginByName(name.trim(), pin);
+    setBusy(false);
+    setPin("");
+    if (result.ok) {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+      return onSignedIn();
+    }
+    setError(result.error);
+  }
+  return (
+    <form onSubmit={submit} style={{ background: "var(--bg-base)", border: "1px solid var(--border-soft)", borderRadius: "var(--radius-card)", padding: 18, display: "flex", flexDirection: "column", gap: 12, maxWidth: 380, width: "100%", margin: "0 auto" }}>
+      <div style={{ fontSize: 17, fontWeight: 700 }}>Admin sign-in</div>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" autoComplete="username" aria-label="Name" style={{ ...input, height: 48 }} />
+      <input
+        value={pin}
+        onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+        type="password"
+        inputMode="numeric"
+        placeholder="PIN"
+        autoComplete="current-password"
+        aria-label="PIN"
+        className="mono"
+        style={{ ...input, height: 48, letterSpacing: ".3em" }}
+      />
+      {error && <div style={errorBox}>{error}</div>}
+      <button type="submit" disabled={busy || !name.trim() || pin.length < 4} style={{ ...key, height: 52, background: "var(--accent)", color: "var(--bg-deep)", border: "none", fontSize: 16, opacity: busy || !name.trim() || pin.length < 4 ? 0.5 : 1 }}>
+        {busy ? "…" : "Sign in"}
+      </button>
+    </form>
+  );
+}

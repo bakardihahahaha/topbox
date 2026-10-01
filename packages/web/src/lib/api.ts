@@ -70,6 +70,16 @@ export interface SecuritySettings {
   idleTimeoutMinutes: number;
   singleIp: boolean;
 }
+export interface OperatingHours {
+  enabled: boolean;
+  timeZone: string;
+  from: string;
+  to: string;
+  /** 0 = Sunday … 6 = Saturday. */
+  days: number[];
+}
+export const getOperatingHours = () => getJson<OperatingHours>("/api/operating-hours");
+export const setOperatingHours = (h: OperatingHours) => sendJson<OperatingHours>("PUT", "/api/operating-hours", h);
 export const getSecurity = () => getJson<SecuritySettings>("/api/security");
 export const setSecurity = (patch: Partial<SecuritySettings>) => sendJson<SecuritySettings>("PATCH", "/api/security", patch);
 

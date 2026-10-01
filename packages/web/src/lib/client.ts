@@ -37,8 +37,10 @@ export class ApiError extends Error {
 
 /** Fired when any request comes back 401 — App.tsx drops to the sign-in screen (the session was
  * ended by idle timeout, an admin, or being used from another IP). */
-const unauthorizedListeners = new Set<() => void>();
-export function onUnauthorized(listener: () => void): () => void {
+/** "closed": the service is outside its operating hours (non-admins are signed out). */
+type SignedOutReason = "session" | "closed";
+const unauthorizedListeners = new Set<(reason: SignedOutReason) => void>();
+export function onUnauthorized(listener: (reason: SignedOutReason) => void): () => void {
   unauthorizedListeners.add(listener);
   return () => unauthorizedListeners.delete(listener);
 }
@@ -57,7 +59,10 @@ export async function authedFetch(path: string, init: RequestInit = {}): Promise
     const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
     if (res.status === 401 && path !== "/api/auth/login") {
       setToken(null);
-      unauthorizedListeners.forEach((l) => l());
+      unauthorizedListeners.forEach((l) => l("session"));
+    } else if (res.status === 503 && body.error === "SERVICE_CLOSED") {
+      setToken(null);
+      unauthorizedListeners.forEach((l) => l("closed"));
     }
     const retryAfter = Number(res.headers.get("retry-after"));
     throw new ApiError(res.status, body.error, body.message ?? body.error ?? `Request failed (${res.status}).`, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
@@ -119,6 +124,8 @@ const LOGIN_ERROR_LABEL: Record<string, string> = {
   LOCKED_OUT: "This account is locked — ask an administrator to unlock it.",
   NO_SUCH_USER: "This user no longer exists.",
   TOO_MANY_REQUESTS: "Too many attempts — wait a minute and try again.",
+  INVALID_LOGIN: "Wrong name or PIN.",
+  SERVICE_CLOSED: "This service is closed.",
   ACTIVE_ON_ANOTHER_IP: "You're still signed in on another network. Log out there first (or wait for it to time out), or ask an administrator to end that session.",
 };
 
@@ -136,6 +143,33 @@ export async function login(userId: string, pin: string): Promise<LoginOutcome> 
   }
   setToken(((await res.json()) as { token: string }).token);
   return { ok: true };
+}
+
+/** The hidden after-hours sign-in (#admin): name + PIN. */
+export async function loginByName(name: string, pin: string): Promise<LoginOutcome> {
+  let res: Response;
+  try {
+    res = await fetch("/api/auth/login-name", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, pin }) });
+  } catch {
+    return { ok: false, code: "OFFLINE", error: "Can't reach the server — check your connection." };
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string; retryAt?: string };
+    const code = body.error ?? "";
+    return { ok: false, code, error: LOGIN_ERROR_LABEL[code] ?? "Sign-in failed.", retryAt: body.retryAt };
+  }
+  setToken(((await res.json()) as { token: string }).token);
+  return { ok: true };
+}
+
+/** Public: whether the service is open now (operating hours). Unknown (offline) counts as open. */
+export async function fetchServiceOpen(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/status");
+    return res.ok ? ((await res.json()) as { open: boolean }).open : true;
+  } catch {
+    return true;
+  }
 }
 
 /** Ends the session on the server too — with single-IP sessions on, that's what frees the account
@@ -168,7 +202,8 @@ export async function fetchMe(): Promise<Me | null> {
   };
   try {
     const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
-    if (res.status === 401) {
+    const closed = res.status === 503 && ((await res.clone().json().catch(() => ({}))) as { error?: string }).error === "SERVICE_CLOSED";
+    if (res.status === 401 || closed) {
       setToken(null);
       localStorage.removeItem(ME_KEY);
       return null;

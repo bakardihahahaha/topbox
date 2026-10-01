@@ -46,6 +46,8 @@ const templateInput = z.object({
 
 // Login throttled per IP on top of the per-account 3-strike lockout and the cross-account IP guard
 // (services/auth.ts lists every layer).
+/** The one answer to anything a non-admin asks while the service is closed (operating hours). */
+export const SERVICE_CLOSED = { error: "SERVICE_CLOSED", message: "This service is closed." };
 const LOGIN_RATE_LIMIT = { rateLimit: { max: 10, timeWindow: "1 minute" } };
 const pin = z.string().regex(/^\d{4,8}$/, "PIN must be 4–8 digits");
 
@@ -87,10 +89,25 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     const result = await s.auth.login(body.userId, body.pin, req.ip);
     if (!result.ok) {
       const { ok: _ok, reason, ...rest } = result;
+      if (reason === "SERVICE_CLOSED") return reply.status(503).send(SERVICE_CLOSED);
       return reply.status(reason === "IP_BLOCKED" ? 429 : 401).send({ error: reason, ...rest });
     }
     return { token: result.token, role: result.role, userId: result.userId };
   });
+
+  // The hidden after-hours sign-in (#admin on the sign-in screen): name + PIN.
+  app.post("/api/auth/login-name", { config: LOGIN_RATE_LIMIT }, async (req, reply) => {
+    const body = parse(z.object({ name: z.string().min(1).max(100), pin: z.string().min(1).max(20) }), req.body);
+    const result = await s.auth.loginByName(body.name, body.pin, req.ip);
+    if (!result.ok) {
+      const { ok: _ok, reason, ...rest } = result;
+      return reply.status(reason === "IP_BLOCKED" ? 429 : 401).send({ error: reason, ...rest });
+    }
+    return { token: result.token, role: result.role, userId: result.userId };
+  });
+
+  /** Public: whether the service is open now — nothing else. */
+  app.get("/api/auth/status", async () => ({ open: !(await s.auth.isClosed()) }));
 
   app.post("/api/auth/logout", async (req) => {
     const token = bearerToken(req);
@@ -149,6 +166,13 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   // ---- permissions ---------------------------------------------------------------------------
 
   app.get("/api/permissions", authed, async () => s.signoffs.permissions());
+  app.get("/api/operating-hours", admin, async () => s.auth.operatingHours());
+  app.put("/api/operating-hours", admin, async (req) =>
+    s.auth.setOperatingHours(
+      parse(z.object({ enabled: z.boolean(), timeZone: z.string().min(1).max(64), from: z.string().max(5), to: z.string().max(5), days: z.array(z.number().int().min(0).max(6)).max(7) }), req.body),
+      req.user!.userId,
+    ),
+  );
   app.get("/api/sign-policy", authed, async () => ({ operators: await s.signoffs.operatorCount() }));
   app.put("/api/permissions", admin, async (req) => s.signoffs.setPermissions(parse(z.object({ deleteSignoffs: z.enum(["admin", "all"]) }), req.body)));
 
@@ -396,6 +420,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   app.get<{ Querystring: { token?: string } }>("/api/events", async (req, reply) => {
     const session = req.query.token ? await s.auth.resolveSession(req.query.token, req.ip) : null;
     if (!session) return reply.status(401).send({ error: "UNAUTHENTICATED" });
+    if (session.role !== "admin" && (await s.auth.isClosed())) return reply.status(503).send(SERVICE_CLOSED);
     reply.hijack();
     reply.raw.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
     reply.raw.write(": connected\n\n");

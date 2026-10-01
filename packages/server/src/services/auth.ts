@@ -4,6 +4,7 @@ import type { Store, UserRecord } from "../store/Store.js";
 import { audit } from "./audit.js";
 import { HttpError, badRequest, conflict, forbidden, notFound } from "./errors.js";
 import { hashPassword as hashPin, verifyPassword as verifyPin } from "./password.js";
+import { DEFAULT_OPERATING_HOURS, OPERATING_HOURS_SETTING, isOpenAt, validOperatingHours, type OperatingHours } from "./operatingHours.js";
 
 // Sign-in is "tap your name, type your PIN". The name list is public (that's the point — nobody
 // has time to type a username), so everything rests on the PIN plus the layers below:
@@ -55,7 +56,7 @@ export type LoginResult =
   | { ok: true; token: string; userId: string; role: Role }
   | { ok: false; reason: "INVALID_PIN"; attemptsLeft: number }
   | { ok: false; reason: "TEMP_LOCKED" | "IP_BLOCKED"; retryAt: string }
-  | { ok: false; reason: "LOCKED_OUT" | "NO_SUCH_USER" | "ACTIVE_ON_ANOTHER_IP" };
+  | { ok: false; reason: "LOCKED_OUT" | "NO_SUCH_USER" | "ACTIVE_ON_ANOTHER_IP" | "INVALID_LOGIN" | "SERVICE_CLOSED" };
 
 /** In-memory per-IP failure counter (single server process — a restart simply forgives). */
 export class IpGuard {
@@ -133,8 +134,50 @@ export class AuthService {
     return u.lockedUntil && new Date(u.lockedUntil).getTime() > now ? u.lockedUntil : null;
   }
 
-  /** The sign-in screen's tiles — every active account; hard-locked ones are left off. */
+  // ---- operating hours ------------------------------------------------------------------------
+
+  async operatingHours(): Promise<OperatingHours> {
+    const raw = await this.store.settings.get(OPERATING_HOURS_SETTING);
+    if (!raw) return DEFAULT_OPERATING_HOURS;
+    try {
+      return { ...DEFAULT_OPERATING_HOURS, ...(JSON.parse(raw) as Partial<OperatingHours>) };
+    } catch {
+      return DEFAULT_OPERATING_HOURS;
+    }
+  }
+
+  async setOperatingHours(h: OperatingHours, actorId: string): Promise<OperatingHours> {
+    const clean = { ...h, days: [...new Set(h.days)].sort() };
+    const problem = validOperatingHours(clean);
+    if (problem) throw badRequest(problem);
+    await this.store.settings.set(OPERATING_HOURS_SETTING, JSON.stringify(clean));
+    await audit(this.store, { actorId, action: "WRITE", entity: "security_settings", detail: { operatingHours: clean } });
+    return clean;
+  }
+
+  /** Outside operating hours: closed to everyone but admins. */
+  async isClosed(): Promise<boolean> {
+    return !isOpenAt(await this.operatingHours(), new Date(this.now()));
+  }
+
+  /** The hidden after-hours sign-in (#admin): name + PIN, admins only while closed. Every failure
+   * gives the same answer, so it tells a guesser nothing about which names exist or who is admin. */
+  async loginByName(name: string, pin: string, ip: string): Promise<LoginResult> {
+    const user = (await this.store.users.list()).find((u) => (u.name || u.username).toLowerCase() === name.trim().toLowerCase());
+    if (!user || (user.role !== "admin" && (await this.isClosed()))) {
+      if (this.ipGuard.blockedUntil(ip, this.now())) return { ok: false, reason: "IP_BLOCKED", retryAt: new Date(this.ipGuard.blockedUntil(ip, this.now())!).toISOString() };
+      await this.fail(ip);
+      await audit(this.store, { actorId: null, action: "AUTH_FAIL", entity: "user", detail: { reason: "name sign-in refused", name: name.slice(0, 60) }, ip });
+      return { ok: false, reason: "INVALID_LOGIN" };
+    }
+    const result = await this.login(user.id, pin, ip);
+    return !result.ok && (result.reason === "INVALID_PIN" || result.reason === "NO_SUCH_USER") ? { ok: false, reason: "INVALID_LOGIN" } : result;
+  }
+
+  /** The sign-in screen's tiles — every active account; hard-locked ones are left off. Closed
+   * (operating hours): none at all. */
   async loginUsers(): Promise<LoginUser[]> {
+    if (await this.isClosed()) return [];
     const now = this.now();
     return (await this.store.users.list())
       .filter((u) => !u.locked)
@@ -159,6 +202,10 @@ export class AuthService {
     if (!user) {
       await this.fail(ip);
       return { ok: false, reason: "NO_SUCH_USER" };
+    }
+    if (user.role !== "admin" && (await this.isClosed())) {
+      await this.fail(ip);
+      return { ok: false, reason: "SERVICE_CLOSED" };
     }
     // Hammering an already-locked account still counts against the IP — that's exactly what a
     // bot rotating through the name list looks like.
