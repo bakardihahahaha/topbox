@@ -119,7 +119,6 @@ const LOGIN_ERROR_LABEL: Record<string, string> = {
   LOCKED_OUT: "This account is locked — ask an administrator to unlock it.",
   NO_SUCH_USER: "This user no longer exists.",
   TOO_MANY_REQUESTS: "Too many attempts — wait a minute and try again.",
-  UNKNOWN_CARD: "This card isn't assigned to anyone — ask an administrator (Setup → Users → Assign card).",
   ACTIVE_ON_ANOTHER_IP: "You're still signed in on another network. Log out there first (or wait for it to time out), or ask an administrator to end that session.",
 };
 
@@ -136,25 +135,6 @@ export async function login(userId: string, pin: string): Promise<LoginOutcome> 
     return { ok: false, code, error: LOGIN_ERROR_LABEL[code] ?? "Sign-in failed.", attemptsLeft: body.attemptsLeft, retryAt: body.retryAt };
   }
   setToken(((await res.json()) as { token: string }).token);
-  return { ok: true };
-}
-
-/** Signing in by tapping an RFID card. `pinFor`: the card says who it is, but a PIN is still
- * needed (Setup → Security → "Card needs PIN"). */
-export async function loginWithCard(card: string): Promise<LoginOutcome | { ok: false; code: "PIN_REQUIRED"; pinFor: string; error: string }> {
-  let res: Response;
-  try {
-    res = await fetch("/api/auth/card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card }) });
-  } catch {
-    return { ok: false, code: "OFFLINE", error: "Can't reach the server — check your connection." };
-  }
-  const body = (await res.json().catch(() => ({}))) as { token?: string; error?: string; userId?: string; retryAt?: string };
-  if (body.error === "PIN_REQUIRED" && body.userId) return { ok: false, code: "PIN_REQUIRED", pinFor: body.userId, error: "" };
-  if (!res.ok || !body.token) {
-    const code = body.error ?? "";
-    return { ok: false, code, error: LOGIN_ERROR_LABEL[code] ?? "Sign-in failed.", retryAt: body.retryAt };
-  }
-  setToken(body.token);
   return { ok: true };
 }
 

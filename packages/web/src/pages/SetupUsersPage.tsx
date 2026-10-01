@@ -1,6 +1,6 @@
 import type { Role } from "@biosite-signoff/shared";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { assignCard, createUser, deleteUser, endSessions, listUsers, removeCard, setUserPin, updateUser, type UserSummary } from "../lib/api.js";
+import { useState, type FormEvent } from "react";
+import { createUser, deleteUser, endSessions, listUsers, setUserPin, updateUser, type UserSummary } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { useMe } from "../lib/meContext.js";
 import { alertDialog, confirmDialog } from "../lib/confirmDialog.js";
@@ -15,7 +15,6 @@ export function SetupUsersPage() {
   const { data: users, error, setError, reload } = useData<UserSummary[]>(listUsers);
   const [form, setForm] = useState({ name: "", pin: "", role: "operator" as Role, canStart: false });
   const [editing, setEditing] = useState<{ id: string; name: string; pin: string } | null>(null);
-  const [cardFor, setCardFor] = useState<UserSummary | null>(null);
 
   async function run(fn: () => Promise<unknown>) {
     setError(null);
@@ -90,18 +89,6 @@ export function SetupUsersPage() {
 
       {error && <div style={errorBox}>{error}</div>}
 
-      {cardFor && (
-        <AssignCardDialog
-          user={cardFor}
-          onClose={() => setCardFor(null)}
-          onCard={async (card) => {
-            await assignCard(cardFor.id, card);
-            setCardFor(null);
-            await reload();
-          }}
-        />
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {users?.map((u) => (
           <div key={u.id} style={{ ...card, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -151,7 +138,6 @@ export function SetupUsersPage() {
                   {u.id === me.userId && <span style={{ fontSize: 12, color: "var(--text-3)" }}> (you)</span>}
                   <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                     <span style={chip(u.role === "admin" ? "accent" : "muted")}>{u.role}</span>
-                    {u.hasCard && <span style={chip("accent")}>RFID card</span>}
                     {u.role === "operator" && <span style={chip(u.canStart ? "accent" : "muted")}>{u.canStart ? "starts sign-offs + 1st check" : "later checks only"}</span>}
                     {u.locked && <span style={chip("danger")}>locked</span>}
                     {!u.locked && u.lockedUntil && <span style={chip("warn")}>locked until {formatDateTime(u.lockedUntil)}</span>}
@@ -162,19 +148,6 @@ export function SetupUsersPage() {
                   <button style={ghost} onClick={() => setEditing({ id: u.id, name: u.name, pin: "" })}>
                     Edit name / PIN
                   </button>
-                  <button style={ghost} onClick={() => setCardFor(u)}>
-                    {u.hasCard ? "Change card" : "Assign card"}
-                  </button>
-                  {u.hasCard && (
-                    <button
-                      style={ghost}
-                      onClick={async () => {
-                        if (await confirmDialog(`Remove ${u.name}'s RFID card? They can still sign in with their PIN.`, { confirmLabel: "Remove card", danger: true })) await run(() => removeCard(u.id));
-                      }}
-                    >
-                      Remove card
-                    </button>
-                  )}
                   <button
                     style={ghost}
                     onClick={async () => {
@@ -248,62 +221,5 @@ function StartsToggle({ checked, onChange }: { checked: boolean; onChange: (v: b
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ width: 22, height: 22, accentColor: "var(--accent)" }} />
       Starts sign-offs
     </label>
-  );
-}
-
-/** "Tap the card now": the USB reader types the card number into the field and presses Enter. */
-function AssignCardDialog({ user, onCard, onClose }: { user: UserSummary; onCard: (card: string) => Promise<void>; onClose: () => void }) {
-  const [value, setValue] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => ref.current?.focus(), []);
-  async function submit(card: string) {
-    if (busy || !card.trim()) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await onCard(card.trim());
-    } catch (err) {
-      setError(errorMessage(err));
-      setValue("");
-      ref.current?.focus();
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <div role="dialog" aria-modal="true" aria-label="Assign RFID card" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(10,12,14,.6)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={(e) => { e.stopPropagation(); ref.current?.focus(); }} style={{ ...card, width: "min(94vw, 420px)", display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: 17, fontWeight: 700 }}>RFID card for {user.name}</div>
-        <div style={{ fontSize: 14, color: "var(--text-2)" }}>{busy ? "Saving…" : "Tap the card on the reader now."}</div>
-        <input
-          ref={ref}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void submit(value);
-            }
-          }}
-          onBlur={() => setTimeout(() => ref.current?.focus(), 0)}
-          aria-label="Card number"
-          placeholder="waiting for the card…"
-          autoComplete="off"
-          className="mono"
-          style={{ ...input, height: 52, fontSize: 18, textAlign: "center" }}
-        />
-        {error && <div style={errorBox}>{error}</div>}
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button style={ghost} onClick={onClose}>
-            Cancel
-          </button>
-          <button style={primary} disabled={busy || !value.trim()} onClick={() => void submit(value)}>
-            Save card
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

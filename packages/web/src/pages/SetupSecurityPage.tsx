@@ -51,18 +51,6 @@ export function SetupSecurityPage() {
             </label>
           </div>
           <div style={card}>
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
-              <input type="checkbox" checked={s.cardNeedsPin} onChange={(e) => void save({ cardNeedsPin: e.target.checked })} style={{ width: 24, height: 24, accentColor: "var(--accent)", marginTop: 2 }} />
-              <span>
-                <div style={{ fontWeight: 700 }}>RFID card + PIN</div>
-                <div style={{ ...hint, margin: "4px 0 0" }}>
-                  Off: tapping a card on the reader signs that person straight in. On: the card only picks the person — they still type their PIN (safer if a card is lost or copied).
-                  Cards are assigned in Setup → Users.
-                </div>
-              </span>
-            </label>
-          </div>
-          <div style={card}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Deleting sign-offs</div>
             <p style={{ ...hint, margin: 0 }}>
               Operators and admins can delete a sign-off (operators only a TopBox&apos;s current visit). It isn&apos;t gone: it moves to the <b>Deleted</b> tab, where an admin can restore it or

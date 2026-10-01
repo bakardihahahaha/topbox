@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { LoginUser } from "@biosite-signoff/shared";
 import { useTheme } from "../theme/ThemeContext.js";
-import { fetchLoginUsers, login, loginWithCard } from "../lib/client.js";
-import { useCardReader } from "../lib/cardReader.js";
+import { fetchLoginUsers, login } from "../lib/client.js";
 import { APP_VERSION, clearCacheAndCookies } from "../lib/clearCache.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 import { cycleTouchSize, useTouchSizeLabel } from "../lib/touchSize.js";
@@ -68,26 +67,6 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
     if (users?.some((u) => u.lockedUntil && Date.parse(u.lockedUntil) <= now)) void load();
   }, [now, users]);
 
-  // Tapping an RFID card on the reader (it types the card number) signs that person in.
-  const [cardError, setCardError] = useState<string | null>(null);
-  const [cardBusy, setCardBusy] = useState(false);
-  const cardBusyRef = useRef(false);
-  useCardReader(async (card) => {
-    if (cardBusyRef.current) return; // one card at a time
-    cardBusyRef.current = true;
-    setCardBusy(true);
-    setCardError(null);
-    const result = await loginWithCard(card);
-    cardBusyRef.current = false;
-    setCardBusy(false);
-    if (result.ok) return onSignedIn();
-    if (result.code === "PIN_REQUIRED" && "pinFor" in result) {
-      const u = users?.find((x) => x.id === result.pinFor);
-      if (u) return setSelected(u);
-    }
-    setCardError(result.error || "Sign-in failed.");
-  }, !selected);
-
   const visible = (users ?? []).filter((u) => u.name.toLowerCase().includes(filter.trim().toLowerCase()));
 
   return (
@@ -115,8 +94,7 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
           </div>
         )}
 
-        {cardError && <div style={errorBox}>{cardError}</div>}
-        <div style={{ fontSize: 13, color: "var(--text-3)" }}>{cardBusy ? "Reading card…" : "Tap your card on the reader — or tap your name, then enter your PIN."}</div>
+        <div style={{ fontSize: 13, color: "var(--text-3)" }}>Tap your name, then enter your PIN.</div>
         {users && users.length > 12 && (
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Find your name…" style={{ ...input, height: 44 }} />
         )}

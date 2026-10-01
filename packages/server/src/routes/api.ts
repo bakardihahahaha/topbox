@@ -92,17 +92,6 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     return { token: result.token, role: result.role, userId: result.userId };
   });
 
-  // RFID card sign-in: the reader types the card number. PIN_REQUIRED hands back who it is.
-  app.post("/api/auth/card", { config: LOGIN_RATE_LIMIT }, async (req, reply) => {
-    const body = parse(z.object({ card: z.string().min(1).max(64) }), req.body);
-    const result = await s.auth.loginWithCard(body.card, req.ip);
-    if (!result.ok) {
-      const { ok: _ok, reason, ...rest } = result;
-      return reply.status(reason === "IP_BLOCKED" ? 429 : reason === "PIN_REQUIRED" ? 200 : 401).send({ error: reason, ...rest });
-    }
-    return { token: result.token, role: result.role, userId: result.userId };
-  });
-
   app.post("/api/auth/logout", async (req) => {
     const token = bearerToken(req);
     if (token) await s.auth.logout(token);
@@ -123,7 +112,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.get("/api/security", admin, async () => s.auth.securitySettings());
   app.patch("/api/security", admin, async (req) => {
-    const body = parse(z.object({ idleTimeoutMinutes: z.number().int().optional(), singleIp: z.boolean().optional(), cardNeedsPin: z.boolean().optional() }), req.body);
+    const body = parse(z.object({ idleTimeoutMinutes: z.number().int().optional(), singleIp: z.boolean().optional() }), req.body);
     return s.auth.setSecuritySettings(body, req.user!.userId);
   });
 
@@ -138,9 +127,6 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     const body = parse(z.object({ name: z.string().max(100).optional(), role: role.optional(), locked: z.boolean().optional(), canStart: z.boolean().optional() }), req.body);
     return s.auth.updateUser(req.params.id, body, req.user!.userId);
   });
-  app.post("/api/cards/lookup", admin, async (req) => s.auth.lookupCard(parse(z.object({ card: z.string().min(1).max(64) }), req.body).card));
-  app.put<{ Params: { id: string } }>("/api/users/:id/card", admin, async (req) => s.auth.assignCard(req.params.id, parse(z.object({ card: z.string().min(1).max(64) }), req.body).card, req.user!.userId));
-  app.delete<{ Params: { id: string } }>("/api/users/:id/card", admin, async (req) => s.auth.removeCard(req.params.id, req.user!.userId));
   app.post<{ Params: { id: string } }>("/api/users/:id/pin", admin, async (req) => {
     const body = parse(z.object({ pin: pin.optional() }), req.body ?? {});
     return s.auth.setPin(req.params.id, body.pin, req.user!.userId);

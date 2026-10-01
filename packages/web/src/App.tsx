@@ -20,7 +20,6 @@ import { SetupTemplatesPage } from "./pages/SetupTemplatesPage.js";
 import { TemplateEditorPage } from "./pages/TemplateEditorPage.js";
 import { SetupPartsPage } from "./pages/SetupPartsPage.js";
 import { SetupUsersPage } from "./pages/SetupUsersPage.js";
-import { SetupCardReaderPage } from "./pages/SetupCardReaderPage.js";
 import { SetupSecurityPage } from "./pages/SetupSecurityPage.js";
 import { SetupBackupPage } from "./pages/SetupBackupPage.js";
 import { SetupAuditPage } from "./pages/SetupAuditPage.js";
@@ -159,7 +158,6 @@ export function App() {
                 <Route path="/setup/document" element={<SetupDocumentPage />} />
                 <Route path="/setup/users" element={<SetupUsersPage />} />
                 <Route path="/setup/security" element={<SetupSecurityPage />} />
-                <Route path="/setup/card-reader" element={<SetupCardReaderPage />} />
                 <Route path="/setup/backup" element={<SetupBackupPage />} />
                 <Route path="/setup/audit" element={<SetupAuditPage />} />
               </>

@@ -34,8 +34,6 @@ export interface UserRecord {
   locked: boolean;
   /** May start new sign-offs and do the 1st check (Setup → Users). Admins always may. */
   canStart?: boolean;
-  /** Hash of the user's RFID card number ('' = no card). */
-  cardHash?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,7 +78,6 @@ export interface UsersRepo {
   count(): Promise<number>;
   list(): Promise<UserRecord[]>;
   get(id: string): Promise<UserRecord | null>;
-  getByCardHash(hash: string): Promise<UserRecord | null>;
   getByUsername(username: string): Promise<UserRecord | null>;
   create(user: UserRecord): Promise<void>;
   update(id: string, patch: Partial<Omit<UserRecord, "id" | "createdAt">>): Promise<void>;

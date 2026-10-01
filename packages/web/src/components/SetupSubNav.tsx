@@ -12,7 +12,6 @@ export function SetupSubNav() {
           { to: "/setup/document", label: "Document" },
           { to: "/setup/users", label: "Users" },
           { to: "/setup/security", label: "Security" },
-          { to: "/setup/card-reader", label: "Card reader" },
           { to: "/setup/backup", label: "Database" },
           { to: "/setup/audit", label: "Audit log" },
         ]
