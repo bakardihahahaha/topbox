@@ -42,7 +42,7 @@ export function MechanismHistoryPage() {
           </h1>
           <div style={{ fontSize: 13, color: "var(--text-3)" }}>
             {list.length} visit{list.length === 1 ? "" : "s"}
-            {latest && (inWorkshop ? " · in the workshop now" : ` · at client since ${signStamp(departedAt(latest), showTime)}`)}
+            {latest && (inWorkshop ? " · latest in progress" : " · latest complete")}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -111,7 +111,7 @@ export function MechanismHistoryPage() {
                         {v.serialNumber}
                       </span>
                     </div>
-                    {left ? <span style={chip("accent")}>Left {signStamp(left, showTime)}</span> : <span style={chip("warn")}>In workshop</span>}
+                    {left ? <span style={chip("accent")}>Complete</span> : <span style={chip("warn")}>In progress</span>}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
                     {v.template.checks.map((c) => {

@@ -3,7 +3,7 @@ import { SerialInput } from "../components/SerialInput.js";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { allowsRefurbishedR, departedAt, isOncePerTopbox, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
-import { stamp, topboxUrl } from "../lib/format.js";
+import { topboxUrl } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { createSignoff, listTemplates } from "../lib/api.js";
@@ -144,7 +144,7 @@ export function NewSignoffPage() {
           <div style={{ borderLeft: `3px solid ${stillIn ? "var(--warn)" : "var(--accent)"}`, background: stillIn ? "var(--bg-deep)" : "var(--accent-wash)", borderRadius: "var(--radius-callout)", padding: "10px 12px", fontSize: 13.5 }}>
             {stillIn ? (
               <>
-                <b>{lastVisit.serialNumber}</b> is still in the workshop (visit {previous.length}) —{" "}
+                <b>{lastVisit.serialNumber}</b> still has an unfinished sign-off (visit {previous.length}) —{" "}
                 <a href={topboxUrl(lastVisit.serialNumber, lastVisit.id)} style={{ color: "var(--accent)", fontWeight: 700 }}>
                   open it instead
                 </a>
@@ -152,7 +152,7 @@ export function NewSignoffPage() {
               </>
             ) : (
               <>
-                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit)?.slice(0, 10))}. Type set to <b>{type?.name}</b>{canAddR ? " — add R if it was refurbished" : ""}.
+                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Type set to <b>{type?.name}</b>{canAddR ? " — add R if it was refurbished" : ""}.
               </>
             )}
           </div>

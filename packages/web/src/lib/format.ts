@@ -12,11 +12,6 @@ export function localStamp(iso: string): string {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** Whole days between two moments. */
-export function daysBetween(fromIso: string, to: Date): number {
-  return Math.max(0, Math.floor((to.getTime() - Date.parse(fromIso)) / 86_400_000));
-}
-
 /** The TopBox page: /signoff/<serial number>, optionally opened on one visit. */
 export function topboxUrl(serial: string, signoffId?: string): string {
   return `/signoff/${encodeURIComponent(serial)}${signoffId ? `?id=${signoffId}` : ""}`;

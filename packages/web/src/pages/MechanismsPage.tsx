@@ -5,13 +5,12 @@ import { listMechanisms } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { SerialInput } from "../components/SerialInput.js";
 import { Pager, pageOf } from "../components/Pager.js";
-import { daysBetween, stamp, topboxUrl } from "../lib/format.js";
+import { stamp, topboxUrl } from "../lib/format.js";
 import { card, chip, errorBox, errorMessage, ghost, h1, hint, page, primary } from "../lib/ui.js";
 import { mechanismPdfSignoffs, type PdfScope } from "../lib/mechanismPdf.js";
 import { downloadPdf } from "../lib/pdfLazy.js";
-import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
 
-/** Every mechanism (serial number) and where it is now: in the workshop or out at a client. */
+/** Every mechanism (serial number) with its visits and whether the latest one is complete. */
 export function MechanismsPage() {
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -20,11 +19,9 @@ export function MechanismsPage() {
     return () => clearTimeout(t);
   }, [q]);
   const list = useData<MechanismSummary[]>(() => listMechanisms(debounced || undefined), [debounced]);
-  const now = new Date();
   // 100 per page; a new search starts again at page 1.
   const [pageNo, setPageNo] = useState(0);
   useEffect(() => setPageNo(0), [debounced]);
-  const showTime = useShowSignTime();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -53,7 +50,7 @@ export function MechanismsPage() {
   return (
     <div style={page}>
       <h1 style={h1}>Mechanisms</h1>
-      <p style={hint}>Each serial number with all its visits: when each check was done and when it left again. Tap one for its full history.</p>
+      <p style={hint}>Each serial number with all its visits and when each check was done. Tap one for its full history.</p>
       <div style={{ marginBottom: 12 }}>
         <SerialInput value={q} onChange={setQ} placeholder="Search serial number" ariaLabel="Search serial number" style={{ height: 52, fontSize: 17 }} />
       </div>
@@ -102,12 +99,9 @@ export function MechanismsPage() {
               </div>
             </div>
             {m.atClient ? (
-              <span style={chip("accent")}>
-                At client · left {signStamp(m.last.departedAt, showTime)}
-                {m.last.departedAt ? ` (${daysBetween(m.last.departedAt.replace(" ", "T"), now)} d)` : ""}
-              </span>
+              <span style={chip("accent")}>Complete</span>
             ) : (
-              <span style={chip("warn")}>In workshop · {m.last.firstCheckAt ? "1st check done" : "waiting for 1st check"}</span>
+              <span style={chip("warn")}>In progress · {m.last.firstCheckAt ? "1st check done" : "waiting for 1st check"}</span>
             )}
           </Link>
           </div>
