@@ -305,7 +305,7 @@ class SqliteParts implements PartsRepo {
     private tx: Tx,
   ) {}
   async list() {
-    return (this.db.prepare("SELECT * FROM parts WHERE deleted_at = '' ORDER BY part_number COLLATE NOCASE, name COLLATE NOCASE").all() as PartRow[]).map(toPart);
+    return (this.db.prepare("SELECT * FROM parts WHERE deleted_at = '' ORDER BY sort_order, part_number COLLATE NOCASE, name COLLATE NOCASE").all() as PartRow[]).map(toPart);
   }
   async get(id: string) {
     const r = this.db.prepare("SELECT * FROM parts WHERE id = ? AND deleted_at = ''").get(id) as PartRow | undefined;
@@ -313,7 +313,10 @@ class SqliteParts implements PartsRepo {
   }
   async create(p: Part) {
     this.tx(() => {
-      this.db.prepare("INSERT INTO parts (id, part_number, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(p.id, p.partNumber, p.name, p.description, p.createdAt, p.updatedAt);
+      // A new part goes to the end of the list.
+      this.db
+        .prepare("INSERT INTO parts (id, part_number, name, description, created_at, updated_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM parts))")
+        .run(p.id, p.partNumber, p.name, p.description, p.createdAt, p.updatedAt);
       this.enqueue("parts", p.id);
     });
   }
@@ -327,6 +330,14 @@ class SqliteParts implements PartsRepo {
     this.tx(() => {
       this.db.prepare(`UPDATE parts SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`).run(...keys.map((k) => cols[k]), id);
       this.enqueue("parts", id);
+    });
+  }
+  async reorder(ids: string[], at: string) {
+    this.tx(() => {
+      const set = this.db.prepare("UPDATE parts SET sort_order = ?, updated_at = ? WHERE id = ? AND sort_order != ?");
+      ids.forEach((id, i) => {
+        if (set.run(i + 1, at, id, i + 1).changes > 0) this.enqueue("parts", id);
+      });
     });
   }
   async softDelete(id: string, at: string) {
@@ -533,7 +544,7 @@ class SqliteSignoffs implements SignoffsRepo {
     const placeholders = ids.map(() => "?").join(",");
     const marks = this.db.prepare(`SELECT * FROM signoff_marks WHERE deleted_at = '' AND signoff_id IN (${placeholders})`).all(...ids) as MarkRow[];
     const sigs = this.db.prepare(`SELECT * FROM signoff_signatures WHERE deleted_at = '' AND signoff_id IN (${placeholders})`).all(...ids) as SignatureRow[];
-    const parts = this.db.prepare(`SELECT * FROM signoff_parts WHERE deleted_at = '' AND signoff_id IN (${placeholders}) ORDER BY created_at`).all(...ids) as PartLineRow[];
+    const parts = this.db.prepare(`SELECT sp.* FROM signoff_parts sp LEFT JOIN parts p ON p.id = sp.part_id WHERE sp.deleted_at = '' AND sp.signoff_id IN (${placeholders}) ORDER BY COALESCE(p.sort_order, 1e9), sp.created_at`).all(...ids) as PartLineRow[];
     const photos = this.db.prepare(`SELECT * FROM signoff_photos WHERE deleted_at = '' AND signoff_id IN (${placeholders}) ORDER BY taken_at`).all(...ids) as PhotoRow[];
     return rows.map((r) => ({
       id: r.id,
@@ -931,6 +942,7 @@ class SqliteTables implements TableAccess {
         const values: (string | number)[] = spec.columns.map((c) => {
           const v = row[c] ?? "";
           if (table === "users" && c === "locked") return 1;
+          if (c === "sort_order") return Number(v) || 0; // backups from before the parts order
           return v;
         });
         if (table === "users") values.push("!restored-needs-reset", 0);

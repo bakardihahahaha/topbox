@@ -27,6 +27,22 @@ describe("Google Sheets backup mirror", () => {
     expect(partsTab()[1]![partsTab()[0]!.indexOf("deleted_at")]).not.toBe("");
   });
 
+  it("keeps the admin's parts order: new parts at the end, reorder saved and mirrored", async () => {
+    const t = await setup();
+    const a = await t.catalog.createPart({ partNumber: "Z-1", name: "Zeta", description: "" });
+    const b = await t.catalog.createPart({ partNumber: "A-1", name: "Alpha", description: "" });
+    const c = await t.catalog.createPart({ partNumber: "M-1", name: "Mid", description: "" });
+    expect((await t.catalog.listParts()).map((p) => p.id)).toEqual([a.id, b.id, c.id]); // added order, not A–Z
+    await t.catalog.reorderParts([c.id, a.id, b.id]);
+    expect((await t.catalog.listParts()).map((p) => p.id)).toEqual([c.id, a.id, b.id]);
+    await expect(t.catalog.reorderParts([c.id, a.id])).rejects.toMatchObject({ code: "PARTS_CHANGED" });
+    await expect(t.catalog.reorderParts([c.id, a.id, a.id])).rejects.toMatchObject({ code: "PARTS_CHANGED" });
+    await t.mirror.flush();
+    const tab = t.sheets.tabs.get("sheet-1/parts")!;
+    const col = tab[0]!.indexOf("sort_order");
+    expect(tab.find((r) => r.includes(c.id))![col]).toBe("1");
+  });
+
   it("keeps changes queued and backs off when Google answers 429", async () => {
     const t = await setup();
     t.sheets.failNext(1);

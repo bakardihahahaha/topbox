@@ -33,6 +33,7 @@ export type QueuedAction =
   | { kind: "createPart"; partId: string; input: PartInput }
   | { kind: "updatePart"; partId: string; patch: Partial<PartInput> }
   | { kind: "deletePart"; partId: string }
+  | { kind: "reorderParts"; ids: string[] }
   | { kind: "createTemplate"; templateId: string; input: TemplateInput }
   | { kind: "updateTemplate"; templateId: string; input: TemplateInput }
   | { kind: "deleteTemplate"; templateId: string }
@@ -71,6 +72,8 @@ function describe(a: QueuedAction): string {
       return "Update a part";
     case "deletePart":
       return "Delete a part";
+    case "reorderParts":
+      return "Change the order of the parts";
     case "createTemplate":
       return `Create template "${a.input.name}"`;
     case "updateTemplate":
@@ -116,6 +119,8 @@ async function apply(a: QueuedAction): Promise<unknown> {
       return api.updatePart(a.partId, a.patch);
     case "deletePart":
       return api.deletePart(a.partId);
+    case "reorderParts":
+      return api.reorderParts(a.ids);
     case "createTemplate":
       return api.createTemplate(a.templateId, a.input);
     case "updateTemplate":

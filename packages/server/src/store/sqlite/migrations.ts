@@ -236,6 +236,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE signoff_parts ADD COLUMN booked_out_by TEXT NOT NULL DEFAULT '';
   ALTER TABLE signoffs ADD COLUMN deleted_by TEXT NOT NULL DEFAULT '';
   `,
+  // 10: the admin's own order of the parts (Setup → Parts ↑/↓) — starts as the old A–Z order.
+  `
+  ALTER TABLE parts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+  UPDATE parts SET sort_order = (
+    SELECT rn FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY part_number COLLATE NOCASE, name COLLATE NOCASE) AS rn FROM parts) AS x WHERE x.id = parts.id
+  );
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

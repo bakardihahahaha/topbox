@@ -44,6 +44,17 @@ export class CatalogService {
     return (await this.store.parts.get(id))!;
   }
 
+  /** The admin's order of the parts — the order sign-offs list them in. Must name every part once. */
+  async reorderParts(ids: string[]): Promise<Part[]> {
+    const current = await this.store.parts.list();
+    const known = new Set(current.map((p) => p.id));
+    if (ids.length !== known.size || new Set(ids).size !== ids.length || ids.some((i) => !known.has(i))) {
+      throw conflict("PARTS_CHANGED", "The parts list changed meanwhile — reload the page and try again.");
+    }
+    await this.store.parts.reorder(ids, new Date().toISOString());
+    return this.store.parts.list();
+  }
+
   /** Soft delete — sign-offs that already recorded this part keep their own snapshot of it; it
    * just can't be picked any more. Also dropped from every template's allowed list. */
   async deletePart(id: string): Promise<void> {

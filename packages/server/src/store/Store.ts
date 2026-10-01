@@ -114,6 +114,8 @@ export interface PartsRepo {
   get(id: string): Promise<Part | null>;
   create(part: Part): Promise<void>;
   update(id: string, patch: Partial<Omit<Part, "id" | "createdAt">>): Promise<void>;
+  /** Saves the admin's order: `ids` top to bottom. */
+  reorder(ids: string[], at: string): Promise<void>;
   softDelete(id: string, at: string): Promise<void>;
 }
 

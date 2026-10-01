@@ -10,6 +10,7 @@ export const deleteTemplate = (id: string) => sendJson("DELETE", `/api/templates
 
 export const listParts = () => getJsonCached<Part[]>("/api/parts");
 export const createPart = (id: string, input: PartInput) => sendJson<Part>("POST", "/api/parts", { ...input, id });
+export const reorderParts = (ids: string[]) => sendJson<Part[]>("PUT", "/api/parts/order", { ids });
 export const updatePart = (id: string, patch: Partial<PartInput>) => sendJson<Part>("PATCH", `/api/parts/${id}`, patch);
 export const deletePart = (id: string) => sendJson("DELETE", `/api/parts/${id}`);
 

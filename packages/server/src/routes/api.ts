@@ -176,6 +176,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     const body = parse(partInput.extend({ id: id.optional() }), req.body);
     return s.catalog.createPart(body, body.id);
   });
+  app.put("/api/parts/order", admin, async (req) => s.catalog.reorderParts(parse(z.object({ ids: z.array(id) }), req.body).ids));
   app.patch<{ Params: { id: string } }>("/api/parts/:id", admin, async (req) => s.catalog.updatePart(req.params.id, parse(partInput.partial(), req.body)));
   app.delete<{ Params: { id: string } }>("/api/parts/:id", admin, async (req) => {
     await s.catalog.deletePart(req.params.id);

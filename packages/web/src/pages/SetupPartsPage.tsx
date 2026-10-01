@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { Part } from "@biosite-signoff/shared";
-import { createPart, deletePart, listParts, updatePart } from "../lib/api.js";
+import { createPart, deletePart, listParts, reorderParts, updatePart } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
@@ -46,6 +46,24 @@ export function SetupPartsPage() {
     }
   }
 
+  /** Moves a part one place up (-1) or down (+1) — sign-offs list the parts in this order. */
+  async function move(index: number, by: -1 | 1) {
+    if (!parts) return;
+    const target = index + by;
+    if (target < 0 || target >= parts.length) return;
+    const next = [...parts];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    const ids = next.map((x) => x.id);
+    setError(null);
+    setData(next);
+    try {
+      await withSaving(() => mutateOrQueue({ kind: "reorderParts", ids }, () => reorderParts(ids)));
+    } catch (err) {
+      setError(errorMessage(err));
+      await reload();
+    }
+  }
+
   async function remove(p: Part) {
     if (!(await confirmDialog(`Delete part ${p.partNumber} "${p.name}"? Sign-offs that already recorded it keep it; it's removed from every template's list.`, { confirmLabel: "Delete", danger: true }))) return;
     setData((ps) => ps?.filter((x) => x.id !== p.id) ?? ps);
@@ -61,7 +79,7 @@ export function SetupPartsPage() {
     <div style={page}>
       <h1 style={h1}>Setup</h1>
       <SetupSubNav />
-      <p style={hint}>Every part that can be replaced during a service. Define them once here, then tick which ones apply to each template — operators only ever tick them, never type them.</p>
+      <p style={hint}>Every part that can be replaced during a service. Define them once here, then tick which ones apply to each template — operators only ever tick them, never type them. Use ↑ ↓ to set the order: the sign-off form and the PDF list the parts in this same order.</p>
 
       <form onSubmit={add} style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginBottom: 16 }}>
         <input value={form.partNumber} onChange={(e) => setForm({ ...form, partNumber: e.target.value })} placeholder="Part number" className="mono" style={input} />
@@ -76,7 +94,7 @@ export function SetupPartsPage() {
       {parts?.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No parts yet — add one above.</div>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {parts?.map((p) =>
+        {parts?.map((p, i) =>
           editing?.id === p.id ? (
             <div key={p.id} style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
               <input value={editing.partNumber} onChange={(e) => setEditing({ ...editing, partNumber: e.target.value })} className="mono" style={input} />
@@ -93,7 +111,15 @@ export function SetupPartsPage() {
             </div>
           ) : (
             <div key={p.id} style={{ ...card, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", gap: 4, flex: "none" }}>
+                <button style={{ ...ghost, width: 44, padding: 0, opacity: i === 0 ? 0.35 : 1 }} onClick={() => void move(i, -1)} disabled={i === 0} aria-label={`Move ${p.partNumber} up`} title="Move up">
+                  ↑
+                </button>
+                <button style={{ ...ghost, width: 44, padding: 0, opacity: i === parts.length - 1 ? 0.35 : 1 }} onClick={() => void move(i, 1)} disabled={i === parts.length - 1} aria-label={`Move ${p.partNumber} down`} title="Move down">
+                  ↓
+                </button>
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <span className="mono" style={{ fontSize: 12.5, color: "var(--text-3)", marginRight: 10 }}>
                   {p.partNumber}
                 </span>
