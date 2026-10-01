@@ -138,6 +138,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     const body = parse(z.object({ name: z.string().max(100).optional(), role: role.optional(), locked: z.boolean().optional(), canStart: z.boolean().optional() }), req.body);
     return s.auth.updateUser(req.params.id, body, req.user!.userId);
   });
+  app.post("/api/cards/lookup", admin, async (req) => s.auth.lookupCard(parse(z.object({ card: z.string().min(1).max(64) }), req.body).card));
   app.put<{ Params: { id: string } }>("/api/users/:id/card", admin, async (req) => s.auth.assignCard(req.params.id, parse(z.object({ card: z.string().min(1).max(64) }), req.body).card, req.user!.userId));
   app.delete<{ Params: { id: string } }>("/api/users/:id/card", admin, async (req) => s.auth.removeCard(req.params.id, req.user!.userId));
   app.post<{ Params: { id: string } }>("/api/users/:id/pin", admin, async (req) => {

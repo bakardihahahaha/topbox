@@ -382,6 +382,12 @@ export class AuthService {
     await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { deleted: u.name } });
   }
 
+  /** Setup → Card reader test: what the server makes of a card number and whose card it is. */
+  async lookupCard(card: string): Promise<{ normalized: string; user: { id: string; name: string } | null }> {
+    const u = await this.store.users.getByCardHash(cardHash(card));
+    return { normalized: normalizeCard(card), user: u ? { id: u.id, name: u.name || u.username } : null };
+  }
+
   /** Admin assigns an RFID card to a user (replacing any card they had). One card = one person. */
   async assignCard(id: string, card: string, actorId: string): Promise<UserSummary> {
     await this.requireUser(id);

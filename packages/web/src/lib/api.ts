@@ -60,6 +60,7 @@ export interface UserSummary {
 export const listUsers = () => getJson<UserSummary[]>("/api/users");
 export const createUser = (input: { name: string; role: Role; pin?: string; canStart?: boolean }) => sendJson<{ id: string; pin: string }>("POST", "/api/users", input);
 export const updateUser = (id: string, patch: { name?: string; role?: Role; locked?: boolean; canStart?: boolean }) => sendJson<UserSummary>("PATCH", `/api/users/${id}`, patch);
+export const lookupCard = (card: string) => sendJson<{ normalized: string; user: { id: string; name: string } | null }>("POST", "/api/cards/lookup", { card });
 export const assignCard = (id: string, card: string) => sendJson<UserSummary>("PUT", `/api/users/${id}/card`, { card });
 export const removeCard = (id: string) => sendJson<UserSummary>("DELETE", `/api/users/${id}/card`);
 export const setUserPin = (id: string, pin?: string) => sendJson<{ pin: string }>("POST", `/api/users/${id}/pin`, pin ? { pin } : {});
