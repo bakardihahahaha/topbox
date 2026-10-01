@@ -784,3 +784,32 @@ describe("replaced parts and history of people who left", () => {
     expect(log.some((e) => e.actorId === t.ids.op2)).toBe(true);
   });
 });
+
+describe("admin corrections on signed checks", () => {
+  it("an admin changes a mark in a signed check of an earlier visit; the signature stays; operators still can't", async () => {
+    const t = await setup();
+    const today = new Date().toISOString().slice(0, 10);
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const olga = t.as((await t.login("op", "2222")).token);
+    const otto = t.as((await t.login("op2", "3333")).token);
+    const id = randomUUID();
+    const s = (await olga("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "AE-1", typeId: "service" })).json() as Signoff;
+    const [c1, c2] = s.template.checks;
+    const item = s.template.rows.find((r) => r.kind === "item")!;
+    await olga("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c1!.id, value: "pass" });
+    await olga("PUT", `/api/signoffs/${id}/signatures/${c1!.id}`, { path: SIG, date: today });
+    await otto("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c2!.id, value: "pass" });
+    await otto("PUT", `/api/signoffs/${id}/signatures/${c2!.id}`, { path: SIG, date: today });
+    // A later visit makes this one history.
+    await admin("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "AE-1", typeId: "service" });
+
+    expect((await olga("PUT", `/api/signoffs/${id}/marks`, { rowId: item.id, checkId: c1!.id, value: "fail" })).statusCode).not.toBe(200);
+    const fixed = await admin("PUT", `/api/signoffs/${id}/marks`, { rowId: item.id, checkId: c1!.id, value: "na" });
+    expect(fixed.statusCode).toBe(200);
+    const after = fixed.json() as Signoff;
+    expect(after.marks.find((m) => m.rowId === item.id && m.checkId === c1!.id)?.value).toBe("na");
+    expect(after.signatures.find((g) => g.checkId === c1!.id)?.name).toBe("Olga Operator");
+    const log = (await admin("GET", "/api/audit?limit=500")).json() as { detail: unknown }[];
+    expect(JSON.stringify(log)).toContain("adminEditSignedCheck");
+  });
+});

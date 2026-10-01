@@ -40,6 +40,8 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   const [photoBusy, setPhotoBusy] = useState<string | null>(null);
   // Opened on its own (/signoffs/:id) nobody tells us whether a later visit exists — look it up.
   const [laterVisitExists, setLaterVisitExists] = useState(false);
+  // Admin correcting a signed check: asked once per sign-off; the operator's signature stays.
+  const [adminEditOk, setAdminEditOk] = useState(false);
   const serialForVisits = embedded ? "" : (signoff?.serialNumber ?? "");
   useEffect(() => {
     if (!serialForVisits) return;
@@ -182,8 +184,17 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   const lockReason = (checkId: string) => crossCheckBlock(s, checkId, me, operators);
   const notMine = (checkId: string) => lockReason(checkId) !== null;
 
-  function tap(rowId: string, checkId: string) {
+  async function tap(rowId: string, checkId: string) {
     if (notMine(checkId)) return setError(lockReason(checkId));
+    const sig = signedBy(checkId);
+    if (sig && isAdmin && !adminEditOk) {
+      const ok = await confirmDialog(
+        `${t.checks.find((c) => c.id === checkId)?.label ?? "This check"} is signed by ${sig.name}. Change marks in it anyway? Their signature stays as it is; the change is recorded in the audit log under your name.`,
+        { confirmLabel: "Edit as admin" },
+      );
+      if (!ok) return;
+      setAdminEditOk(true);
+    }
     const value = NEXT[markOf(rowId, checkId) ?? "none"]!;
     void mutate({ kind: "setMark", id, rowId, checkId, value }, () => api.setMark(id, rowId, checkId, value));
   }
@@ -352,7 +363,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                         ✕ all
                       </button>
                     )}
-                    {sig && <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>🔒 signed</div>}
+                    {sig && <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>{isAdmin ? "✎ signed — admin can edit" : "🔒 signed"}</div>}
                     {!sig && !closed && notMine(c.id) && (
                       <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }} title={lockReason(c.id) ?? ""}>
                         {firstCheckBlock(s, c.id, me) ? "🔒 starters only" : checkOrderBlock(s, c.id, me) ? "🔒 not yet" : "🔒 other operator"}
@@ -374,7 +385,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                     </td>
                   ) : (
                     <td key={c.id} style={{ padding: 3, borderLeft: "1px solid var(--border-soft)", opacity: !closed && !signedBy(c.id) && notMine(c.id) ? 0.35 : 1 }}>
-                      <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id)) || closed || notMine(c.id)} onTap={() => tap(r.id, c.id)} />
+                      <MarkCell value={markOf(r.id, c.id)} locked={(Boolean(signedBy(c.id)) && !isAdmin) || closed || notMine(c.id)} onTap={() => tap(r.id, c.id)} />
                     </td>
                   ),
                 )}

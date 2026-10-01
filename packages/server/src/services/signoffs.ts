@@ -2,6 +2,7 @@ import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, checkOrderBlock, crossCheckB
 import type { SignoffTypesService } from "./signoffTypes.js";
 import { PhotoFiles } from "./photoFiles.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
+import { audit } from "./audit.js";
 import { HttpError, badRequest, conflict, forbidden, notFound } from "./errors.js";
 
 export const PERMISSIONS_KEY = "permissions";
@@ -246,8 +247,15 @@ export class SignoffService {
     this.assertCheck(s, input.checkId);
     if (!itemRows(s.template).some((r) => r.id === input.rowId)) throw badRequest("Unknown item row.");
     await this.assertMayDoCheck(s, input.checkId, actor);
-    this.assertNotSigned(s, input.checkId);
+    // An admin may correct a mark in a signed check (any visit) — the operator's signature stays
+    // as it is; the mark records the admin as who set it, and the audit log has the change.
+    const signed = s.signatures.find((sig) => sig.checkId === input.checkId);
+    if (actor.role !== "admin") this.assertNotSigned(s, input.checkId);
     const at = new Date().toISOString();
+    if (signed) {
+      const before = s.marks.find((m) => m.rowId === input.rowId && m.checkId === input.checkId)?.value ?? null;
+      await audit(this.store, { actorId: actor.userId, action: "WRITE", entity: "signoff", entityId: id, detail: { adminEditSignedCheck: signed.checkId, signedBy: signed.name, rowId: input.rowId, from: before, to: input.value } });
+    }
     if (input.value === null) await this.store.signoffs.clearMark(id, input.rowId, input.checkId, at);
     else await this.store.signoffs.upsertMark(id, { rowId: input.rowId, checkId: input.checkId, value: input.value, byUserId: actor.userId, byName: actor.name, at });
     return this.refresh(id);
