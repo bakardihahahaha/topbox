@@ -105,6 +105,7 @@ interface UserRow {
   locked_until: string;
   locked: number;
   can_start: number;
+  card_hash: string;
   created_at: string;
   updated_at: string;
 }
@@ -121,6 +122,7 @@ function toUser(r: UserRow): UserRecord {
     lockedUntil: r.locked_until,
     locked: Boolean(r.locked),
     canStart: r.can_start !== 0,
+    cardHash: r.card_hash ?? "",
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -141,6 +143,11 @@ class SqliteUsers implements UsersRepo {
   }
   async get(id: string) {
     const r = this.db.prepare("SELECT * FROM users WHERE id = ? AND deleted_at = ''").get(id) as UserRow | undefined;
+    return r ? toUser(r) : null;
+  }
+  async getByCardHash(hash: string) {
+    if (!hash) return null;
+    const r = this.db.prepare("SELECT * FROM users WHERE card_hash = ? AND deleted_at = ''").get(hash) as UserRow | undefined;
     return r ? toUser(r) : null;
   }
   async getByUsername(username: string) {
@@ -166,6 +173,7 @@ class SqliteUsers implements UsersRepo {
     if (patch.failedAttempts !== undefined) cols.failed_attempts = patch.failedAttempts;
     if (patch.locked !== undefined) cols.locked = patch.locked ? 1 : 0;
     if (patch.canStart !== undefined) cols.can_start = patch.canStart ? 1 : 0;
+    if (patch.cardHash !== undefined) cols.card_hash = patch.cardHash;
     cols.updated_at = patch.updatedAt ?? new Date().toISOString();
     const keys = Object.keys(cols);
     this.tx(() => {
@@ -176,7 +184,7 @@ class SqliteUsers implements UsersRepo {
   async softDelete(id: string, at: string) {
     this.tx(() => {
       // The username gets a suffix so the name can be reused for a new account later.
-      this.db.prepare("UPDATE users SET deleted_at = ?, updated_at = ?, username = username || '#' || ? WHERE id = ?").run(at, at, id.slice(0, 8), id);
+      this.db.prepare("UPDATE users SET deleted_at = ?, updated_at = ?, card_hash = '', username = username || '#' || ? WHERE id = ?").run(at, at, id.slice(0, 8), id);
       this.enqueue("users", id);
     });
   }

@@ -148,3 +148,38 @@ describe("document settings — logo text", () => {
     expect(d).not.toHaveProperty("logoTextAccent");
   });
 });
+
+describe("RFID card sign-in", () => {
+  it("admin assigns a card; tapping it signs that person in; unknown / taken / removed cards are refused", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const tap = (card: string, ip = "10.0.0.9") => t.app.inject({ method: "POST", url: "/api/auth/card", payload: { card }, remoteAddress: ip });
+
+    expect((await tap("04A1B2C3")).json().error).toBe("UNKNOWN_CARD");
+    const assigned = (await admin("PUT", `/api/users/${t.ids.op}/card`, { card: "04 a1 b2 c3" })).json();
+    expect(assigned.hasCard).toBe(true);
+    // Stored only as a hash.
+    expect(JSON.stringify(await t.store.users.get(t.ids.op))).not.toContain("04A1B2C3");
+
+    const ok = await tap("04A1B2C3");
+    expect(ok.statusCode).toBe(200);
+    const me = t.as(ok.json().token, "10.0.0.9");
+    expect((await me("GET", "/api/auth/me")).json().name).toBe("Olga Operator");
+
+    // One card = one person.
+    const taken = await admin("PUT", `/api/users/${t.ids.op2}/card`, { card: "04A1B2C3" });
+    expect(taken.json().error).toBe("CARD_TAKEN");
+
+    // "Card needs PIN": the card only says who it is.
+    await admin("PATCH", "/api/security", { cardNeedsPin: true, singleIp: false });
+    const needPin = await tap("04A1B2C3");
+    expect(needPin.json()).toMatchObject({ error: "PIN_REQUIRED", userId: t.ids.op });
+    expect(needPin.json().token).toBeUndefined();
+    await admin("PATCH", "/api/security", { cardNeedsPin: false });
+
+    expect((await admin("DELETE", `/api/users/${t.ids.op}/card`)).json().hasCard).toBe(false);
+    expect((await tap("04A1B2C3")).json().error).toBe("UNKNOWN_CARD");
+    // Operators can't assign cards.
+    expect((await me("PUT", `/api/users/${t.ids.op}/card`, { card: "1234" })).statusCode).toBe(403);
+  });
+});

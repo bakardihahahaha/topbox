@@ -1,4 +1,4 @@
-import { randomBytes, randomInt, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { PIN_PATTERN, type LoginUser, type Role } from "@biosite-signoff/shared";
 import type { Store, UserRecord } from "../store/Store.js";
 import { audit } from "./audit.js";
@@ -31,12 +31,26 @@ const DEFAULT_IDLE_MINUTES = 30;
 
 export const IDLE_SETTING = "security.idle_timeout_minutes";
 export const SINGLE_IP_SETTING = "security.single_ip";
+export const CARD_PIN_SETTING = "security.card_needs_pin";
 
 export interface SecuritySettings {
   /** 0 = never. */
   idleTimeoutMinutes: number;
   /** One account = one IP at a time. */
   singleIp: boolean;
+  /** After tapping their RFID card, people still type their PIN. */
+  cardNeedsPin: boolean;
+}
+
+/** RFID card number as the reader types it, tidied up (case, spaces, separators). */
+export function normalizeCard(raw: string): string {
+  return raw.toUpperCase().replace(/[^0-9A-Z]/g, "");
+}
+
+/** Card numbers are stored only as a hash — the database never holds a usable card number. */
+export function cardHash(raw: string): string {
+  const card = normalizeCard(raw);
+  return card ? createHash("sha256").update(`topbox-card:${card}`).digest("hex") : "";
 }
 
 export interface UserSummary {
@@ -48,6 +62,8 @@ export interface UserSummary {
   activeSessions: { ip: string; lastActivityAt: string }[];
   /** May start new sign-offs and do the 1st check. */
   canStart: boolean;
+  /** Has an RFID card assigned. */
+  hasCard: boolean;
   createdAt: string;
 }
 
@@ -55,7 +71,8 @@ export type LoginResult =
   | { ok: true; token: string; userId: string; role: Role }
   | { ok: false; reason: "INVALID_PIN"; attemptsLeft: number }
   | { ok: false; reason: "TEMP_LOCKED" | "IP_BLOCKED"; retryAt: string }
-  | { ok: false; reason: "LOCKED_OUT" | "NO_SUCH_USER" | "ACTIVE_ON_ANOTHER_IP" };
+  | { ok: false; reason: "LOCKED_OUT" | "NO_SUCH_USER" | "ACTIVE_ON_ANOTHER_IP" | "UNKNOWN_CARD" }
+  | { ok: false; reason: "PIN_REQUIRED"; userId: string };
 
 /** In-memory per-IP failure counter (single server process — a restart simply forgives). */
 export class IpGuard {
@@ -110,7 +127,8 @@ export class AuthService {
   async securitySettings(): Promise<SecuritySettings> {
     const idle = await this.store.settings.get(IDLE_SETTING);
     const single = await this.store.settings.get(SINGLE_IP_SETTING);
-    return { idleTimeoutMinutes: idle === null ? DEFAULT_IDLE_MINUTES : Number(idle), singleIp: single === null ? true : single === "1" };
+    const cardPin = await this.store.settings.get(CARD_PIN_SETTING);
+    return { idleTimeoutMinutes: idle === null ? DEFAULT_IDLE_MINUTES : Number(idle), singleIp: single === null ? true : single === "1", cardNeedsPin: cardPin === "1" };
   }
 
   async setSecuritySettings(patch: Partial<SecuritySettings>, actorId: string): Promise<SecuritySettings> {
@@ -120,6 +138,7 @@ export class AuthService {
       await this.store.settings.set(IDLE_SETTING, String(m));
     }
     if (patch.singleIp !== undefined) await this.store.settings.set(SINGLE_IP_SETTING, patch.singleIp ? "1" : "0");
+    if (patch.cardNeedsPin !== undefined) await this.store.settings.set(CARD_PIN_SETTING, patch.cardNeedsPin ? "1" : "0");
     await audit(this.store, { actorId, action: "WRITE", entity: "security_settings", detail: patch });
     return this.securitySettings();
   }
@@ -195,6 +214,35 @@ export class AuthService {
       return { ok: false, reason: "TEMP_LOCKED", retryAt };
     }
 
+    return this.startSession(user, ip, now, "pin");
+  }
+
+  /** Signing in by tapping an RFID card (a USB reader that types the card number). With "card
+   * needs PIN" on (Setup → Security) the card only picks the person; they still type their PIN. */
+  async loginWithCard(card: string, ip: string): Promise<LoginResult> {
+    const now = this.now();
+    const ipBlock = this.ipGuard.blockedUntil(ip, now);
+    if (ipBlock) {
+      await audit(this.store, { actorId: null, action: "AUTH_BLOCKED_IP", entity: "user", detail: { reason: "too many failed sign-ins from this IP", method: "card" }, ip });
+      return { ok: false, reason: "IP_BLOCKED", retryAt: new Date(ipBlock).toISOString() };
+    }
+    const user = await this.store.users.getByCardHash(cardHash(card));
+    if (!user) {
+      await this.fail(ip);
+      await audit(this.store, { actorId: null, action: "AUTH_FAIL", entity: "user", detail: { reason: "unknown card" }, ip });
+      return { ok: false, reason: "UNKNOWN_CARD" };
+    }
+    if (user.locked) {
+      await audit(this.store, { actorId: user.id, action: "AUTH_FAIL", entity: "user", entityId: user.id, detail: { reason: "hard locked", method: "card" }, ip });
+      return { ok: false, reason: "LOCKED_OUT" };
+    }
+    const temp = this.tempLockedUntil(user, now);
+    if (temp) return { ok: false, reason: "TEMP_LOCKED", retryAt: temp };
+    if ((await this.securitySettings()).cardNeedsPin) return { ok: false, reason: "PIN_REQUIRED", userId: user.id };
+    return this.startSession(user, ip, now, "card");
+  }
+
+  private async startSession(user: UserRecord, ip: string, now: number, method: "pin" | "card"): Promise<LoginResult> {
     // Only checked once the PIN is proven — a guesser learns nothing about where the user is.
     const { idleTimeoutMinutes, singleIp } = await this.securitySettings();
     const sessions = await this.store.sessions.listForUser(user.id);
@@ -209,7 +257,7 @@ export class AuthService {
     const token = randomBytes(32).toString("base64url");
     const at = new Date(now).toISOString();
     await this.store.sessions.create({ token, userId: user.id, ip, createdAt: at, expiresAt: new Date(now + SESSION_TTL_MS).toISOString(), lastActivityAt: at });
-    await audit(this.store, { actorId: user.id, action: "AUTH_SUCCESS", entity: "user", entityId: user.id, ip });
+    await audit(this.store, { actorId: user.id, action: "AUTH_SUCCESS", entity: "user", entityId: user.id, detail: method === "card" ? { method: "card" } : undefined, ip });
     return { ok: true, token, userId: user.id, role: user.role };
   }
 
@@ -254,6 +302,7 @@ export class AuthService {
       role: u.role,
       locked: u.locked,
       canStart: u.role === "admin" || u.canStart !== false,
+      hasCard: Boolean(u.cardHash),
       lockedUntil: this.tempLockedUntil(u, now),
       activeSessions: sessions.map((s) => ({ ip: s.ip, lastActivityAt: s.lastActivityAt })),
       createdAt: u.createdAt,
@@ -331,6 +380,25 @@ export class AuthService {
     await this.store.sessions.deleteForUser(id);
     await this.store.users.softDelete(id, new Date(this.now()).toISOString());
     await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { deleted: u.name } });
+  }
+
+  /** Admin assigns an RFID card to a user (replacing any card they had). One card = one person. */
+  async assignCard(id: string, card: string, actorId: string): Promise<UserSummary> {
+    await this.requireUser(id);
+    if (normalizeCard(card).length < 4) throw badRequest("That doesn't look like a card number — tap the card on the reader again.");
+    const hash = cardHash(card);
+    const owner = await this.store.users.getByCardHash(hash);
+    if (owner && owner.id !== id) throw conflict("CARD_TAKEN", `This card already belongs to ${owner.name || owner.username} — remove it there first.`);
+    await this.store.users.update(id, { cardHash: hash });
+    await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { cardAssigned: true } });
+    return (await this.getUser(id))!;
+  }
+
+  async removeCard(id: string, actorId: string): Promise<UserSummary> {
+    await this.requireUser(id);
+    await this.store.users.update(id, { cardHash: "" });
+    await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { cardRemoved: true } });
+    return (await this.getUser(id))!;
   }
 
   /** Admin sets a user's PIN (also lifts any lockout). `pin` omitted = random 6 digits. */

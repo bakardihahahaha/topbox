@@ -53,11 +53,15 @@ export interface UserSummary {
   activeSessions: { ip: string; lastActivityAt: string }[];
   /** May start new sign-offs and do the 1st check. */
   canStart: boolean;
+  /** Has an RFID card assigned. */
+  hasCard: boolean;
   createdAt: string;
 }
 export const listUsers = () => getJson<UserSummary[]>("/api/users");
 export const createUser = (input: { name: string; role: Role; pin?: string; canStart?: boolean }) => sendJson<{ id: string; pin: string }>("POST", "/api/users", input);
 export const updateUser = (id: string, patch: { name?: string; role?: Role; locked?: boolean; canStart?: boolean }) => sendJson<UserSummary>("PATCH", `/api/users/${id}`, patch);
+export const assignCard = (id: string, card: string) => sendJson<UserSummary>("PUT", `/api/users/${id}/card`, { card });
+export const removeCard = (id: string) => sendJson<UserSummary>("DELETE", `/api/users/${id}/card`);
 export const setUserPin = (id: string, pin?: string) => sendJson<{ pin: string }>("POST", `/api/users/${id}/pin`, pin ? { pin } : {});
 export const deleteUser = (id: string) => sendJson("DELETE", `/api/users/${id}`);
 export const endSessions = (id: string) => sendJson("POST", `/api/users/${id}/end-sessions`);
@@ -69,6 +73,8 @@ export const saveDocumentSettings = (s: DocumentSettings) => sendJson<DocumentSe
 export interface SecuritySettings {
   idleTimeoutMinutes: number;
   singleIp: boolean;
+  /** After tapping their RFID card, people still type their PIN. */
+  cardNeedsPin: boolean;
 }
 export const getSecurity = () => getJson<SecuritySettings>("/api/security");
 export const setSecurity = (patch: Partial<SecuritySettings>) => sendJson<SecuritySettings>("PATCH", "/api/security", patch);

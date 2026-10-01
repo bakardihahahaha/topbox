@@ -247,6 +247,11 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE users ADD COLUMN can_start INTEGER NOT NULL DEFAULT 1;
   `,
+  // 12: the user's RFID card (MIFARE) — stored only as a hash, never mirrored to the backup sheet.
+  `
+  ALTER TABLE users ADD COLUMN card_hash TEXT NOT NULL DEFAULT '';
+  CREATE UNIQUE INDEX IF NOT EXISTS users_card_hash ON users (card_hash) WHERE card_hash != '' AND deleted_at = '';
+  `,
 ];
 
 export function migrate(db: Database.Database): void {
