@@ -173,7 +173,7 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
           </div>
           <div style={{ fontSize: 12.5, color: "var(--text-3)", minHeight: 18 }}>{list.data ? `${rows.length} in total · ${rows.length - open} completed · ${open} not completed` : ""}</div>
         </div>
-        {me.role !== "viewer" && (
+        {me.role !== "viewer" && me.canStart !== false && (
           <button style={{ ...primary, height: 52, minWidth: 200 }} onClick={() => navigate(props.startHref)}>
             {props.startLabel}
           </button>

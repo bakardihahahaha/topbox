@@ -32,6 +32,8 @@ export interface UserRecord {
   lockedUntil: string;
   /** Hard lock — only an admin can lift it. */
   locked: boolean;
+  /** May start new sign-offs and do the 1st check (Setup → Users). Admins always may. */
+  canStart?: boolean;
   createdAt: string;
   updatedAt: string;
 }

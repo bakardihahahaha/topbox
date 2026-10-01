@@ -75,7 +75,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   const auth = requireAuth(s.auth);
   const authed = { preHandler: [auth] };
   const admin = { preHandler: [auth, requireAdmin()] };
-  const actor = (req: { user?: { userId: string; role: Role; name: string } }) => req.user!;
+  const actor = (req: { user?: { userId: string; role: Role; name: string; canStart?: boolean } }) => req.user!;
 
   // ---- auth ----------------------------------------------------------------------------------
 
@@ -101,7 +101,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   app.get("/api/auth/me", authed, async (req) => {
     const user = await s.auth.getUser(req.user!.userId);
     const sec = await s.auth.securitySettings();
-    return { userId: user!.id, name: user!.name, role: user!.role, idleTimeoutMinutes: sec.idleTimeoutMinutes };
+    return { userId: user!.id, name: user!.name, role: user!.role, canStart: user!.canStart, idleTimeoutMinutes: sec.idleTimeoutMinutes };
   });
 
   app.post("/api/auth/pin", authed, async (req) => {
@@ -120,11 +120,11 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.get("/api/users", admin, async () => s.auth.listUsers());
   app.post("/api/users", admin, async (req) => {
-    const body = parse(z.object({ name: z.string().max(60), role, pin: pin.optional() }), req.body);
+    const body = parse(z.object({ name: z.string().max(60), role, pin: pin.optional(), canStart: z.boolean().optional() }), req.body);
     return s.auth.createUser(body, req.user!.userId);
   });
   app.patch<{ Params: { id: string } }>("/api/users/:id", admin, async (req) => {
-    const body = parse(z.object({ name: z.string().max(100).optional(), role: role.optional(), locked: z.boolean().optional() }), req.body);
+    const body = parse(z.object({ name: z.string().max(100).optional(), role: role.optional(), locked: z.boolean().optional(), canStart: z.boolean().optional() }), req.body);
     return s.auth.updateUser(req.params.id, body, req.user!.userId);
   });
   app.post<{ Params: { id: string } }>("/api/users/:id/pin", admin, async (req) => {

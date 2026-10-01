@@ -243,6 +243,10 @@ const MIGRATIONS: string[] = [
     SELECT rn FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY part_number COLLATE NOCASE, name COLLATE NOCASE) AS rn FROM parts) AS x WHERE x.id = parts.id
   );
   `,
+  // 11: who may start new sign-offs (and so do the 1st check) — everyone who could so far keeps it.
+  `
+  ALTER TABLE users ADD COLUMN can_start INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

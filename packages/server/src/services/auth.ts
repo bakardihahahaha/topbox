@@ -46,6 +46,8 @@ export interface UserSummary {
   locked: boolean;
   lockedUntil: string | null;
   activeSessions: { ip: string; lastActivityAt: string }[];
+  /** May start new sign-offs and do the 1st check. */
+  canStart: boolean;
   createdAt: string;
 }
 
@@ -216,7 +218,7 @@ export class AuthService {
   }
 
   /** Runs on every authenticated request. */
-  async resolveSession(token: string, ip: string): Promise<{ userId: string; role: Role; name: string } | null> {
+  async resolveSession(token: string, ip: string): Promise<{ userId: string; role: Role; name: string; canStart: boolean } | null> {
     const s = await this.store.sessions.get(token);
     if (!s) return null;
     const { idleTimeoutMinutes, singleIp } = await this.securitySettings();
@@ -236,7 +238,7 @@ export class AuthService {
       return null;
     }
     if (now - new Date(s.lastActivityAt).getTime() > TOUCH_THROTTLE_MS) await this.store.sessions.touch(token, new Date(now).toISOString());
-    return { userId: user.id, role: user.role, name: user.name || user.username };
+    return { userId: user.id, role: user.role, name: user.name || user.username, canStart: user.role === "admin" || user.canStart !== false };
   }
 
   // -------------------------------------------------------------------------------------------
@@ -251,6 +253,7 @@ export class AuthService {
       name: u.name || u.username,
       role: u.role,
       locked: u.locked,
+      canStart: u.role === "admin" || u.canStart !== false,
       lockedUntil: this.tempLockedUntil(u, now),
       activeSessions: sessions.map((s) => ({ ip: s.ip, lastActivityAt: s.lastActivityAt })),
       createdAt: u.createdAt,
@@ -276,7 +279,7 @@ export class AuthService {
   }
 
   /** `pin` omitted = a random 6-digit PIN, returned once. */
-  async createUser(input: { name: string; role: Role; pin?: string }, actorId: string | null): Promise<{ id: string; pin: string }> {
+  async createUser(input: { name: string; role: Role; pin?: string; canStart?: boolean }, actorId: string | null): Promise<{ id: string; pin: string }> {
     const name = input.name.trim();
     if (!name || name.length > 60) throw badRequest("Name is required (max 60 characters).");
     await this.assertUniqueName(name);
@@ -287,7 +290,7 @@ export class AuthService {
     for (let i = 2; await this.store.users.getByUsername(username); i++) username = `${slug(name)}.${i}`;
     const now = new Date(this.now()).toISOString();
     const id = randomUUID();
-    await this.store.users.create({ id, username, name, pinHash: hashPin(pin), role: input.role, failedAttempts: 0, lockouts: 0, lockedUntil: "", locked: false, createdAt: now, updatedAt: now });
+    await this.store.users.create({ id, username, name, pinHash: hashPin(pin), role: input.role, failedAttempts: 0, lockouts: 0, lockedUntil: "", locked: false, canStart: input.canStart ?? true, createdAt: now, updatedAt: now });
     await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: { created: name, role: input.role } });
     return { id, pin };
   }
@@ -302,7 +305,7 @@ export class AuthService {
     return (await this.store.users.list()).filter((u) => u.role === "admin" && !u.locked).length;
   }
 
-  async updateUser(id: string, patch: { name?: string; role?: Role; locked?: boolean }, actorId: string): Promise<UserSummary> {
+  async updateUser(id: string, patch: { name?: string; role?: Role; locked?: boolean; canStart?: boolean }, actorId: string): Promise<UserSummary> {
     const u = await this.requireUser(id);
     if (id === actorId && (patch.locked || (patch.role && patch.role !== u.role))) throw forbidden("You can't lock yourself or change your own role.");
     if (u.role === "admin" && ((patch.role && patch.role !== "admin") || patch.locked) && (await this.activeAdmins()) <= 1) {
@@ -315,7 +318,7 @@ export class AuthService {
     }
     // Unlocking clears every lockout counter too — a clean slate.
     const unlock = patch.locked === false ? { failedAttempts: 0, lockouts: 0, lockedUntil: "" } : {};
-    await this.store.users.update(id, { name, role: patch.role, locked: patch.locked, ...unlock });
+    await this.store.users.update(id, { name, role: patch.role, locked: patch.locked, canStart: patch.canStart, ...unlock });
     if (patch.locked) await this.store.sessions.deleteForUser(id);
     await audit(this.store, { actorId, action: "WRITE", entity: "user", entityId: id, detail: patch });
     return (await this.getUser(id))!;

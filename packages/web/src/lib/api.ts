@@ -51,11 +51,13 @@ export interface UserSummary {
   locked: boolean;
   lockedUntil: string | null;
   activeSessions: { ip: string; lastActivityAt: string }[];
+  /** May start new sign-offs and do the 1st check. */
+  canStart: boolean;
   createdAt: string;
 }
 export const listUsers = () => getJson<UserSummary[]>("/api/users");
-export const createUser = (input: { name: string; role: Role; pin?: string }) => sendJson<{ id: string; pin: string }>("POST", "/api/users", input);
-export const updateUser = (id: string, patch: { name?: string; role?: Role; locked?: boolean }) => sendJson<UserSummary>("PATCH", `/api/users/${id}`, patch);
+export const createUser = (input: { name: string; role: Role; pin?: string; canStart?: boolean }) => sendJson<{ id: string; pin: string }>("POST", "/api/users", input);
+export const updateUser = (id: string, patch: { name?: string; role?: Role; locked?: boolean; canStart?: boolean }) => sendJson<UserSummary>("PATCH", `/api/users/${id}`, patch);
 export const setUserPin = (id: string, pin?: string) => sendJson<{ pin: string }>("POST", `/api/users/${id}/pin`, pin ? { pin } : {});
 export const deleteUser = (id: string) => sendJson("DELETE", `/api/users/${id}`);
 export const endSessions = (id: string) => sendJson("POST", `/api/users/${id}/end-sessions`);

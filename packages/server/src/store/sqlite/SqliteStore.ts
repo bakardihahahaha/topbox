@@ -104,6 +104,7 @@ interface UserRow {
   lockouts: number;
   locked_until: string;
   locked: number;
+  can_start: number;
   created_at: string;
   updated_at: string;
 }
@@ -119,6 +120,7 @@ function toUser(r: UserRow): UserRecord {
     lockouts: r.lockouts,
     lockedUntil: r.locked_until,
     locked: Boolean(r.locked),
+    canStart: r.can_start !== 0,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -148,8 +150,8 @@ class SqliteUsers implements UsersRepo {
   async create(u: UserRecord) {
     this.tx(() => {
       this.db
-        .prepare("INSERT INTO users (id, username, name, password_hash, role, failed_attempts, lockouts, locked_until, locked, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(u.id, u.username, u.name, u.pinHash, u.role, u.failedAttempts, u.lockouts, u.lockedUntil, u.locked ? 1 : 0, u.createdAt, u.updatedAt);
+        .prepare("INSERT INTO users (id, username, name, password_hash, role, failed_attempts, lockouts, locked_until, locked, can_start, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(u.id, u.username, u.name, u.pinHash, u.role, u.failedAttempts, u.lockouts, u.lockedUntil, u.locked ? 1 : 0, u.canStart === false ? 0 : 1, u.createdAt, u.updatedAt);
       this.enqueue("users", u.id);
     });
   }
@@ -163,6 +165,7 @@ class SqliteUsers implements UsersRepo {
     if (patch.role !== undefined) cols.role = patch.role;
     if (patch.failedAttempts !== undefined) cols.failed_attempts = patch.failedAttempts;
     if (patch.locked !== undefined) cols.locked = patch.locked ? 1 : 0;
+    if (patch.canStart !== undefined) cols.can_start = patch.canStart ? 1 : 0;
     cols.updated_at = patch.updatedAt ?? new Date().toISOString();
     const keys = Object.keys(cols);
     this.tx(() => {
@@ -943,6 +946,7 @@ class SqliteTables implements TableAccess {
           const v = row[c] ?? "";
           if (table === "users" && c === "locked") return 1;
           if (c === "sort_order") return Number(v) || 0; // backups from before the parts order
+          if (c === "can_start") return v === "" ? 1 : Number(v) ? 1 : 0; // backups from before it existed
           return v;
         });
         if (table === "users") values.push("!restored-needs-reset", 0);

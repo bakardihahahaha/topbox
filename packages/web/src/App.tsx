@@ -146,7 +146,7 @@ export function App() {
             {isAdmin && <Route path="/deleted" element={<DeletedPage />} />}
             <Route path="/signoff/:serial" element={<MechanismHistoryPage />} />
             <Route path="/mechanisms/:serial" element={<ToTopbox />} />
-            <Route path="/signoffs/new" element={me.role === "viewer" ? <Navigate to="/signoffs" replace /> : <NewSignoffPage />} />
+            <Route path="/signoffs/new" element={me.role === "viewer" || me.canStart === false ? <Navigate to="/signoffs" replace /> : <NewSignoffPage />} />
             <Route path="/signoffs/:id" element={<SignoffPage />} />
             <Route path="/setup/account" element={<AccountPage />} />
             {isAdmin && (

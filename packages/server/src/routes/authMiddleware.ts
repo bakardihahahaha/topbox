@@ -4,7 +4,7 @@ import type { AuthService } from "../services/auth.js";
 
 declare module "fastify" {
   interface FastifyRequest {
-    user?: { userId: string; role: Role; name: string };
+    user?: { userId: string; role: Role; name: string; canStart?: boolean };
   }
 }
 

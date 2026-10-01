@@ -51,7 +51,7 @@ export function MechanismHistoryPage() {
               PDF — all {list.length} visit{list.length === 1 ? "" : "s"}
             </button>
           )}
-          {(!latest || !inWorkshop) && visits.data && me.role !== "viewer" && (
+          {(!latest || !inWorkshop) && visits.data && me.role !== "viewer" && me.canStart !== false && (
             <button style={{ ...primary, height: 56, fontSize: 15 }} onClick={startNewVisit}>
               {latest ? "Mechanism is back — start new visit" : "Start first sign-off"}
             </button>

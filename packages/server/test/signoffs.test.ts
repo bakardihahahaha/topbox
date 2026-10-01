@@ -680,3 +680,44 @@ describe("deleting visits (soft delete, restore, delete forever)", () => {
     expect(mechs[0]!.visits).toBe(1);
   });
 });
+
+describe("who may start sign-offs (Setup → Users)", () => {
+  it("only starters open new sign-offs and do the 1st check; everyone else does the later checks", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const today = new Date().toISOString().slice(0, 10);
+    // Otto may not start: an admin unticks it.
+    expect((await admin("PATCH", `/api/users/${t.ids.op2}`, { canStart: false })).json().canStart).toBe(false);
+    const otto = t.as((await t.login("op2", "3333")).token);
+    const olga = t.as((await t.login("op", "2222")).token);
+    expect((await otto("GET", "/api/auth/me")).json().canStart).toBe(false);
+    expect((await olga("GET", "/api/auth/me")).json().canStart).toBe(true);
+
+    const refused = await otto("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "ST-1", typeId: "service" });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error).toBe("START_NOT_ALLOWED");
+
+    const id = randomUUID();
+    const s = (await olga("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "ST-1", typeId: "service" })).json() as Signoff;
+    const [first, second] = s.template.checks;
+    const item = s.template.rows.find((r) => r.kind === "item")!;
+    // Otto can't touch the 1st check: marks, tick-all, clear, photos.
+    for (const res of [
+      await otto("PUT", `/api/signoffs/${id}/marks`, { rowId: item.id, checkId: first!.id, value: "pass" }),
+      await otto("POST", `/api/signoffs/${id}/marks/fill`, { checkId: first!.id, value: "pass" }),
+      await otto("POST", `/api/signoffs/${id}/marks/clear`, { checkId: first!.id }),
+    ]) expect(res.json().error).toBe("FIRST_CHECK_NOT_ALLOWED");
+    expect((await otto("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: first!.id, dataUrl: FAKE_JPEG_URL })).statusCode).toBe(403);
+
+    // Olga does the 1st check; Otto does the 2nd.
+    await olga("POST", `/api/signoffs/${id}/marks/fill`, { checkId: first!.id, value: "pass" });
+    expect((await olga("PUT", `/api/signoffs/${id}/signatures/${first!.id}`, { path: SIG, date: today })).statusCode).toBe(200);
+    expect((await otto("POST", `/api/signoffs/${id}/marks/fill`, { checkId: second!.id, value: "pass" })).statusCode).toBe(200);
+    expect((await otto("PUT", `/api/signoffs/${id}/signatures/${second!.id}`, { path: SIG, date: today })).statusCode).toBe(200);
+
+    // Admins always may; ticking it back on lets Otto start again.
+    expect((await admin("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "ST-2", typeId: "service" })).statusCode).toBe(200);
+    await admin("PATCH", `/api/users/${t.ids.op2}`, { canStart: true });
+    expect((await otto("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "ST-3", typeId: "service" })).statusCode).toBe(200);
+  });
+});

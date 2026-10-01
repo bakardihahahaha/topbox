@@ -1,4 +1,4 @@
-import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, oncePerTopboxBlock, photoBlock, refurbishedRBlock, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, firstCheckBlock, isRefurbishToggle, oncePerTopboxBlock, photoBlock, refurbishedRBlock, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import { PhotoFiles } from "./photoFiles.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
@@ -10,6 +10,8 @@ export interface Actor {
   userId: string;
   role: Role;
   name: string;
+  /** May start sign-offs and do the 1st check (undefined = yes). */
+  canStart?: boolean;
 }
 
 export const formatNumber = (n: number) => `SO-${String(n).padStart(6, "0")}`;
@@ -94,6 +96,9 @@ export class SignoffService {
   async create(input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }, actor: Actor): Promise<Signoff> {
     const existing = await this.store.signoffs.get(input.id);
     if (existing) return existing;
+    if (actor.role !== "admin" && actor.canStart === false) {
+      throw new HttpError(403, "START_NOT_ALLOWED", "You can't start new sign-offs — ask someone who can (an admin sets this in Setup → Users). You can do the later checks.");
+    }
     const template = await this.store.templates.get(input.templateId);
     if (!template) throw notFound("Template");
     const serialNumber = input.serialNumber.trim();
@@ -217,6 +222,12 @@ export class SignoffService {
     if (!s.template.checks.some((c) => c.id === checkId)) throw badRequest("Unknown check column.");
   }
 
+  /** Marks / signature / photos of the 1st check: only people allowed to start sign-offs. */
+  private assertMayDoCheck(s: Signoff, checkId: string, actor: Actor) {
+    const block = firstCheckBlock(s, checkId, actor);
+    if (block) throw new HttpError(403, "FIRST_CHECK_NOT_ALLOWED", block);
+  }
+
   private assertNotSigned(s: Signoff, checkId: string) {
     if (s.signatures.some((sig) => sig.checkId === checkId)) {
       throw conflict("CHECK_SIGNED", "This check is already signed — remove the signature first to change its marks.");
@@ -227,6 +238,7 @@ export class SignoffService {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     if (!itemRows(s.template).some((r) => r.id === input.rowId)) throw badRequest("Unknown item row.");
+    this.assertMayDoCheck(s, input.checkId, actor);
     this.assertNotSigned(s, input.checkId);
     const at = new Date().toISOString();
     if (input.value === null) await this.store.signoffs.clearMark(id, input.rowId, input.checkId, at);
@@ -239,6 +251,7 @@ export class SignoffService {
   async clearCheck(id: string, checkId: string, actor: Actor): Promise<Signoff> {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, checkId);
+    this.assertMayDoCheck(s, checkId, actor);
     this.assertNotSigned(s, checkId);
     await this.store.signoffs.clearMarks(id, checkId, new Date().toISOString());
     return this.refresh(id);
@@ -294,6 +307,7 @@ export class SignoffService {
   async fillCheck(id: string, input: { checkId: string; value: MarkValue }, actor: Actor): Promise<Signoff> {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
+    this.assertMayDoCheck(s, input.checkId, actor);
     this.assertNotSigned(s, input.checkId);
     const marked = new Set(s.marks.filter((m) => m.checkId === input.checkId).map((m) => m.rowId));
     const at = new Date().toISOString();
@@ -308,6 +322,7 @@ export class SignoffService {
     const s = await this.requireWritable(id, actor);
     this.assertCheck(s, input.checkId);
     if (!s.template.signRowEnabled) throw badRequest("This template has no sign row.");
+    this.assertMayDoCheck(s, input.checkId, actor);
     if (!DATE_RE.test(input.date)) throw badRequest("Date must be YYYY-MM-DD.");
     if (input.time !== undefined && input.time !== "" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.time)) throw badRequest("Time must be HH:MM.");
     if (!input.path || input.path.length > 40_000 || !PATH_RE.test(input.path)) throw badRequest("Invalid signature.");

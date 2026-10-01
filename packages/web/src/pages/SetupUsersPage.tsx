@@ -13,7 +13,7 @@ const PIN_RE = /^\d{4,8}$/;
 export function SetupUsersPage() {
   const me = useMe();
   const { data: users, error, setError, reload } = useData<UserSummary[]>(listUsers);
-  const [form, setForm] = useState({ name: "", pin: "", role: "operator" as Role });
+  const [form, setForm] = useState({ name: "", pin: "", role: "operator" as Role, canStart: false });
   const [editing, setEditing] = useState<{ id: string; name: string; pin: string } | null>(null);
 
   async function run(fn: () => Promise<unknown>) {
@@ -30,8 +30,8 @@ export function SetupUsersPage() {
     e.preventDefault();
     const name = form.name.trim();
     await run(async () => {
-      const { pin } = await createUser({ name, role: form.role, pin: form.pin || undefined });
-      setForm({ name: "", pin: "", role: "operator" });
+      const { pin } = await createUser({ name, role: form.role, pin: form.pin || undefined, canStart: form.role === "admin" || form.canStart });
+      setForm({ name: "", pin: "", role: "operator", canStart: false });
       if (!form.pin) await alertDialog(`PIN for ${name}:\n\n${pin}\n\nShown once — pass it on now.`, { title: "User created" });
     });
   }
@@ -45,6 +45,9 @@ export function SetupUsersPage() {
       <p style={hint}>
         Everyone here appears as a tile on the sign-in screen — they tap their name and type their PIN (4–8 digits). 3 wrong PINs lock the account for 5 minutes; 5 such locks in a row lock it
         until an admin unlocks it here. The name is also what's printed next to a signature.
+      </p>
+      <p style={hint}>
+        <b>Starts sign-offs</b>: only operators with this ticked can open a new sign-off and do its 1st check. The others do the later checks (2nd, 3rd…). Admins always can.
       </p>
 
       <form onSubmit={add} style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginBottom: 16, alignItems: "end" }}>
@@ -78,6 +81,7 @@ export function SetupUsersPage() {
             <option value="parts">Parts used (parts page only)</option>
           </select>
         </label>
+        {form.role === "operator" && <StartsToggle checked={form.canStart} onChange={(canStart) => setForm({ ...form, canStart })} />}
         <button type="submit" style={{ ...primary, opacity: form.name.trim() && pinOk ? 1 : 0.5 }} disabled={!form.name.trim() || !pinOk}>
           Add user
         </button>
@@ -134,6 +138,7 @@ export function SetupUsersPage() {
                   {u.id === me.userId && <span style={{ fontSize: 12, color: "var(--text-3)" }}> (you)</span>}
                   <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                     <span style={chip(u.role === "admin" ? "accent" : "muted")}>{u.role}</span>
+                    {u.role === "operator" && <span style={chip(u.canStart ? "accent" : "muted")}>{u.canStart ? "starts sign-offs + 1st check" : "later checks only"}</span>}
                     {u.locked && <span style={chip("danger")}>locked</span>}
                     {!u.locked && u.lockedUntil && <span style={chip("warn")}>locked until {formatDateTime(u.lockedUntil)}</span>}
                     {u.activeSessions.length > 0 && <span style={chip("accent")}>signed in</span>}
@@ -163,6 +168,7 @@ export function SetupUsersPage() {
                       <option value="parts">Parts used</option>
                     </select>
                   )}
+                  {u.role === "operator" && <StartsToggle checked={u.canStart} onChange={(canStart) => void run(() => updateUser(u.id, { canStart }))} />}
                   {u.id !== me.userId && (u.locked || u.lockedUntil) && (
                     <button style={ghost} onClick={() => run(() => updateUser(u.id, { locked: false }))}>
                       Unlock
@@ -204,3 +210,16 @@ export function SetupUsersPage() {
 }
 
 const field = { display: "flex", flexDirection: "column" as const, gap: 6 };
+
+/** "Starts sign-offs" — may open new sign-offs and do the 1st check. */
+function StartsToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label
+      style={{ display: "flex", alignItems: "center", gap: 8, height: 44, padding: "0 12px", border: `1px solid ${checked ? "var(--accent)" : "var(--border)"}`, borderRadius: "var(--radius-control)", cursor: "pointer", fontSize: 13, fontWeight: 700, color: checked ? "var(--accent)" : "var(--text-2)", whiteSpace: "nowrap" }}
+      title="Can open new sign-offs and do the 1st check"
+    >
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ width: 22, height: 22, accentColor: "var(--accent)" }} />
+      Starts sign-offs
+    </label>
+  );
+}

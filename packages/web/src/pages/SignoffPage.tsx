@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, allowsRefurbishedR, crossCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, allowsRefurbishedR, crossCheckBlock, firstCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -173,7 +173,11 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
     void mutate({ kind: "updateHeader", id, patch: { serialNumber: next } }, () => api.updateSignoffHeader(id, { serialNumber: next }));
   }
 
+  /** The 1st check is only for people allowed to start sign-offs (Setup → Users). */
+  const notMine = (checkId: string) => firstCheckBlock(s, checkId, me) !== null;
+
   function tap(rowId: string, checkId: string) {
+    if (notMine(checkId)) return setError(firstCheckBlock(s, checkId, me));
     const value = NEXT[markOf(rowId, checkId) ?? "none"]!;
     void mutate({ kind: "setMark", id, rowId, checkId, value }, () => api.setMark(id, rowId, checkId, value));
   }
@@ -324,7 +328,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                 return (
                   <th key={c.id} style={{ ...th, width: 92 }}>
                     <div>{c.label}</div>
-                    {!sig && !full && !closed && (
+                    {!sig && !full && !closed && !notMine(c.id) && (
                       <button
                         onClick={() => void mutate({ kind: "fillCheck", id, checkId: c.id, value: "pass" }, () => api.fillCheck(id, c.id, "pass"))}
                         title="Tick every empty item in this check"
@@ -333,7 +337,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                         ✓ all
                       </button>
                     )}
-                    {!sig && full && !closed && (
+                    {!sig && full && !closed && !notMine(c.id) && (
                       <button
                         onClick={() => void mutate({ kind: "clearCheck", id, checkId: c.id }, () => api.clearCheck(id, c.id))}
                         title="Untick every item in this check"
@@ -343,6 +347,11 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                       </button>
                     )}
                     {sig && <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>🔒 signed</div>}
+                    {!sig && !closed && notMine(c.id) && (
+                      <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }} title="Only people allowed to start sign-offs do this check">
+                        🔒 starters only
+                      </div>
+                    )}
                   </th>
                 );
               })}
@@ -359,7 +368,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                     </td>
                   ) : (
                     <td key={c.id} style={{ padding: 3, borderLeft: "1px solid var(--border-soft)" }}>
-                      <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id)) || closed} onTap={() => tap(r.id, c.id)} />
+                      <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id)) || closed || notMine(c.id)} onTap={() => tap(r.id, c.id)} />
                     </td>
                   ),
                 )}

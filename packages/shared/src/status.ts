@@ -116,9 +116,20 @@ export function maxChecksPerOperator(checks: number, operators: number): number 
   return Math.ceil(checks / Math.max(1, operators));
 }
 
-/** Why this operator may not sign `checkId` under the cross-check rule, or null if they may. */
-export function crossCheckBlock(s: Signoff, checkId: string, actor: { userId: string; role: Role }, operators: number): string | null {
+/** Only people allowed to start sign-offs (Setup → Users) may do the 1st check — marks, photos
+ * and signature. Everyone else does the later checks. Why `actor` may not, or null if they may. */
+export function firstCheckBlock(s: Pick<Signoff, "template">, checkId: string, actor: { role: Role; canStart?: boolean }): string | null {
+  if (actor.role === "admin" || actor.canStart !== false) return null;
+  const first = s.template.checks[0];
+  if (!first || first.id !== checkId) return null;
+  return `Only people allowed to start sign-offs can do the ${first.label} — you can do the later checks.`;
+}
+
+/** Why this operator may not sign `checkId` (1st-check permission, cross-check rule), or null if they may. */
+export function crossCheckBlock(s: Signoff, checkId: string, actor: { userId: string; role: Role; canStart?: boolean }, operators: number): string | null {
   if (actor.role === "admin") return null;
+  const first = firstCheckBlock(s, checkId, actor);
+  if (first) return first;
   const max = maxChecksPerOperator(s.template.checks.length, operators);
   const mine = s.signatures.filter((g) => g.checkId !== checkId && g.userId === actor.userId);
   if (mine.length < max) return null;
@@ -151,7 +162,7 @@ export function typeLocked(s: Pick<Signoff, "signatures">): boolean {
  * check its taker is doing: the one they signed, or — before signing — the next unsigned check,
  * provided the cross-check rule lets them sign it. So if John did check 1 and Mateusz is doing
  * check 2, Mateusz can photograph check 2 only. Admins may add to any check; viewers to none. */
-export function photoBlock(s: Signoff, checkId: string, actor: { userId: string; role: Role }, operators: number): string | null {
+export function photoBlock(s: Signoff, checkId: string, actor: { userId: string; role: Role; canStart?: boolean }, operators: number): string | null {
   if (actor.role === "viewer") return "Viewers can't add photos.";
   if (actor.role === "admin") return null;
   const check = s.template.checks.find((c) => c.id === checkId);

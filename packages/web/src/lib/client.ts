@@ -97,6 +97,8 @@ export interface Me {
   userId: string;
   name: string;
   role: Role;
+  /** May start new sign-offs and do the 1st check (Setup → Users); admins always. */
+  canStart?: boolean;
   idleTimeoutMinutes: number;
 }
 
