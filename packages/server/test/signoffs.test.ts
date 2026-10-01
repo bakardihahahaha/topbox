@@ -144,9 +144,12 @@ describe("sign-off flow", () => {
     await t.catalog.updatePart(spring.id, { name: "Spring v2" });
     expect(((await call("GET", `/api/signoffs/${svcId}`)).json() as Signoff).parts[0]!.name).toBe("Plunger spring");
 
-    expect((await call("PATCH", `/api/signoffs/${svcId}`, { mode: "new" })).json().error).toBe("HAS_PARTS");
+    // Operators can't change the type at all; an admin can, once the parts are gone.
+    expect((await call("PATCH", `/api/signoffs/${svcId}`, { mode: "new" })).statusCode).toBe(403);
+    const admin = t.as((await t.login("admin", "1111")).token);
+    expect((await admin("PATCH", `/api/signoffs/${svcId}`, { mode: "new" })).json().error).toBe("HAS_PARTS");
     await call("DELETE", `/api/signoffs/${svcId}/parts/${line}`);
-    expect(((await call("PATCH", `/api/signoffs/${svcId}`, { mode: "new" })).json() as Signoff).mode).toBe("new");
+    expect(((await admin("PATCH", `/api/signoffs/${svcId}`, { mode: "new" })).json() as Signoff).mode).toBe("new");
   });
 
   it("freezes the template on the sign-off", async () => {
@@ -338,10 +341,6 @@ describe("operator restrictions", () => {
     // Signatures are permanent for operators — even their own
     expect((await op("DELETE", `/api/signoffs/${id}/signatures/${c1!.id}`)).statusCode).toBe(403);
 
-    // Delete: admin-only by default; admin can open it to everyone
-    expect((await op("DELETE", `/api/signoffs/${id}`)).statusCode).toBe(403);
-    expect((await op("GET", "/api/permissions")).json()).toEqual({ deleteSignoffs: "admin" });
-    expect((await op("PUT", "/api/permissions", { deleteSignoffs: "all" })).statusCode).toBe(403);
 
     // Complete it -> operators can't change parts/notes/type any more
     const part = await t.catalog.createPart({ partNumber: "P1", name: "Spring", description: "" });
@@ -422,16 +421,13 @@ describe("photos, refurbished serials and the fixed type", () => {
     expect(mechs).toEqual([expect.objectContaining({ serialNumber: "667R", visits: 2 })]);
   });
 
-  it("fixes the type for operators once the first check is signed", async () => {
+  it("fixes the type for operators from the start; only an admin changes it", async () => {
     const t = await setup();
     const op = t.as((await t.login("op", "2222")).token);
     const id = randomUUID();
-    await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "T-1", typeId: "new-uk" });
-    expect((await op("PATCH", `/api/signoffs/${id}`, { typeId: "new-usa" })).statusCode).toBe(200);
-    const first = t.template.checks[0]!;
-    await op("POST", `/api/signoffs/${id}/marks/fill`, { checkId: first.id, value: "pass" });
-    await op("PUT", `/api/signoffs/${id}/signatures/${first.id}`, { path: SIG, date: today });
+    await op("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "T-1", typeId: "new-usa" });
     expect((await op("PATCH", `/api/signoffs/${id}`, { typeId: "new-uk" })).statusCode).toBe(403);
+    expect((await op("PATCH", `/api/signoffs/${id}`, { typeId: "new-usa" })).statusCode).toBe(200); // same type = no change
     const admin = t.as((await t.login("admin", "1111")).token);
     expect(((await admin("PATCH", `/api/signoffs/${id}`, { typeId: "new-uk" })).json() as Signoff).typeName).toBe("New (UK)");
   });
@@ -508,7 +504,8 @@ describe("types used only once per TopBox", () => {
     const service2 = (await start("555", "service")).json() as Signoff;
     expect(service2.typeName).toBe("Service");
     // …and a visit can't be switched to an "only once" type it already had either.
-    expect((await op("PATCH", `/api/signoffs/${service2.id}`, { typeId: "new-usa" })).json().error).toBe("TYPE_ONCE_ONLY");
+    const adminT = t.as((await t.login("admin", "1111")).token);
+    expect((await adminT("PATCH", `/api/signoffs/${service2.id}`, { typeId: "new-usa" })).json().error).toBe("TYPE_ONCE_ONLY");
 
     // Setup → Types decides: make Service "only once" and a third Service is refused.
     const admin = t.as((await t.login("admin", "1111")).token);
@@ -608,5 +605,78 @@ describe("parts role", () => {
     // An operator still can't book parts out.
     const op = t.as((await t.login("op", "2222")).token);
     expect((await op("POST", "/api/parts-usage/booked-out", { lineIds: [line], booked: true })).statusCode).toBe(403);
+  });
+});
+
+describe("deleting visits (soft delete, restore, delete forever)", () => {
+  it("keeps a TopBox's history consistent whichever visit is deleted", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const op = t.as((await t.login("op", "2222")).token);
+    const spring = await t.catalog.createPart({ partNumber: "SP-01", name: "Spring", description: "" });
+    const checks = t.template.checks;
+    const visit = async (typeId: string, day: string, finish: boolean) => {
+      const id = randomUUID();
+      await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "900", typeId, arrivedAt: `2026-09-${day}T08:00:00.000Z` });
+      for (const c of finish ? checks : []) {
+        await admin("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c.id, value: "pass" });
+        await admin("PUT", `/api/signoffs/${id}/signatures/${c.id}`, { path: SIG, date: `2026-09-${day}` });
+      }
+      return id;
+    };
+    const v1 = await visit("new-uk", "01", true);
+    const v2 = await visit("service", "05", true);
+    const v3 = await visit("service", "10", true);
+    const v4 = await visit("service", "15", false);
+    const line = randomUUID();
+    await admin("PUT", `/api/signoffs/${v2}/parts/${line}`, { partId: spring.id, qty: 2 });
+    await admin("POST", "/api/parts-usage/booked-out", { lineIds: [line], booked: true });
+    const history = async () => ((await op("GET", "/api/mechanisms/900/visits")).json() as Signoff[]).map((v) => v.id);
+
+    // Deleting from the middle: an operator only deletes the current visit; an admin any.
+    expect((await op("DELETE", `/api/signoffs/${v3}`)).json().error).toBe("OLD_VISIT");
+    expect((await admin("DELETE", `/api/signoffs/${v3}`)).statusCode).toBe(200);
+    expect(await history()).toEqual([v1, v2, v4]); // the others stay, in order (renumbered 1-3)
+    expect((await op("GET", `/api/signoffs/${v3}`)).statusCode).toBe(404);
+    expect((await op("PUT", `/api/signoffs/${v3}/marks`, { rowId: t.template.rows[1]!.id, checkId: checks[0]!.id, value: "pass" })).statusCode).toBe(404);
+    const deleted = (await admin("GET", "/api/signoffs-deleted")).json() as { id: string; deletedBy: string }[];
+    expect(deleted).toMatchObject([{ id: v3, deletedBy: "Admin" }]);
+    expect((await op("GET", "/api/signoffs-deleted")).statusCode).toBe(403);
+
+    // The operator deletes the current visit; the one before becomes the latest (still closed: complete).
+    expect((await op("DELETE", `/api/signoffs/${v4}`)).statusCode).toBe(200);
+    expect(await history()).toEqual([v1, v2]);
+    expect((await op("PATCH", `/api/signoffs/${v2}`, { notes: "x" })).json().error).toBe("COMPLETED");
+    expect((await admin("GET", "/api/signoffs-deleted/count")).json()).toEqual({ count: 2 });
+
+    // Deleting the New visit frees "New (UK)" for this TopBox; restoring it then conflicts.
+    expect((await admin("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "900", typeId: "new-uk" })).json().error).toBe("TYPE_ONCE_ONLY");
+    await admin("DELETE", `/api/signoffs/${v1}`);
+    const v5 = randomUUID();
+    expect((await admin("POST", "/api/signoffs", { id: v5, templateId: t.template.id, serialNumber: "900", typeId: "new-uk" })).statusCode).toBe(200);
+    const clash = await admin("POST", `/api/signoffs/${v1}/restore`);
+    expect(clash.json().error).toBe("RESTORE_CONFLICT");
+    expect(clash.json().message).toMatch(/already in the database as New \(UK\)/);
+    await admin("DELETE", `/api/signoffs/${v5}`);
+    expect((await admin("POST", `/api/signoffs/${v1}/restore`)).statusCode).toBe(200);
+    expect(await history()).toEqual([v1, v2]);
+
+    // A deleted visit's booked-out parts show as "return to stock"; it can't go for good until settled.
+    await admin("DELETE", `/api/signoffs/${v2}`);
+    const range = "from=2000-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z";
+    const usage = (await admin("GET", `/api/parts-usage?${range}`)).json() as { lineId: string; qty: number; bookedOutQty: number; signoffDeleted: boolean }[];
+    expect(usage).toMatchObject([{ lineId: line, qty: 0, bookedOutQty: 2, signoffDeleted: true }]);
+    expect((await admin("DELETE", `/api/signoffs/${v2}/forever`)).json().error).toBe("PARTS_BOOKED");
+    await admin("POST", "/api/parts-usage/booked-out", { lineIds: [line], booked: true }); // returned to stock
+    expect((await admin("DELETE", `/api/signoffs/${v2}/forever`)).statusCode).toBe(200);
+    expect(((await admin("GET", "/api/signoffs-deleted")).json() as { id: string }[]).map((d) => d.id)).not.toContain(v2);
+    expect((await admin("POST", `/api/signoffs/${v2}/restore`)).statusCode).toBe(404);
+
+    // Only from the Deleted tab, only by an admin.
+    expect((await admin("DELETE", `/api/signoffs/${v1}/forever`)).json().error).toBe("NOT_DELETED");
+    expect((await op("DELETE", `/api/signoffs/${v3}/forever`)).statusCode).toBe(403);
+    expect((await op("POST", `/api/signoffs/${v3}/restore`)).statusCode).toBe(403);
+    const mechs = (await op("GET", "/api/mechanisms?q=900")).json() as { visits: number }[];
+    expect(mechs[0]!.visits).toBe(1);
   });
 });

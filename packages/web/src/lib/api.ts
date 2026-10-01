@@ -23,6 +23,11 @@ export async function getSignoffs(ids: string[]): Promise<Signoff[]> {
 export const createSignoff = (input: { id: string; templateId: string; serialNumber: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }) => sendJson<Signoff>("POST", "/api/signoffs", input);
 export const updateSignoffHeader = (id: string, patch: { serialNumber?: string; notes?: string; typeId?: string; mode?: SignoffMode; arrivedAt?: string }) => sendJson<Signoff>("PATCH", `/api/signoffs/${id}`, patch);
 export const deleteSignoff = (id: string) => sendJson("DELETE", `/api/signoffs/${id}`);
+export type DeletedSignoff = SignoffSummary & { deletedAt: string; deletedBy: string };
+export const getDeletedSignoffs = () => getJson<DeletedSignoff[]>("/api/signoffs-deleted");
+export const getDeletedCount = () => getJson<{ count: number }>("/api/signoffs-deleted/count");
+export const restoreSignoff = (id: string) => sendJson("POST", `/api/signoffs/${id}/restore`);
+export const deleteSignoffForever = (id: string) => sendJson("DELETE", `/api/signoffs/${id}/forever`);
 export const setMark = (id: string, rowId: string, checkId: string, value: MarkValue | null) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/marks`, { rowId, checkId, value });
 export const fillCheck = (id: string, checkId: string, value: MarkValue) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/fill`, { checkId, value });
 export const signCheck = (id: string, checkId: string, path: string, date: string, time?: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/signatures/${checkId}`, { path, date, time });

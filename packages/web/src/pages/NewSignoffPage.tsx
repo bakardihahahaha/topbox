@@ -13,7 +13,7 @@ import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
 import { cacheSignoff } from "../lib/signoffCache.js";
 import { draftSignoff } from "../lib/localSignoff.js";
-import { card, errorBox, errorMessage, ghost, h1, hint, input, label, page, primary } from "../lib/ui.js";
+import { card, errorBox, errorMessage, ghost, h1, hint, infoBox, input, label, page, primary } from "../lib/ui.js";
 
 export function NewSignoffPage() {
   const navigate = useNavigate();
@@ -40,7 +40,11 @@ export function NewSignoffPage() {
   // to the first repeatable type (e.g. Service), else the first type still allowed for it.
   const blockOf = (t: SignoffType) => (previous && previous.length > 0 && serial.trim() ? oncePerTopboxBlock(serial.trim(), previous, t) : null);
   const returning = Boolean(previous && previous.length > 0 && !stillIn);
-  const type = types.find((t) => t.id === typeId) ?? (returning ? (types.find((t) => !isOncePerTopbox(t)) ?? types.find((t) => !blockOf(t))) : undefined) ?? types[0];
+  const picked = types.find((t) => t.id === typeId);
+  const pickedBlocked = picked ? blockOf(picked) : null;
+  // First repeatable type still allowed (e.g. Service), else any type still allowed.
+  const fallback = types.find((t) => !isOncePerTopbox(t) && !blockOf(t)) ?? types.find((t) => !blockOf(t));
+  const type = (picked && !pickedBlocked ? picked : undefined) ?? (returning || pickedBlocked ? fallback : undefined) ?? picked ?? types[0];
   const key = mechanismKey(serial);
   const hasR = serial.trim() !== "" && key !== serial.trim().toUpperCase();
   // The refurbished R only on the types that allow it (Setup → Types).
@@ -100,15 +104,17 @@ export function NewSignoffPage() {
                 key={t.id}
                 type="button"
                 onClick={() => setTypeId(t.id)}
+                // Already used for this TopBox ("only once" types) — greyed and not clickable.
+                disabled={Boolean(blockOf(t))}
                 title={blockOf(t) ?? undefined}
                 style={{
-                  opacity: blockOf(t) && type?.id !== t.id ? 0.4 : 1,
+                  opacity: blockOf(t) ? 0.35 : 1,
                   minHeight: 72,
                   borderRadius: "var(--radius-control)",
                   border: `1px solid ${type?.id === t.id ? "var(--accent)" : "var(--border)"}`,
                   background: type?.id === t.id ? "var(--accent-wash)" : "var(--bg-deep)",
                   color: type?.id === t.id ? "var(--accent-wash-text)" : "var(--text-2)",
-                  cursor: "pointer",
+                  cursor: blockOf(t) ? "not-allowed" : "pointer",
                   textAlign: "left",
                   padding: "8px 12px",
                 }}
@@ -149,6 +155,11 @@ export function NewSignoffPage() {
                 Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Last left {stamp(departedAt(lastVisit)?.slice(0, 10))}. Type set to <b>{type?.name}</b>{canAddR ? " — add R if it was refurbished" : ""}.
               </>
             )}
+          </div>
+        )}
+        {pickedBlocked && picked && type && type.id !== picked.id && (
+          <div style={{ ...infoBox, marginBottom: 0 }}>
+            {serial.trim()} has already had a {picked.name} visit — {picked.name} can only be used once per TopBox, so <b>{type.name}</b> is selected instead.
           </div>
         )}
         {typeBlock && <div style={{ ...errorBox, marginBottom: 0 }}>{typeBlock}</div>}

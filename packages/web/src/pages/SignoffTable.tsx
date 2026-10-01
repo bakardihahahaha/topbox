@@ -8,6 +8,7 @@ import { useMe } from "../lib/meContext.js";
 import { downloadPdf, viewPdf } from "../lib/pdfLazy.js";
 import { stamp, topboxUrl } from "../lib/format.js";
 import { SerialInput } from "../components/SerialInput.js";
+import { PAGE_SIZE, Pager, pageOf } from "../components/Pager.js";
 import { card, chip, errorBox, errorMessage, ghost, input, page, primary } from "../lib/ui.js";
 
 type StatusFilter = "all" | "open" | "done";
@@ -52,9 +53,20 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
           : Number(a.status === "complete") - Number(b.status === "complete") || b.createdAt.localeCompare(a.createdAt),
     );
   const picked = items.filter((s) => selected.has(s.id));
+  // 100 per page; a new search / filter / sort starts again at page 1.
+  const [pageNo, setPageNo] = useState(0);
+  const pageKey = `${q}|${status}|${sort}`;
+  const [lastKey, setLastKey] = useState(pageKey);
+  if (lastKey !== pageKey) {
+    setLastKey(pageKey);
+    setPageNo(0);
+  }
+  const lastPage = Math.max(0, Math.ceil(items.length / PAGE_SIZE) - 1);
+  const shown = pageOf(items, Math.min(pageNo, lastPage));
+  const allShownPicked = shown.length > 0 && shown.every((s) => selected.has(s.id));
   // Column headings: the check labels of the visit with the most checks (usually all the same).
   const checkLabels = items.reduce<string[]>((best, s) => ((s.checks?.length ?? 0) > best.length ? s.checks!.map((c) => c.label) : best), ["1st Check"]);
-  const rowGrid = { display: "grid", gridTemplateColumns: `28px 40px 170px 130px 150px repeat(${checkLabels.length}, 120px)`, alignItems: "center", columnGap: 12 } as const;
+  const rowGrid = { display: "grid", gridTemplateColumns: `28px 170px 130px 150px repeat(${checkLabels.length}, 120px)`, alignItems: "center", columnGap: 12 } as const;
 
   function toggle(id: string) {
     setSelected((cur) => {
@@ -144,18 +156,29 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
       {!list.data && !list.error && <div style={{ color: "var(--text-3)", fontSize: 13 }}>Loading…</div>}
       {list.data && items.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 14 }}>Nothing matches.</div>}
 
+      <Pager page={Math.min(pageNo, lastPage)} total={items.length} onPage={setPageNo} />
       {items.length > 0 && (
         <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "var(--text-3)", margin: "0 0 8px 14px", cursor: "pointer" }}>
-          <input type="checkbox" checked={picked.length === items.length} onChange={(e) => setSelected(e.target.checked ? new Set(items.map((s) => s.id)) : new Set())} style={{ width: 24, height: 24, accentColor: "var(--accent)" }} />
-          Select all
+          <input
+            type="checkbox"
+            checked={allShownPicked}
+            onChange={(e) =>
+              setSelected((cur) => {
+                const next = new Set(cur);
+                for (const s of shown) e.target.checked ? next.add(s.id) : next.delete(s.id);
+                return next;
+              })
+            }
+            style={{ width: 24, height: 24, accentColor: "var(--accent)" }}
+          />
+          Select all{items.length > PAGE_SIZE ? " on this page" : ""}
         </label>
       )}
       {/* One TopBox per line, in fixed columns: serial · type · status · each check's date. */}
       <div style={{ overflowX: "auto" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 28 + 40 + 170 + 130 + 150 + checkLabels.length * 120 + 12 * (4 + checkLabels.length) + 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 28 + 170 + 130 + 150 + checkLabels.length * 120 + 12 * (3 + checkLabels.length) + 28 }}>
           {items.length > 0 && (
             <div style={{ ...rowGrid, padding: "0 14px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-3)" }}>
-              <span />
               <span />
               <span>Serial number</span>
               <span>Type</span>
@@ -165,12 +188,9 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
               ))}
             </div>
           )}
-          {items.map((s, i) => (
+          {shown.map((s) => (
             <div key={s.id} style={{ ...card, ...rowGrid, padding: "12px 14px", borderColor: selected.has(s.id) ? "var(--accent)" : "var(--border-soft)" }}>
               <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} aria-label={`Select ${s.serialNumber}`} style={{ width: 28, height: 28, accentColor: "var(--accent)" }} />
-              <span className="mono" style={{ textAlign: "right", color: "var(--text-3)", fontSize: 14 }}>
-                {i + 1}.
-              </span>
               <Link to={topboxUrl(s.serialNumber, s.id)} className="mono" style={{ fontSize: 18, fontWeight: 700, color: "inherit", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {s.serialNumber}
               </Link>
@@ -190,6 +210,7 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
           ))}
         </div>
       </div>
+      <Pager page={Math.min(pageNo, lastPage)} total={items.length} onPage={setPageNo} />
     </div>
   );
 }

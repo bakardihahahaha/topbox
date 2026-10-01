@@ -234,6 +234,18 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     return s.signoffs.updateHeader(req.params.id, body, actor(req));
   });
 
+  // Deleted sign-offs (admin): list, restore, delete forever.
+  app.get("/api/signoffs-deleted", admin, async () => s.signoffs.deleted());
+  app.get("/api/signoffs-deleted/count", admin, async () => ({ count: (await s.signoffs.deleted()).length }));
+  app.post<{ Params: { id: string } }>("/api/signoffs/:id/restore", admin, async (req) => {
+    await s.signoffs.restore(req.params.id, actor(req));
+    return { ok: true };
+  });
+  app.delete<{ Params: { id: string } }>("/api/signoffs/:id/forever", admin, async (req) => {
+    await s.signoffs.deleteForever(req.params.id, actor(req));
+    return { ok: true };
+  });
+
   app.delete<{ Params: { id: string } }>("/api/signoffs/:id", authed, async (req) => {
     await s.signoffs.remove(req.params.id, actor(req));
     return { ok: true };
@@ -295,7 +307,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   // ---- mechanisms (one serial number across all its visits) ----------------------------------
 
   app.get("/api/mechanisms", authed, async (req) => {
-    const q = parse(z.object({ q: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(500).default(200) }), req.query);
+    const q = parse(z.object({ q: z.string().max(100).optional(), limit: z.coerce.number().int().min(1).max(100000).default(100000) }), req.query);
     return s.signoffs.mechanisms(q.q?.trim() || undefined, q.limit);
   });
   app.get<{ Params: { typeId: string } }>("/api/stock/:typeId", authed, async (req) => s.signoffs.stock(req.params.typeId));

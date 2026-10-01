@@ -231,6 +231,11 @@ const MIGRATIONS: string[] = [
   DROP TABLE users;
   ALTER TABLE users_new RENAME TO users;
   `,
+  // 9: who marked a part line as booked out; who deleted a sign-off (the admin's Deleted tab).
+  `
+  ALTER TABLE signoff_parts ADD COLUMN booked_out_by TEXT NOT NULL DEFAULT '';
+  ALTER TABLE signoffs ADD COLUMN deleted_by TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

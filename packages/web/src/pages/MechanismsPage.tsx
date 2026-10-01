@@ -4,6 +4,7 @@ import type { MechanismSummary } from "@biosite-signoff/shared";
 import { listMechanisms } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { SerialInput } from "../components/SerialInput.js";
+import { Pager, pageOf } from "../components/Pager.js";
 import { daysBetween, stamp, topboxUrl } from "../lib/format.js";
 import { card, chip, errorBox, errorMessage, ghost, h1, hint, page, primary } from "../lib/ui.js";
 import { mechanismPdfSignoffs, type PdfScope } from "../lib/mechanismPdf.js";
@@ -20,6 +21,9 @@ export function MechanismsPage() {
   }, [q]);
   const list = useData<MechanismSummary[]>(() => listMechanisms(debounced || undefined), [debounced]);
   const now = new Date();
+  // 100 per page; a new search starts again at page 1.
+  const [pageNo, setPageNo] = useState(0);
+  useEffect(() => setPageNo(0), [debounced]);
   const showTime = useShowSignTime();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -73,8 +77,9 @@ export function MechanismsPage() {
       {pdfError && <div style={errorBox}>{pdfError}</div>}
       {list.error && <div style={errorBox}>{list.error}</div>}
       {list.data?.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No mechanisms found.</div>}
+      <Pager page={pageNo} total={list.data?.length ?? 0} onPage={setPageNo} />
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {list.data?.map((m) => (
+        {pageOf(list.data ?? [], pageNo).map((m) => (
           <div key={m.serialNumber} style={{ ...card, display: "flex", alignItems: "center", gap: 14, padding: 16, borderColor: selected.has(m.serialNumber) ? "var(--accent)" : "var(--border-soft)" }}>
           <input
             type="checkbox"
@@ -108,6 +113,7 @@ export function MechanismsPage() {
           </div>
         ))}
       </div>
+      <Pager page={pageNo} total={list.data?.length ?? 0} onPage={setPageNo} />
     </div>
   );
 }

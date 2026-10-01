@@ -137,7 +137,7 @@ export interface SignoffsRepo {
   /** Serial numbers with their visit count and latest sign-off id, most recently active first. */
   serials(search: string | undefined, limit: number): Promise<{ serialNumber: string; visits: number; completedVisits: number; lastId: string }[]>;
   setStatus(id: string, status: SignoffStatus, at: string): Promise<void>;
-  softDelete(id: string, at: string): Promise<void>;
+  softDelete(id: string, at: string, by?: string): Promise<void>;
 
   upsertMark(signoffId: string, mark: Mark): Promise<void>;
   clearMark(signoffId: string, rowId: string, checkId: string, at: string): Promise<void>;
@@ -153,7 +153,14 @@ export interface SignoffsRepo {
   /** Replaced-part lines recorded in [from, to) on sign-offs that still exist, oldest first. */
   partsUsage(from: string, to: string): Promise<PartUsageLine[]>;
   /** Marks lines as booked out of stock at `bookedOutAt` ('' = undo). Returns how many changed. */
-  setPartsBookedOut(lineIds: string[], bookedOutAt: string, at: string): Promise<number>;
+  setPartsBookedOut(lineIds: string[], bookedOutAt: string, bookedOutBy: string, at: string): Promise<number>;
+  /** Soft-deleted sign-offs (the admin's Deleted list), most recently deleted first. */
+  listDeleted(): Promise<(Signoff & { status: SignoffStatus; deletedAt: string; deletedBy: string })[]>;
+  /** Replaced-part lines of a sign-off still counted as out of stock (booked qty ≠ 0). */
+  bookedPartLines(signoffId: string): Promise<number>;
+  restore(id: string, at: string): Promise<void>;
+  /** Removes a sign-off and everything under it for good; returns its photo files to delete. */
+  hardDelete(id: string): Promise<string[] | null>;
 
   /** Idempotent on photo id. `file` is relative to the photos folder. */
   addPhoto(signoffId: string, photo: SignoffPhoto & { file: string }, at: string): Promise<void>;

@@ -626,10 +626,42 @@ class SqliteSignoffs implements SignoffsRepo {
     });
   }
 
-  async softDelete(id: string, at: string) {
+  async softDelete(id: string, at: string, by = "") {
     this.tx(() => {
-      this.db.prepare("UPDATE signoffs SET deleted_at = ? WHERE id = ?").run(at, id);
+      this.db.prepare("UPDATE signoffs SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at = ''").run(at, by, id);
       this.touch(id, at);
+    });
+  }
+
+  async listDeleted() {
+    const rows = this.db.prepare("SELECT * FROM signoffs WHERE deleted_at != '' ORDER BY deleted_at DESC").all() as (SignoffRow & { deleted_at: string; deleted_by: string })[];
+    return this.hydrate(rows).map((s, i) => ({ ...s, deletedAt: rows[i]!.deleted_at, deletedBy: rows[i]!.deleted_by }));
+  }
+
+  async bookedPartLines(signoffId: string) {
+    return (this.db.prepare("SELECT COUNT(*) AS n FROM signoff_parts WHERE signoff_id = ? AND CAST(booked_out_qty AS INTEGER) != 0").get(signoffId) as { n: number }).n;
+  }
+
+  async restore(id: string, at: string) {
+    this.tx(() => {
+      this.db.prepare("UPDATE signoffs SET deleted_at = '', deleted_by = '' WHERE id = ?").run(id);
+      this.touch(id, at);
+    });
+  }
+
+  async hardDelete(id: string) {
+    return this.tx(() => {
+      // Only from the Deleted list — a live sign-off is never removed for good in one step.
+      if (!this.db.prepare("SELECT 1 FROM signoffs WHERE id = ? AND deleted_at != ''").get(id)) return null;
+      const files = (this.db.prepare("SELECT file FROM signoff_photos WHERE signoff_id = ?").all(id) as { file: string }[]).map((r) => r.file);
+      for (const tbl of ["signoff_photos", "signoff_parts", "signoff_signatures", "signoff_marks"]) {
+        const ids = (this.db.prepare(`SELECT id FROM ${tbl} WHERE signoff_id = ?`).all(id) as { id: string }[]).map((r) => r.id);
+        for (const rowId of ids) this.db.prepare("DELETE FROM mirror_outbox WHERE tbl = ? AND row_id = ?").run(tbl, rowId);
+        this.db.prepare(`DELETE FROM ${tbl} WHERE signoff_id = ?`).run(id);
+      }
+      this.db.prepare("DELETE FROM mirror_outbox WHERE tbl = 'signoffs' AND row_id = ?").run(id);
+      this.db.prepare("DELETE FROM signoffs WHERE id = ?").run(id);
+      return files;
     });
   }
 
@@ -764,14 +796,14 @@ class SqliteSignoffs implements SignoffsRepo {
     // Lines still ticked, plus unticked/deleted ones that had been booked out (to return to stock).
     const rows = this.db
       .prepare(
-        `SELECT p.id, p.signoff_id, p.part_id, p.part_number, p.name, p.qty, p.note, p.created_at, p.booked_out_at, p.booked_out_qty,
-                (p.deleted_at != '' OR s.deleted_at != '') AS removed, s.serial_number, s.type_name, s.mode, s.status
+        `SELECT p.id, p.signoff_id, p.part_id, p.part_number, p.name, p.qty, p.note, p.created_at, p.booked_out_at, p.booked_out_qty, p.booked_out_by,
+                (p.deleted_at != '' OR s.deleted_at != '') AS removed, (s.deleted_at != '') AS signoff_deleted, s.serial_number, s.type_name, s.mode, s.status
          FROM signoff_parts p JOIN signoffs s ON s.id = p.signoff_id
          WHERE p.created_at >= ? AND p.created_at < ?
            AND ((p.deleted_at = '' AND s.deleted_at = '') OR CAST(p.booked_out_qty AS INTEGER) != 0)
          ORDER BY p.created_at`,
       )
-      .all(from, to) as (PartLineRow & { created_at: string; booked_out_at: string; booked_out_qty: string; removed: number; serial_number: string; type_name: string; mode: "new" | "service"; status: SignoffStatus })[];
+      .all(from, to) as (PartLineRow & { created_at: string; booked_out_at: string; booked_out_qty: string; booked_out_by: string; removed: number; signoff_deleted: number; serial_number: string; type_name: string; mode: "new" | "service"; status: SignoffStatus })[];
     return rows.map(
       (r): PartUsageLine => ({
         lineId: r.id,
@@ -787,16 +819,18 @@ class SqliteSignoffs implements SignoffsRepo {
         recordedAt: r.created_at,
         bookedOutAt: r.booked_out_at,
         bookedOutQty: Number(r.booked_out_qty) || 0,
+        bookedOutBy: r.booked_out_by,
         removed: Boolean(r.removed),
+        signoffDeleted: Boolean(r.signoff_deleted),
       }),
     );
   }
 
-  async setPartsBookedOut(lineIds: string[], bookedOutAt: string, at: string) {
+  async setPartsBookedOut(lineIds: string[], bookedOutAt: string, bookedOutBy: string, at: string) {
     return this.tx(() => {
       // Booked = the current quantity (0 for a removed line) is what's out of stock now.
       const upd = this.db.prepare(
-        `UPDATE signoff_parts SET booked_out_at = ?, updated_at = ?,
+        `UPDATE signoff_parts SET booked_out_at = ?, booked_out_by = ?, updated_at = ?,
            booked_out_qty = CASE WHEN ? = '' THEN '0'
              WHEN deleted_at != '' OR (SELECT deleted_at FROM signoffs WHERE id = signoff_parts.signoff_id) != '' THEN '0'
              ELSE qty END
@@ -804,7 +838,7 @@ class SqliteSignoffs implements SignoffsRepo {
       );
       let n = 0;
       for (const id of lineIds) {
-        if (upd.run(bookedOutAt, at, bookedOutAt, id).changes > 0) {
+        if (upd.run(bookedOutAt, bookedOutBy, at, bookedOutAt, id).changes > 0) {
           this.enqueue("signoff_parts", id);
           n++;
         }

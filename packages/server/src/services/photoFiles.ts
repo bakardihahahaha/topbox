@@ -34,6 +34,10 @@ export class PhotoFiles {
     return readFile(this.abs(file));
   }
 
+  async remove(file: string): Promise<void> {
+    await rm(this.abs(file), { force: true });
+  }
+
   /** Danger zone: every photo file goes (the folder itself stays). */
   async removeAll(): Promise<void> {
     await rm(this.root, { recursive: true, force: true });

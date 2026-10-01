@@ -9,6 +9,9 @@ import { cycleTouchSize, useTouchSizeLabel } from "./lib/touchSize.js";
 import { SavingIndicator } from "./components/SavingIndicator.js";
 import { SignInPage } from "./pages/SignInPage.js";
 import { HomePage } from "./pages/HomePage.js";
+import { DeletedPage } from "./pages/DeletedPage.js";
+import { getDeletedCount } from "./lib/api.js";
+import { useData } from "./lib/useData.js";
 import { PartsUsagePage } from "./pages/PartsUsagePage.js";
 import { MechanismsPage } from "./pages/MechanismsPage.js";
 import { MechanismHistoryPage } from "./pages/MechanismHistoryPage.js";
@@ -99,6 +102,7 @@ export function App() {
                 <NavTab to="/signoffs" label="Sign-offs" />
                 <NavTab to="/mechanisms" label="Mechanisms" />
                 <NavTab to="/parts-used" label="Parts used" />
+                {isAdmin && <DeletedNavTab />}
                 <NavTab to={isAdmin ? "/setup/templates" : "/setup/account"} label="Setup" match="/setup" />
               </>
             )}
@@ -140,6 +144,7 @@ export function App() {
             <Route path="/signoffs" element={<HomePage />} />
             <Route path="/mechanisms" element={<MechanismsPage />} />
             <Route path="/parts-used" element={<PartsUsagePage />} />
+            {isAdmin && <Route path="/deleted" element={<DeletedPage />} />}
             <Route path="/signoff/:serial" element={<MechanismHistoryPage />} />
             <Route path="/mechanisms/:serial" element={<ToTopbox />} />
             <Route path="/signoffs/new" element={me.role === "viewer" ? <Navigate to="/signoffs" replace /> : <NewSignoffPage />} />
@@ -184,6 +189,13 @@ const navButton = {
   fontWeight: 700,
   cursor: "pointer",
 } as const;
+
+/** Admin: the Deleted tab — only shown while something has been deleted. */
+function DeletedNavTab() {
+  const count = useData(getDeletedCount);
+  if (!count.data?.count) return null;
+  return <NavTab to="/deleted" label={`Deleted (${count.data.count})`} />;
+}
 
 function NavTab({ to, label, match }: { to: string; label: string; match?: string }) {
   return (

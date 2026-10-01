@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, allowsRefurbishedR, crossCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeLocked, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, allowsRefurbishedR, crossCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -14,7 +14,8 @@ import { confirmDialog } from "../lib/confirmDialog.js";
 import { SignatureImage } from "../components/SignaturePad.js";
 import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
-import { useOperatorCount, usePermissions } from "../lib/permissions.js";
+import { useOperatorCount } from "../lib/permissions.js";
+import { topboxUrl } from "../lib/format.js";
 import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
 import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
 import { SerialInput } from "../components/SerialInput.js";
@@ -51,7 +52,6 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
     return onDataChange(check);
   }, [serialForVisits, id]);
   const types = useSignoffTypes();
-  const permissions = usePermissions();
   const operators = useOperatorCount();
   const showTime = useShowSignTime();
   const typesRef = useRef(types);
@@ -66,9 +66,16 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
     try {
       base = await api.getSignoff(id);
     } catch (err) {
+      // Deleted (by anyone, on any device) — never show a stale copy of it from this device.
+      if (err instanceof ApiError && err.status === 404) {
+        forgetSignoff(id);
+        setSignoff(null);
+        setLoadError("This sign-off was deleted (or doesn't exist). If it was a mistake, an admin can restore it from the Deleted tab.");
+        return;
+      }
       base = cachedSignoff(id);
       if (!base) {
-        setLoadError(err instanceof ApiError && err.status === 404 ? "This sign-off doesn't exist (or was deleted)." : errorMessage(err));
+        setLoadError(errorMessage(err));
         return;
       }
     }
@@ -143,7 +150,9 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   // A completed sign-off is a closed record for operators, and so is any earlier visit; a viewer
   // only ever looks (the server enforces all three).
   const closed = (status === "complete" && !isAdmin) || (oldVisit && !isAdmin) || viewer;
-  const canDelete = isAdmin || (permissions.deleteSignoffs === "all" && !viewer);
+  // Operators and admins can delete (soft — it goes to the admin's Deleted tab and can be restored);
+  // operators only the TopBox's current visit, older visits are history.
+  const canDelete = !viewer && (isAdmin || !oldVisit);
   const { done, total } = signoffProgress(s);
   const signedBy = (checkId: string) => s.signatures.find((g) => g.checkId === checkId);
   const markOf = (rowId: string, checkId: string) => s.marks.find((m) => m.rowId === rowId && m.checkId === checkId)?.value;
@@ -152,7 +161,6 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   const showParts = s.mode === "service";
   const firstCheckAt = summarize(s).firstCheckAt;
   // The type is what the mechanism was checked as — fixed for operators after the first check.
-  const typeFixed = !isAdmin && typeLocked(s);
   // Refurbished units get an "R" after the serial number (667 → 667R) — the one serial change an
   // operator may make.
   const serialKey = mechanismKey(s.serialNumber);
@@ -207,11 +215,13 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   }
 
   async function remove() {
-    if (!(await confirmDialog(`Delete this sign-off of ${s.serialNumber}? This can't be undone from the app.`, { confirmLabel: "Delete", danger: true }))) return;
+    const message = `Delete this ${typeNameOf(s)} sign-off of ${s.serialNumber}?\n\nIt disappears from the lists and the TopBox's history (its other visits stay as they are). ${isAdmin ? "You can restore it from the Deleted tab." : "An admin can restore it if it was a mistake."}`;
+    if (!(await confirmDialog(message, { confirmLabel: "Delete", danger: true }))) return;
     try {
       await withSaving(() => mutateOrQueue({ kind: "deleteSignoff", id }, () => api.deleteSignoff(id)));
       forgetSignoff(id);
-      navigate("/signoffs", { replace: true });
+      // Back to the TopBox page — its remaining visits (or "Start first sign-off" if none left).
+      navigate(topboxUrl(s.serialNumber), { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -268,23 +278,27 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
             <span className="mono" style={label}>
               Type
             </span>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 6 }}>
-              {types.map((x) => {
-                const on = x.id === currentTypeId;
-                return (
-                  <button
-                    key={x.id}
-                    onClick={() => void changeType(x.id)}
-                    disabled={closed || typeFixed}
-                    style={{ ...ghost, height: 38, borderColor: on ? "var(--accent)" : "var(--border)", color: on ? "var(--accent)" : "var(--text-3)", background: on ? "var(--accent-wash)" : "transparent" }}
-                  >
-                    {x.name}
-                  </button>
-                );
-              })}
-            </div>
-            {!currentTypeId && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Recorded as: {typeNameOf(s)}</span>}
-            {typeFixed && !closed && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Fixed after the first check. When it comes back, start a new visit (e.g. as Service).</span>}
+            {isAdmin ? (
+              // Admin only: change the type — all the buttons on one line.
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(types.length, 1)}, minmax(0, 1fr))`, gap: 6 }}>
+                {types.map((x) => {
+                  const on = x.id === currentTypeId;
+                  return (
+                    <button
+                      key={x.id}
+                      onClick={() => void changeType(x.id)}
+                      style={{ ...ghost, height: 44, padding: "0 6px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", borderColor: on ? "var(--accent)" : "var(--border)", color: on ? "var(--accent)" : "var(--text-3)", background: on ? "var(--accent-wash)" : "transparent" }}
+                    >
+                      {x.name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              // Everyone else: the type chosen at the start, fixed. A wrong one = delete and start again.
+              <div style={{ ...input, display: "flex", alignItems: "center", background: "transparent", borderStyle: "dashed", fontWeight: 700, fontSize: 16 }}>{typeNameOf(s)}</div>
+            )}
+            {isAdmin && !currentTypeId && <span style={{ fontSize: 11.5, color: "var(--text-4)" }}>Recorded as: {typeNameOf(s)}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "flex-end" }}>
             {!embedded && (

@@ -263,13 +263,16 @@ export interface PartUsageLine {
   note: string;
   /** When the part was ticked on the sign-off (ISO). */
   recordedAt: string;
-  /** When an admin last marked it as booked out of stock ('' = never). */
+  /** When it was last marked as booked out of stock ('' = never), and by whom. */
   bookedOutAt: string;
+  bookedOutBy: string;
   /** How many were booked out then. `qty - bookedOutQty` is what's still to book (negative = to
    * return to stock, e.g. the part was unticked or the quantity lowered afterwards). */
   bookedOutQty: number;
   /** The part was unticked (or its sign-off deleted) after being booked out — qty is 0 now. */
   removed: boolean;
+  /** …because the whole sign-off was deleted. */
+  signoffDeleted?: boolean;
 }
 
 export interface MechanismSummary {

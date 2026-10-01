@@ -1,4 +1,4 @@
-import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, oncePerTopboxBlock, photoBlock, refurbishedRBlock, typeLocked, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, isRefurbishToggle, oncePerTopboxBlock, photoBlock, refurbishedRBlock, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import { PhotoFiles } from "./photoFiles.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
@@ -138,10 +138,11 @@ export class SignoffService {
       if (patch.serialNumber !== undefined && patch.serialNumber.trim() !== s.serialNumber && !isRefurbishToggle(s.serialNumber, patch.serialNumber)) {
         throw forbidden('Only an admin can change the serial number — you can only add or remove the refurbished "R".');
       }
-      // The type is what the mechanism was checked as — fixed once the first check is signed.
+      // The type is chosen when the sign-off is started and stays — a wrong one means deleting
+      // the sign-off and starting again. Only an admin can change it.
       const typeChange = patch.mode !== undefined || (patch.typeId !== undefined && patch.typeId !== s.typeId);
-      if (typeChange && typeLocked(s)) {
-        throw forbidden(`This was checked as ${typeNameOf(s)} — the type can't change after the first check. A mechanism coming back starts a new visit (e.g. as Service).`);
+      if (typeChange) {
+        throw forbidden(`This was started as ${typeNameOf(s)} — only an admin can change the type. If it's wrong, delete this sign-off and start a new one.`);
       }
     }
     this.assertEditable(s, actor);
@@ -159,11 +160,39 @@ export class SignoffService {
   async remove(id: string, actor: Actor): Promise<void> {
     const s = await this.store.signoffs.get(id);
     if (!s) return;
+    // Operators delete the TopBox's current visit only (older visits are history — admin);
+    // it's a soft delete: it goes to the admin's Deleted tab and can be restored from there.
     await this.assertCurrentVisit(s, actor);
-    if (actor.role !== "admin" && (await this.permissions()).deleteSignoffs !== "all") {
-      throw forbidden("Only an admin can delete sign-offs.");
+    await this.store.signoffs.softDelete(id, new Date().toISOString(), actor.name);
+  }
+
+  /** Admin: soft-deleted sign-offs, most recently deleted first. */
+  async deleted(): Promise<(SignoffSummary & { deletedAt: string; deletedBy: string })[]> {
+    return (await this.store.signoffs.listDeleted()).map((s) => ({ ...summarize(s), deletedAt: s.deletedAt, deletedBy: s.deletedBy }));
+  }
+
+  /** Admin: bring a deleted sign-off back. It slots back into its TopBox's history by date —
+   * refused if that would break a rule meanwhile (e.g. a second New (UK) visit was started). */
+  async restore(id: string, actor: Actor): Promise<void> {
+    if (actor.role !== "admin") throw forbidden("Only an admin can restore a sign-off.");
+    const s = (await this.store.signoffs.listDeleted()).find((x) => x.id === id);
+    if (!s) throw notFound("Deleted sign-off");
+    const type = (await this.types.list()).find((t) => t.id === s.typeId);
+    const block = type ? oncePerTopboxBlock(s.serialNumber, await this.visits(s.serialNumber), type) : null;
+    if (block) throw conflict("RESTORE_CONFLICT", `Can't restore: ${block.replace(/ — choose another type from the list\.$/, ".")} Delete that visit first (or keep this one deleted).`);
+    await this.store.signoffs.restore(id, new Date().toISOString());
+  }
+
+  /** Admin: delete a soft-deleted sign-off for good — records and photo files. Refused while
+   * any of its replaced parts still count as booked out of stock (return them on Parts used). */
+  async deleteForever(id: string, actor: Actor): Promise<void> {
+    if (actor.role !== "admin") throw forbidden("Only an admin can delete a sign-off forever.");
+    if ((await this.store.signoffs.bookedPartLines(id)) > 0) {
+      throw conflict("PARTS_BOOKED", "Parts from this sign-off are still booked out of stock. On Parts used they show as \"return to stock\" — mark them booked out there first, then delete it forever.");
     }
-    await this.store.signoffs.softDelete(id, new Date().toISOString());
+    const files = await this.store.signoffs.hardDelete(id);
+    if (files === null) throw conflict("NOT_DELETED", "Only a sign-off in the Deleted tab can be deleted forever.");
+    await Promise.all(files.map((f) => this.photoFiles.remove(f).catch(() => {})));
   }
 
   async permissions(): Promise<Permissions> {
@@ -254,7 +283,7 @@ export class SignoffService {
   async setPartsBookedOut(lineIds: string[], booked: boolean, actor: Actor): Promise<number> {
     if (actor.role !== "admin" && actor.role !== "parts") throw forbidden("Only an admin or a Parts used account can mark parts as booked out.");
     const now = new Date().toISOString();
-    return this.store.signoffs.setPartsBookedOut(lineIds, booked ? now : "", now);
+    return this.store.signoffs.setPartsBookedOut(lineIds, booked ? now : "", booked ? actor.name : "", now);
   }
 
   /** All visits of one mechanism, oldest first. */

@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { getSecurity, setSecurity, type SecuritySettings } from "../lib/api.js";
-import { fetchPermissions, savePermissions } from "../lib/permissions.js";
-import type { Permissions } from "@biosite-signoff/shared";
 import { SetupSubNav } from "../components/SetupSubNav.js";
 import { card, errorBox, errorMessage, h1, hint, infoBox, input, label, page, primary } from "../lib/ui.js";
 
@@ -10,23 +8,6 @@ export function SetupSecurityPage() {
   const [idle, setIdle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [perms, setPerms] = useState<Permissions | null>(null);
-
-  useEffect(() => {
-    fetchPermissions().then(setPerms, (err) => setError(errorMessage(err)));
-  }, []);
-
-  async function savePerms(p: Permissions) {
-    setError(null);
-    setSaved(false);
-    try {
-      setPerms(await savePermissions(p));
-      setSaved(true);
-    } catch (err) {
-      setError(errorMessage(err));
-    }
-  }
-
   useEffect(() => {
     getSecurity().then(
       (v) => {
@@ -69,39 +50,13 @@ export function SetupSecurityPage() {
               </span>
             </label>
           </div>
-          {perms && (
-            <div style={card}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>"Delete sign-off" button visible for</div>
-              <p style={{ ...hint, margin: "0 0 10px" }}>
-                Fixed rules regardless of this: only an admin can change a serial number or arrival time (pencil ✎), remove a signature, or change a completed sign-off.
-              </p>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(
-                  [
-                    ["admin", "Admin"],
-                    ["all", "Admin + Operator"],
-                  ] as const
-                ).map(([v, text]) => (
-                  <button
-                    key={v}
-                    onClick={() => void savePerms({ ...perms, deleteSignoffs: v })}
-                    style={{
-                      height: 48,
-                      padding: "0 18px",
-                      borderRadius: "var(--radius-control)",
-                      border: `1px solid ${perms.deleteSignoffs === v ? "var(--accent)" : "var(--border)"}`,
-                      background: perms.deleteSignoffs === v ? "var(--accent-wash)" : "transparent",
-                      color: perms.deleteSignoffs === v ? "var(--accent)" : "var(--text-2)",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {text}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <div style={card}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Deleting sign-offs</div>
+            <p style={{ ...hint, margin: 0 }}>
+              Operators and admins can delete a sign-off (operators only a TopBox&apos;s current visit). It isn&apos;t gone: it moves to the <b>Deleted</b> tab, where an admin can restore it or
+              delete it forever. Fixed rules too: only an admin can change a serial number (apart from the refurbished R), the type, remove a signature, or change a completed sign-off.
+            </p>
+          </div>
           <div style={card}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Auto sign-out when idle</div>
             <p style={{ ...hint, margin: "0 0 10px" }}>Minutes without any activity before a session ends (0 = never). Keeps the one-IP rule from locking someone out for long after they walk away from a device.</p>

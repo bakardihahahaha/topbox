@@ -6,6 +6,7 @@ import { useData } from "../lib/useData.js";
 import { useMe } from "../lib/meContext.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 import { localStamp, topboxUrl } from "../lib/format.js";
+import { Pager, pageOf } from "../components/Pager.js";
 import { card, chip, errorBox, errorMessage, ghost, h1, hint, infoBox, input, page, primary } from "../lib/ui.js";
 
 // Parts used — every replaced part ticked on a sign-off, for a period, so they can be booked out
@@ -48,7 +49,6 @@ function rangeOf(period: Period, customFrom: string, customTo: string): [Date, D
   }
 }
 
-const csvCell = (v: string | number) => (typeof v === "number" ? String(v) : `"${v.replace(/"/g, '""')}"`);
 
 export function PartsUsagePage() {
   const me = useMe();
@@ -95,29 +95,46 @@ export function PartsUsagePage() {
   const toOut = summary.reduce((n, r) => n + Math.max(0, r.qty), 0);
   const toReturn = summary.reduce((n, r) => n + Math.max(0, -r.qty), 0);
 
-  function downloadCsv() {
-    const rows: (string | number)[][] = [
-      [`Parts used ${ymd(from)} to ${ymd(addDays(to, -1))}`],
+  /** A real Excel file (.xlsx) — opens the same in Polish and English Excel (no CSV separator /
+   * decimal comma / encoding surprises): sheet "Summary" per part, sheet "By TopBox" per line.
+   * Quantities are numbers, dates are written as dd/mm/yyyy text. */
+  async function downloadExcel() {
+    const XLSX = await import("xlsx");
+    const day = (iso: string) => localStamp(iso).slice(0, 10);
+    const qtyHead = booked === "open" ? "To book (negative = return to stock)" : "Qty";
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      [`Parts used ${day(from.toISOString())} – ${day(addDays(to, -1).toISOString())}`],
       [],
-      ["Part No.", "Name", booked === "open" ? "To book (negative = return to stock)" : "Qty", "TopBoxes"],
+      ["Part No.", "Name", qtyHead, "TopBoxes"],
       ...summary.map((r) => [r.partNumber, r.name, r.qty, r.boxes.size]),
       ["Total", "", totalQty, ""],
-      [],
-      ["Date", "TopBox", "Type", "Part No.", "Name", booked === "open" ? "To book" : "Qty", "Note", "Booked out"],
-      ...lines.map((l) => [localStamp(l.recordedAt), l.serialNumber, l.typeName, l.partNumber, l.name, shownQty(l), l.removed ? `unticked after booking${l.note ? ` — ${l.note}` : ""}` : l.note, l.bookedOutAt ? `${localStamp(l.bookedOutAt)} (${l.bookedOutQty})` : ""]),
-    ];
-    const csv = "﻿" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    a.download = `Parts used ${ymd(from)} to ${ymd(addDays(to, -1))}.csv`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    ]);
+    summarySheet["!cols"] = [{ wch: 16 }, { wch: 34 }, { wch: 14 }, { wch: 10 }];
+    const linesSheet = XLSX.utils.aoa_to_sheet([
+      ["Date", "TopBox", "Type", "Part No.", "Name", booked === "open" ? "To book" : "Qty", "Note", "Booked out", "Booked out by"],
+      ...lines.map((l) => [
+        day(l.recordedAt),
+        l.serialNumber,
+        l.typeName,
+        l.partNumber,
+        l.name,
+        shownQty(l),
+        l.signoffDeleted ? "sign-off deleted — return to stock" : l.removed ? `unticked after booking${l.note ? ` — ${l.note}` : ""}` : l.note,
+        l.bookedOutAt ? day(l.bookedOutAt) : "",
+        l.bookedOutAt ? l.bookedOutBy : "",
+      ]),
+    ]);
+    linesSheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 9 }, { wch: 34 }, { wch: 12 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+    XLSX.utils.book_append_sheet(wb, linesSheet, "By TopBox");
+    XLSX.writeFile(wb, `Parts used ${ymd(from)} to ${ymd(addDays(to, -1))}.xlsx`);
   }
 
   async function markBooked(ids: string[], value: boolean) {
     if (ids.length === 0) return;
     const what = `${ids.length} line${ids.length === 1 ? "" : "s"}`;
-    if (!(await confirmDialog(value ? `Mark ${what} as booked out of stock?` : `Mark ${what} as NOT booked out again?`, { confirmLabel: value ? "Booked out" : "Undo" }))) return;
+    if (!(await confirmDialog(value ? `Mark ${what} as booked out of stock?` : `Mark ${what} as NOT booked out?`, { confirmLabel: value ? "Mark as booked out" : "Mark as NOT booked out" }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -145,6 +162,14 @@ export function PartsUsagePage() {
   const th = { textAlign: "left" as const, padding: "8px 10px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase" as const, color: "var(--text-3)", borderBottom: "1px solid var(--border)" };
   const td = { padding: "8px 10px", borderBottom: "1px solid var(--border-soft)", fontSize: 13.5, verticalAlign: "top" as const };
   const selectedIds = lines.filter((l) => selected.has(l.lineId)).map((l) => l.lineId);
+  // 100 lines per page; another period / view starts again at page 1.
+  const [linePage, setLinePage] = useState(0);
+  const viewKey = `${from.getTime()}|${to.getTime()}|${booked}`;
+  const [lastViewKey, setLastViewKey] = useState(viewKey);
+  if (lastViewKey !== viewKey) {
+    setLastViewKey(viewKey);
+    setLinePage(0);
+  }
   const selectedLines = lines.filter((l) => selected.has(l.lineId));
   // Booking applies to the ticked lines, or — nothing ticked — to every line shown.
   const bookable = (selectedLines.length ? selectedLines : lines).filter((l) => toBook(l) !== 0).map((l) => l.lineId);
@@ -202,8 +227,8 @@ export function PartsUsagePage() {
                   <>Used — {totalQty} part{totalQty === 1 ? "" : "s"}</>
                 )}
               </div>
-              <button style={ghost} onClick={downloadCsv} disabled={lines.length === 0}>
-                Download CSV (Excel)
+              <button style={ghost} onClick={() => void downloadExcel()} disabled={lines.length === 0}>
+                Download Excel (.xlsx)
               </button>
             </div>
             {summary.length === 0 ? (
@@ -248,10 +273,10 @@ export function PartsUsagePage() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <span style={{ fontSize: 13, color: selectedIds.length ? "var(--text)" : "var(--text-3)" }}>{selectedIds.length} selected</span>
                     <button style={{ ...primary, height: 48, opacity: bookable.length ? 1 : 0.45 }} disabled={busy || bookable.length === 0} onClick={() => void markBooked(bookable, true)}>
-                      {selectedIds.length ? `Mark ${bookable.length} as booked out` : "Mark all shown as booked out"}
+                      {!selectedIds.length ? "Mark all shown as booked out" : bookable.length ? `Mark ${bookable.length} as booked out` : "Mark as booked out"}
                     </button>
                     <button style={{ ...ghost, height: 48, opacity: unbookable.length ? 1 : 0.45 }} disabled={busy || unbookable.length === 0} onClick={() => void markBooked(unbookable, false)}>
-                      Mark {unbookable.length || ""} as not booked out
+                      Mark {unbookable.length || ""} as NOT booked out
                     </button>
                   </div>
                 )}
@@ -275,10 +300,11 @@ export function PartsUsagePage() {
                     <th style={th}>Part</th>
                     <th style={{ ...th, textAlign: "right" }}>{booked === "open" ? "To book" : "Qty"}</th>
                     <th style={th}>Booked out</th>
+                    <th style={th}>Booked out by</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((l) => (
+                  {pageOf(lines, linePage).map((l) => (
                     <tr key={l.lineId}>
                       {isAdmin && (
                         <td style={td}>
@@ -322,25 +348,21 @@ export function PartsUsagePage() {
                         </span>{" "}
                         {l.name}
                         {l.note && <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{l.note}</div>}
-                        {l.removed && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>unticked after it was booked out</div>}
+                        {l.removed && <div style={{ fontSize: 11.5, color: "var(--danger)" }}>{l.signoffDeleted ? "sign-off deleted — return to stock" : "unticked after it was booked out"}</div>}
                       </td>
                       <td style={{ ...td, textAlign: "right", fontWeight: 700, color: shownQty(l) < 0 ? "var(--danger)" : undefined }}>
                         {shownQty(l)}
                         {booked === "open" && l.bookedOutAt && <div style={{ fontSize: 11, fontWeight: 400, color: "var(--text-3)" }}>now {l.qty}, booked {l.bookedOutQty}</div>}
                       </td>
                       <td style={td}>
-                        {l.bookedOutAt ? (
-                          <span style={chip("accent")}>
-                            {localStamp(l.bookedOutAt).slice(0, 10)} · {l.bookedOutQty}
-                          </span>
-                        ) : (
-                          <span style={{ color: "var(--text-4)" }}>—</span>
-                        )}
+                        {l.bookedOutAt ? <span style={chip("accent")}>{localStamp(l.bookedOutAt).slice(0, 10)}</span> : <span style={{ color: "var(--text-4)" }}>—</span>}
                       </td>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>{l.bookedOutAt ? l.bookedOutBy || "—" : <span style={{ color: "var(--text-4)" }}>—</span>}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <Pager page={linePage} total={lines.length} onPage={setLinePage} />
             </div>
           )}
           {booked === "open" && lines.length > 0 && (
