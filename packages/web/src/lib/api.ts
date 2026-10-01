@@ -1,4 +1,4 @@
-import type { Role, DocumentSettings, MechanismSummary, MarkValue, Part, PartInput, Signoff, SignoffMode, SignoffSummary, Template, TemplateInput } from "@biosite-signoff/shared";
+import type { Role, DocumentSettings, MarkValue, Part, PartInput, Signoff, SignoffMode, SignoffSummary, Template, TemplateInput } from "@biosite-signoff/shared";
 import { getJson, getJsonCached, sendJson } from "./client.js";
 
 export const listTemplates = () => getJsonCached<Template[]>("/api/templates");
@@ -33,7 +33,6 @@ export const setMark = (id: string, rowId: string, checkId: string, value: MarkV
 export const fillCheck = (id: string, checkId: string, value: MarkValue) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/fill`, { checkId, value });
 export const signCheck = (id: string, checkId: string, path: string, date: string, time?: string) => sendJson<Signoff>("PUT", `/api/signoffs/${id}/signatures/${checkId}`, { path, date, time });
 export const clearCheck = (id: string, checkId: string) => sendJson<Signoff>("POST", `/api/signoffs/${id}/marks/clear`, { checkId });
-export const listMechanisms = (q?: string) => getJsonCached<MechanismSummary[]>(`/api/mechanisms${q ? `?q=${encodeURIComponent(q)}` : ""}`);
 export const getAllSignoffSummaries = () => getJsonCached<SignoffSummary[]>("/api/signoff-summaries");
 export const getSignoffsOfType = (typeId: string) => getJsonCached<SignoffSummary[]>(`/api/types/${encodeURIComponent(typeId)}/signoffs`);
 export const getVisits = (serial: string) => getJsonCached<Signoff[]>(`/api/mechanisms/${encodeURIComponent(serial)}/visits`);
