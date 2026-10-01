@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, allowsRefurbishedR, crossCheckBlock, firstCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, allowsRefurbishedR, checkOrderBlock, crossCheckBlock, firstCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -173,11 +173,13 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
     void mutate({ kind: "updateHeader", id, patch: { serialNumber: next } }, () => api.updateSignoffHeader(id, { serialNumber: next }));
   }
 
-  /** The 1st check is only for people allowed to start sign-offs (Setup → Users). */
-  const notMine = (checkId: string) => firstCheckBlock(s, checkId, me) !== null;
+  /** Why this column is locked for me: the 1st check is only for people allowed to start
+   * sign-offs (Setup → Users); later checks open one at a time, once the one before is signed. */
+  const lockReason = (checkId: string) => firstCheckBlock(s, checkId, me) ?? checkOrderBlock(s, checkId, me);
+  const notMine = (checkId: string) => lockReason(checkId) !== null;
 
   function tap(rowId: string, checkId: string) {
-    if (notMine(checkId)) return setError(firstCheckBlock(s, checkId, me));
+    if (notMine(checkId)) return setError(lockReason(checkId));
     const value = NEXT[markOf(rowId, checkId) ?? "none"]!;
     void mutate({ kind: "setMark", id, rowId, checkId, value }, () => api.setMark(id, rowId, checkId, value));
   }
@@ -348,8 +350,8 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                     )}
                     {sig && <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }}>🔒 signed</div>}
                     {!sig && !closed && notMine(c.id) && (
-                      <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }} title="Only people allowed to start sign-offs do this check">
-                        🔒 starters only
+                      <div style={{ fontSize: 10, color: "var(--text-4)", marginTop: 2 }} title={lockReason(c.id) ?? ""}>
+                        {firstCheckBlock(s, c.id, me) ? "🔒 starters only" : "🔒 not yet"}
                       </div>
                     )}
                   </th>
@@ -367,7 +369,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                       – – –
                     </td>
                   ) : (
-                    <td key={c.id} style={{ padding: 3, borderLeft: "1px solid var(--border-soft)" }}>
+                    <td key={c.id} style={{ padding: 3, borderLeft: "1px solid var(--border-soft)", opacity: !closed && !signedBy(c.id) && notMine(c.id) ? 0.35 : 1 }}>
                       <MarkCell value={markOf(r.id, c.id)} locked={Boolean(signedBy(c.id)) || closed || notMine(c.id)} onTap={() => tap(r.id, c.id)} />
                     </td>
                   ),
@@ -413,7 +415,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                           onClick={() => (block ? setError(block) : setSigning(c))}
                           style={{ ...primary, height: 56, width: "100%", padding: 0, fontSize: 13, opacity: full && !block ? 1 : 0.35, cursor: full ? "pointer" : "not-allowed" }}
                         >
-                          {block ? "Other operator" : "Sign"}
+                          {firstCheckBlock(s, c.id, me) ? "Starters only" : checkOrderBlock(s, c.id, me) ? "Not yet" : block ? "Other operator" : "Sign"}
                         </button>
                       )}
                       {!closed && (

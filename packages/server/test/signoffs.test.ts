@@ -59,11 +59,14 @@ describe("sign-off flow", () => {
     });
     const a = t.as((await t.login("op", "2222")).token);
     const b = t.as((await t.login("op2", "3333")).token);
-    const sign = (call: typeof a, id: string, n: number) => call("PUT", `/api/signoffs/${id}/signatures/c${n}`, { path: SIG, date: today });
+    // Checks go in order: each column is ticked just before it's signed.
+    const sign = async (call: typeof a, id: string, n: number) => {
+      await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: `c${n}`, value: "pass" });
+      return call("PUT", `/api/signoffs/${id}/signatures/c${n}`, { path: SIG, date: today });
+    };
     const start = async (call: typeof a) => {
       const id = randomUUID();
       await call("POST", "/api/signoffs", { id, templateId: four.id, serialNumber: `X-${id.slice(0, 4)}`, mode: "new" });
-      for (const c of four.checks) await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c.id, value: "pass" });
       return id;
     };
 
@@ -116,8 +119,9 @@ describe("sign-off flow", () => {
     const call = t.as(token);
     const id = randomUUID();
     await call("POST", "/api/signoffs", { id, templateId: tpl.id, serialNumber: "X", mode: "new" });
-    for (const c of tpl.checks) await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: c.id, value: "pass" });
+    await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: tpl.checks[0]!.id, value: "pass" });
     expect((await call("PUT", `/api/signoffs/${id}/signatures/${tpl.checks[0]!.id}`, { path: SIG, date: today })).statusCode).toBe(200);
+    await call("POST", `/api/signoffs/${id}/marks/fill`, { checkId: tpl.checks[1]!.id, value: "pass" });
     expect((await call("PUT", `/api/signoffs/${id}/signatures/${tpl.checks[1]!.id}`, { path: SIG, date: today })).json().error).toBe("SAME_SIGNER");
   });
 
@@ -719,5 +723,34 @@ describe("who may start sign-offs (Setup → Users)", () => {
     expect((await admin("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "ST-2", typeId: "service" })).statusCode).toBe(200);
     await admin("PATCH", `/api/users/${t.ids.op2}`, { canStart: true });
     expect((await otto("POST", "/api/signoffs", { id: randomUUID(), templateId: t.template.id, serialNumber: "ST-3", typeId: "service" })).statusCode).toBe(200);
+  });
+});
+
+describe("checks one at a time, in order", () => {
+  it("only the check being done now is open; later ones are locked until the one before is signed (admins may correct any)", async () => {
+    const t = await setup();
+    const today = new Date().toISOString().slice(0, 10);
+    const olga = t.as((await t.login("op", "2222")).token);
+    const otto = t.as((await t.login("op2", "3333")).token);
+    const id = randomUUID();
+    const s = (await olga("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "OR-1", typeId: "service" })).json() as Signoff;
+    const [first, second] = s.template.checks;
+    const item = s.template.rows.find((r) => r.kind === "item")!;
+    // Fresh form: only the 1st check — the 2nd can't be ticked, filled, signed or photographed.
+    for (const res of [
+      await olga("PUT", `/api/signoffs/${id}/marks`, { rowId: item.id, checkId: second!.id, value: "pass" }),
+      await otto("POST", `/api/signoffs/${id}/marks/fill`, { checkId: second!.id, value: "pass" }),
+      await otto("PUT", `/api/signoffs/${id}/signatures/${second!.id}`, { path: SIG, date: today }),
+    ]) expect(res.json().error).toBe("CHECK_NOT_ACTIVE");
+    expect((await otto("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: second!.id, dataUrl: FAKE_JPEG_URL })).statusCode).toBe(403);
+    // 1st signed → the 2nd opens.
+    await olga("POST", `/api/signoffs/${id}/marks/fill`, { checkId: first!.id, value: "pass" });
+    await olga("PUT", `/api/signoffs/${id}/signatures/${first!.id}`, { path: SIG, date: today });
+    expect((await otto("PUT", `/api/signoffs/${id}/marks`, { rowId: item.id, checkId: second!.id, value: "pass" })).statusCode).toBe(200);
+    // An admin may mark any column of another visit, in any order.
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const id2 = randomUUID();
+    await admin("POST", "/api/signoffs", { id: id2, templateId: t.template.id, serialNumber: "OR-2", typeId: "service" });
+    expect((await admin("POST", `/api/signoffs/${id2}/marks/fill`, { checkId: second!.id, value: "pass" })).statusCode).toBe(200);
   });
 });

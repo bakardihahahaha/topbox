@@ -1,4 +1,4 @@
-import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, crossCheckBlock, firstCheckBlock, isRefurbishToggle, oncePerTopboxBlock, photoBlock, refurbishedRBlock, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
+import { DEFAULT_PERMISSIONS, MIN_SIGNATURE_LENGTH, checkOrderBlock, crossCheckBlock, firstCheckBlock, isRefurbishToggle, oncePerTopboxBlock, photoBlock, refurbishedRBlock, allowedPartIds, signatureLength, summarize, isCheckFullyMarked, itemRows, signoffProgress, signoffStatus, typeNameOf, type MarkValue, type Signoff, type SignoffMode, type SignoffSummary, type MechanismSummary, type Permissions, type Role } from "@biosite-signoff/shared";
 import type { SignoffTypesService } from "./signoffTypes.js";
 import { PhotoFiles } from "./photoFiles.js";
 import type { SignoffListFilter, Store } from "../store/Store.js";
@@ -222,10 +222,12 @@ export class SignoffService {
     if (!s.template.checks.some((c) => c.id === checkId)) throw badRequest("Unknown check column.");
   }
 
-  /** Marks / signature / photos of the 1st check: only people allowed to start sign-offs. */
+  /** Marks / signature of a check: the 1st only for people allowed to start sign-offs; later ones only once the check before is signed. */
   private assertMayDoCheck(s: Signoff, checkId: string, actor: Actor) {
     const block = firstCheckBlock(s, checkId, actor);
     if (block) throw new HttpError(403, "FIRST_CHECK_NOT_ALLOWED", block);
+    const order = checkOrderBlock(s, checkId, actor);
+    if (order) throw new HttpError(409, "CHECK_NOT_ACTIVE", order);
   }
 
   private assertNotSigned(s: Signoff, checkId: string) {

@@ -125,10 +125,22 @@ export function firstCheckBlock(s: Pick<Signoff, "template">, checkId: string, a
   return `Only people allowed to start sign-offs can do the ${first.label} — you can do the later checks.`;
 }
 
+/** Checks are done in order, one at a time: only the check being done now (the first one not yet
+ * signed) is open — every later check stays locked until the one before it is signed. Admins may
+ * correct any check. Why `checkId` isn't open yet, or null if it is. */
+export function checkOrderBlock(s: Pick<Signoff, "template" | "signatures">, checkId: string, actor: { role: Role }): string | null {
+  if (actor.role === "admin" || !s.template.signRowEnabled) return null;
+  const checks = s.template.checks;
+  const at = checks.findIndex((c) => c.id === checkId);
+  const next = checks.findIndex((c) => !s.signatures.some((g) => g.checkId === c.id));
+  if (at < 0 || next < 0 || at <= next) return null;
+  return `${checks[next]!.label} is being done now — ${checks[at]!.label} opens once ${checks[next]!.label} is signed.`;
+}
+
 /** Why this operator may not sign `checkId` (1st-check permission, cross-check rule), or null if they may. */
 export function crossCheckBlock(s: Signoff, checkId: string, actor: { userId: string; role: Role; canStart?: boolean }, operators: number): string | null {
   if (actor.role === "admin") return null;
-  const first = firstCheckBlock(s, checkId, actor);
+  const first = firstCheckBlock(s, checkId, actor) ?? checkOrderBlock(s, checkId, actor);
   if (first) return first;
   const max = maxChecksPerOperator(s.template.checks.length, operators);
   const mine = s.signatures.filter((g) => g.checkId !== checkId && g.userId === actor.userId);
