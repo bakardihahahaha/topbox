@@ -43,8 +43,8 @@ export function SetupUsersPage() {
       <h1 style={h1}>Setup</h1>
       <SetupSubNav />
       <p style={hint}>
-        Everyone here appears as a tile on the sign-in screen — they tap their name and type their PIN (4–8 digits). 3 wrong PINs lock the account for 5 minutes; 5 such locks in a row lock it
-        until an admin unlocks it here. The name is also what's printed next to a signature.
+        Everyone here appears as a tile on the sign-in screen — they tap their name and type their PIN (4–8 digits). 3 wrong PINs lock the account for 5 minutes; 5 such locks in a row block it
+        until an admin unblocks it here. The name is also what's printed next to a signature. When someone leaves, <b>Block</b> them — they vanish from the sign-in screen and their work stays.
       </p>
       <p style={hint}>
         <b>Starts sign-offs</b>: only operators with this ticked can open a new sign-off and do its 1st check. The others do the later checks (2nd, 3rd…). Admins always can.
@@ -90,8 +90,15 @@ export function SetupUsersPage() {
       {error && <div style={errorBox}>{error}</div>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {users?.map((u) => (
-          <div key={u.id} style={{ ...card, display: "flex", flexDirection: "column", gap: 8 }}>
+        {[...(users ?? []).filter((u) => !u.locked), ...(users ?? []).filter((u) => u.locked)].map((u, i, all) => (
+          <div key={u.id} style={{ display: "contents" }}>
+          {u.locked && (i === 0 || !all[i - 1]!.locked) && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Blocked ({all.filter((x) => x.locked).length})</div>
+              <div style={{ ...hint, margin: "2px 0 0" }}>Not on the sign-in screen and can&apos;t sign in. Their work stays as it is. Unblock to bring someone back, or delete them forever.</div>
+            </div>
+          )}
+          <div style={{ ...card, display: "flex", flexDirection: "column", gap: 8, opacity: u.locked ? 0.75 : 1 }}>
             {editing?.id === u.id ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, alignItems: "end" }}>
                 <label style={field}>
@@ -139,15 +146,18 @@ export function SetupUsersPage() {
                   <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                     <span style={chip(u.role === "admin" ? "accent" : "muted")}>{u.role}</span>
                     {u.role === "operator" && <span style={chip(u.canStart ? "accent" : "muted")}>{u.canStart ? "starts sign-offs + 1st check" : "later checks only"}</span>}
-                    {u.locked && <span style={chip("danger")}>locked</span>}
+                    {u.locked && <span style={chip("danger")}>blocked</span>}
                     {!u.locked && u.lockedUntil && <span style={chip("warn")}>locked until {formatDateTime(u.lockedUntil)}</span>}
                     {u.activeSessions.length > 0 && <span style={chip("accent")}>signed in</span>}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {!u.locked && (
                   <button style={ghost} onClick={() => setEditing({ id: u.id, name: u.name, pin: "" })}>
                     Edit name / PIN
                   </button>
+                  )}
+                  {!u.locked && (
                   <button
                     style={ghost}
                     onClick={async () => {
@@ -160,7 +170,8 @@ export function SetupUsersPage() {
                   >
                     Random PIN
                   </button>
-                  {u.id !== me.userId && (
+                  )}
+                  {u.id !== me.userId && !u.locked && (
                     <select aria-label={`Role of ${u.name}`} value={u.role} onChange={(e) => run(() => updateUser(u.id, { role: e.target.value as Role }))} style={{ ...input, width: "auto", height: 44 }}>
                       <option value="admin">Admin</option>
                       <option value="operator">Operator</option>
@@ -168,25 +179,44 @@ export function SetupUsersPage() {
                       <option value="parts">Parts used</option>
                     </select>
                   )}
-                  {u.role === "operator" && <StartsToggle checked={u.canStart} onChange={(canStart) => void run(() => updateUser(u.id, { canStart }))} />}
-                  {u.id !== me.userId && (u.locked || u.lockedUntil) && (
-                    <button style={ghost} onClick={() => run(() => updateUser(u.id, { locked: false }))}>
+                  {u.role === "operator" && !u.locked && <StartsToggle checked={u.canStart} onChange={(canStart) => void run(() => updateUser(u.id, { canStart }))} />}
+                  {u.id !== me.userId && !u.locked && u.lockedUntil && (
+                    <button style={ghost} onClick={() => run(() => updateUser(u.id, { locked: false }))} title="Locked for a few minutes after wrong PINs — let them try again now">
                       Unlock
                     </button>
                   )}
                   {u.id !== me.userId && !u.locked && (
-                    <button style={danger} onClick={() => run(() => updateUser(u.id, { locked: true }))}>
-                      Lock
-                    </button>
-                  )}
-                  {u.id !== me.userId && (
                     <button
                       style={danger}
                       onClick={async () => {
-                        if (await confirmDialog(`Delete ${u.name}? Their signatures on existing sign-offs stay.`, { confirmLabel: "Delete", danger: true })) await run(() => deleteUser(u.id));
+                        if (await confirmDialog(`Block ${u.name}? They disappear from the sign-in screen and can't sign in. Everything they did stays as it is. You can unblock them any time.`, { confirmLabel: "Block", danger: true })) {
+                          await run(() => updateUser(u.id, { locked: true }));
+                        }
                       }}
                     >
-                      Delete
+                      Block
+                    </button>
+                  )}
+                  {u.id !== me.userId && u.locked && (
+                    <button style={ghost} onClick={() => run(() => updateUser(u.id, { locked: false }))}>
+                      Unblock
+                    </button>
+                  )}
+                  {u.id !== me.userId && u.locked && (
+                    <button
+                      style={danger}
+                      onClick={async () => {
+                        if (
+                          await confirmDialog(
+                            `Delete ${u.name} forever? They're removed from the system for good and can't be unblocked. Their history stays untouched: signatures, checks, photos and the audit log keep their name.`,
+                            { confirmLabel: "Delete forever", danger: true },
+                          )
+                        ) {
+                          await run(() => deleteUser(u.id));
+                        }
+                      }}
+                    >
+                      Delete forever
                     </button>
                   )}
                 </div>
@@ -202,6 +232,7 @@ export function SetupUsersPage() {
                 )}
               </div>
             )}
+          </div>
           </div>
         ))}
       </div>

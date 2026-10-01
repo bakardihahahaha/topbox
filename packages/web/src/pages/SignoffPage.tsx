@@ -150,6 +150,8 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   // A completed sign-off is a closed record for operators, and so is any earlier visit; a viewer
   // only ever looks (the server enforces all three).
   const closed = (status === "complete" && !isAdmin) || (oldVisit && !isAdmin) || viewer;
+  // Replaced parts: only people allowed to start sign-offs (Setup → Users) record them.
+  const partsLocked = closed || (!isAdmin && me.canStart === false);
   // Operators and admins can delete (soft — it goes to the admin's Deleted tab and can be restored);
   // operators only the TopBox's current visit, older visits are history.
   const canDelete = !viewer && (isAdmin || !oldVisit);
@@ -452,7 +454,9 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
       {showParts && (
         <div style={{ ...card, marginBottom: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>Replaced parts</div>
-          <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 10 }}>Tick every part that was replaced on this mechanism. Leave everything unticked if nothing was replaced.</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", marginBottom: 10 }}>
+            {partsLocked && !closed ? "🔒 Only people allowed to start sign-offs record replaced parts." : "Tick every part that was replaced on this mechanism. Leave everything unticked if nothing was replaced."}
+          </div>
           {allowedParts.length === 0 && s.parts.length === 0 && (
             <div style={{ ...infoBox, marginBottom: 0 }}>
               No parts are defined yet.{" "}
@@ -475,7 +479,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                   name={p.name}
                   description={p.description}
                   line={line}
-                  disabled={closed}
+                  disabled={partsLocked}
                   onToggle={(on) => {
                     if (on) {
                       const lineId = crypto.randomUUID();
@@ -492,7 +496,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
             {s.parts
               .filter((l) => !allowedParts.some((p) => p.id === l.partId))
               .map((l) => (
-                <PartRow key={l.id} number={l.partNumber} name={l.name} description="(no longer in this template's parts list)" line={l} disabled={closed} onToggle={(on) => !on && void mutate({ kind: "removePart", id, lineId: l.id }, () => api.removePartLine(id, l.id))} onChange={() => {}} />
+                <PartRow key={l.id} number={l.partNumber} name={l.name} description="(no longer in this template's parts list)" line={l} disabled={partsLocked} onToggle={(on) => !on && void mutate({ kind: "removePart", id, lineId: l.id }, () => api.removePartLine(id, l.id))} onChange={() => {}} />
               ))}
           </div>
         </div>

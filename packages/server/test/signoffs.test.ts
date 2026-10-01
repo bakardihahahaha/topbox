@@ -90,9 +90,10 @@ describe("sign-off flow", () => {
     expect((await sign(admin, id3, 1)).statusCode).toBe(200);
     expect((await sign(admin, id3, 2)).statusCode).toBe(200);
 
-    // A lone operator signs everything.
-    expect((await admin("DELETE", `/api/users/${t.ids.op2}`)).statusCode).toBe(200);
+    // A lone operator signs everything — a blocked one (left the company) doesn't count.
+    await admin("PATCH", `/api/users/${t.ids.op2}`, { locked: true });
     expect((await sign(a, id2, 2)).statusCode).toBe(200);
+    expect((await admin("DELETE", `/api/users/${t.ids.op2}`)).statusCode).toBe(200);
   });
 
   it("lists in-progress sign-offs above completed ones", async () => {
@@ -752,5 +753,28 @@ describe("checks one at a time, in order", () => {
     const id2 = randomUUID();
     await admin("POST", "/api/signoffs", { id: id2, templateId: t.template.id, serialNumber: "OR-2", typeId: "service" });
     expect((await admin("POST", `/api/signoffs/${id2}/marks/fill`, { checkId: second!.id, value: "pass" })).statusCode).toBe(200);
+  });
+});
+
+describe("replaced parts and history of people who left", () => {
+  it("only starters record parts; a deleted person's name stays in the audit log", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const part = await t.catalog.createPart({ partNumber: "SP-9", name: "Spring", description: "" });
+    await admin("PATCH", `/api/users/${t.ids.op2}`, { canStart: false });
+    const otto = t.as((await t.login("op2", "3333")).token);
+    const id = randomUUID();
+    await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "PP-1", typeId: "service" });
+    const line = randomUUID();
+    expect((await otto("PUT", `/api/signoffs/${id}/parts/${line}`, { partId: part.id, qty: 2 })).json().error).toBe("PARTS_NOT_ALLOWED");
+    expect((await admin("PUT", `/api/signoffs/${id}/parts/${line}`, { partId: part.id, qty: 2 })).statusCode).toBe(200);
+    expect((await otto("DELETE", `/api/signoffs/${id}/parts/${line}`)).json().error).toBe("PARTS_NOT_ALLOWED");
+    // Block, then delete for good: off the sign-in list, but still named in history.
+    await admin("PATCH", `/api/users/${t.ids.op2}`, { locked: true });
+    expect((await t.app.inject({ method: "GET", url: "/api/auth/users" })).json().some((u: { name: string }) => u.name === "Otto")).toBe(false);
+    await admin("DELETE", `/api/users/${t.ids.op2}`);
+    const log = (await admin("GET", "/api/audit?limit=500")).json() as { actorId: string | null; actorName: string | null }[];
+    expect(log.filter((e) => e.actorId === t.ids.op2).every((e) => e.actorName === "Otto")).toBe(true);
+    expect(log.some((e) => e.actorId === t.ids.op2)).toBe(true);
   });
 });

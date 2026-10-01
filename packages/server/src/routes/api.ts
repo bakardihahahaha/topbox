@@ -142,7 +142,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.get("/api/audit", admin, async (req) => {
     const q = parse(z.object({ limit: z.coerce.number().int().min(1).max(1000).default(200) }), req.query);
-    const users = new Map((await s.store.users.list()).map((u) => [u.id, u.name || u.username]));
+    const users = await s.store.users.names();
     return (await s.store.audit.list(q.limit)).map((e) => ({ ...e, actorName: e.actorId ? (users.get(e.actorId) ?? e.actorId) : null }));
   });
 

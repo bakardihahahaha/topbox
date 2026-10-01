@@ -78,6 +78,8 @@ export interface UsersRepo {
   count(): Promise<number>;
   list(): Promise<UserRecord[]>;
   get(id: string): Promise<UserRecord | null>;
+  /** Every user ever, deleted ones included: id → name (for history). */
+  names(): Promise<Map<string, string>>;
   getByUsername(username: string): Promise<UserRecord | null>;
   create(user: UserRecord): Promise<void>;
   update(id: string, patch: Partial<Omit<UserRecord, "id" | "createdAt">>): Promise<void>;

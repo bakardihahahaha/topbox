@@ -204,7 +204,7 @@ function PhotoSheet(props: {
   const signer = props.signoff.signatures.find((g) => g.checkId === props.checkId)?.userId;
   const [asUserId, setAsUserId] = useState(signer ?? props.me.userId);
   useEffect(() => {
-    if (props.isAdmin) void listUsers().then((u) => setPeople(u.filter((x) => x.role !== "viewer")), () => {});
+    if (props.isAdmin) void listUsers().then((u) => setPeople(u.filter((x) => x.role !== "viewer" && x.role !== "parts" && !x.locked)), () => {});
   }, [props.isAdmin]);
   async function add(list: FileList | null) {
     const files = [...(list ?? [])];

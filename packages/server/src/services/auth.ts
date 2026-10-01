@@ -327,6 +327,7 @@ export class AuthService {
   async deleteUser(id: string, actorId: string): Promise<void> {
     const u = await this.requireUser(id);
     if (id === actorId) throw forbidden("You can't delete yourself.");
+    if (!u.locked) throw conflict("BLOCK_FIRST", "Block this person first — only blocked people can be deleted for good.");
     if (u.role === "admin" && !u.locked && (await this.activeAdmins()) <= 1) throw conflict("LAST_ADMIN", "This is the only active admin.");
     await this.store.sessions.deleteForUser(id);
     await this.store.users.softDelete(id, new Date(this.now()).toISOString());

@@ -203,9 +203,6 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
         {/* Always here (greyed until something is ticked), so ticking never shifts the list. */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", flexBasis: "100%" }}>
           <span style={{ fontSize: 13, color: picked.length ? "var(--text)" : "var(--text-3)", minWidth: 80, textAlign: "right" }}>{picked.length} selected</span>
-          <button style={{ ...ghost, height: 52 }} onClick={() => setSelected(new Set())} disabled={picked.length === 0}>
-            Clear
-          </button>
           <button style={{ ...ghost, height: 52, opacity: picked.length === 0 ? 0.45 : 1 }} onClick={() => void pdf(true)} disabled={busy || picked.length === 0} title="Look at the PDF here — then save, print or close">
             View PDF
           </button>

@@ -345,7 +345,8 @@ export class SignoffService {
 
   /** Operators in the system — the cross-check rule spreads checks over them. */
   async operatorCount(): Promise<number> {
-    return (await this.store.users.list()).filter((u) => u.role === "operator").length;
+    // Blocked people (left the company) don't count.
+    return (await this.store.users.list()).filter((u) => u.role === "operator" && !u.locked).length;
   }
 
   async unsign(id: string, checkId: string, actor: Actor): Promise<Signoff> {
@@ -359,9 +360,18 @@ export class SignoffService {
   }
 
   /** `partRowId` is client-generated, so a retried add lands on the same row. */
+  /** Replaced parts (ticking a part, its quantity, its note) are recorded by the people who may
+   * start sign-offs (Setup → Users) — the others only do the later checks. */
+  private assertMayRecordParts(actor: Actor) {
+    if (actor.role !== "admin" && actor.canStart === false) {
+      throw new HttpError(403, "PARTS_NOT_ALLOWED", "Only people allowed to start sign-offs can record replaced parts.");
+    }
+  }
+
   async setPart(id: string, partRowId: string, input: { partId: string; qty: number; note: string }, actor: Actor): Promise<Signoff> {
     const s = await this.requireWritable(id, actor);
     this.assertEditable(s, actor);
+    this.assertMayRecordParts(actor);
     if (s.mode !== "service") throw conflict("NOT_SERVICE", `Parts can't be recorded on a ${typeNameOf(s)} sign-off — only on a type that allows replaced parts.`);
     const allowed = allowedPartIds(s.template, await this.store.templates.get(s.templateId));
     if (allowed !== "all" && !allowed.has(input.partId)) {
@@ -441,6 +451,7 @@ export class SignoffService {
 
   async removePart(id: string, partRowId: string, actor: Actor): Promise<Signoff> {
     this.assertEditable(await this.requireWritable(id, actor), actor);
+    this.assertMayRecordParts(actor);
     await this.store.signoffs.removePart(id, partRowId, new Date().toISOString());
     return this.refresh(id);
   }

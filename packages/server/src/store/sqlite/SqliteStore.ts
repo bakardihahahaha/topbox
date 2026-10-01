@@ -139,6 +139,11 @@ class SqliteUsers implements UsersRepo {
   async list() {
     return (this.db.prepare("SELECT * FROM users WHERE deleted_at = '' ORDER BY username").all() as UserRow[]).map(toUser);
   }
+  async names() {
+    // Deleted people too — their names stay on history (audit log) for good.
+    const rows = this.db.prepare("SELECT id, name, username FROM users").all() as { id: string; name: string; username: string }[];
+    return new Map(rows.map((r) => [r.id, r.name || r.username.replace(/#.*$/, "")]));
+  }
   async get(id: string) {
     const r = this.db.prepare("SELECT * FROM users WHERE id = ? AND deleted_at = ''").get(id) as UserRow | undefined;
     return r ? toUser(r) : null;

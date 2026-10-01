@@ -90,6 +90,9 @@ describe("PIN sign-in", () => {
     expect((await t.login(created.id, "4567", "4.4.4.4")).res.statusCode).toBe(200);
     const reset = (await call("POST", `/api/users/${created.id}/pin`, {})).json();
     expect(reset.pin).toMatch(/^\d{6}$/);
+    // Only a blocked person can be deleted for good.
+    expect((await call("DELETE", `/api/users/${created.id}`)).json().error).toBe("BLOCK_FIRST");
+    await call("PATCH", `/api/users/${created.id}`, { locked: true });
     await call("DELETE", `/api/users/${created.id}`);
     expect((await t.app.inject({ method: "GET", url: "/api/auth/users" })).json().some((u: { name: string }) => u.name === "Piotr")).toBe(false);
     const op = await t.login("op", "2222", "1.1.1.1");
