@@ -16,10 +16,12 @@ import { PdfViewerHost } from "./components/PdfViewerHost.js";
 import { initPwaUpdateCheck } from "./lib/pwaUpdate.js";
 import { initTouchSize } from "./lib/touchSize.js";
 import { initKeyboardSafe } from "./lib/keyboardSafe.js";
+import { initStaleBundleReload } from "./lib/staleBundle.js";
 
 initPwaUpdateCheck();
 initTouchSize();
 initKeyboardSafe();
+initStaleBundleReload();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { closePdfViewer, usePdfViewerRequest } from "../lib/pdfViewerStore.js";
 import { errorMessage, ghost, primary } from "../lib/ui.js";
+import { lazyImport } from "../lib/staleBundle.js";
 
 /**
  * The in-app PDF viewer: the PDF's pages drawn right on this page, with Save (download), Print
@@ -26,7 +27,7 @@ export function PdfViewerHost() {
         if (cancelled) return;
         url = URL.createObjectURL(blob);
         setFile({ blob, fileName, url });
-        const { renderPdfPages } = await import("../lib/pdfRender.js");
+        const { renderPdfPages } = await lazyImport(() => import("../lib/pdfRender.js"));
         const container = pagesRef.current;
         if (!container || cancelled) return;
         container.innerHTML = "";

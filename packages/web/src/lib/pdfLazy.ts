@@ -3,6 +3,7 @@ import { getDocumentSettings } from "./api.js";
 import type { PdfBranding, PdfPhotos } from "./pdf.js";
 import { photoForPdf } from "./photos.js";
 import { showPdfViewer } from "./pdfViewerStore.js";
+import { lazyImport } from "./staleBundle.js";
 
 // jsPDF is ~400 KB — loaded only the first time someone actually generates a PDF. The company
 // header (Setup → Document) is fetched fresh each time and remembered on the device, so a PDF
@@ -52,7 +53,7 @@ async function loadPhotos(signoffs: Signoff[]): Promise<PdfPhotos> {
 }
 
 export async function downloadPdf(signoffs: Signoff[]): Promise<void> {
-  const [pdf, b, photos] = await Promise.all([import("./pdf.js"), branding(), loadPhotos(signoffs)]);
+  const [pdf, b, photos] = await Promise.all([lazyImport(() => import("./pdf.js")), branding(), loadPhotos(signoffs)]);
   pdf.downloadSignoffsPdf(signoffs, b, photos);
 }
 
@@ -62,7 +63,7 @@ export async function downloadPdf(signoffs: Signoff[]): Promise<void> {
 export function viewPdf(signoffs: Signoff[] | (() => Promise<Signoff[]>), settings?: DocumentSettings): void {
   showPdfViewer(async () => {
     const list = typeof signoffs === "function" ? await signoffs() : signoffs;
-    const [pdf, b, photos] = await Promise.all([import("./pdf.js"), branding(settings), loadPhotos(list)]);
+    const [pdf, b, photos] = await Promise.all([lazyImport(() => import("./pdf.js")), branding(settings), loadPhotos(list)]);
     return { blob: pdf.signoffsPdfBlob(list, b, photos), fileName: pdf.pdfFileName(list) };
   });
 }

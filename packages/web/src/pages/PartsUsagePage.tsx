@@ -8,6 +8,7 @@ import { confirmDialog } from "../lib/confirmDialog.js";
 import { localStamp, topboxUrl } from "../lib/format.js";
 import { Pager, pageOf } from "../components/Pager.js";
 import { card, chip, errorBox, errorMessage, ghost, h1, hint, infoBox, input, page, primary } from "../lib/ui.js";
+import { lazyImport } from "../lib/staleBundle.js";
 
 // Parts used — every replaced part ticked on a sign-off, for a period, so they can be booked out
 // of stock in the stock system. An admin marks what's been booked out; the default view shows
@@ -99,7 +100,7 @@ export function PartsUsagePage() {
    * decimal comma / encoding surprises): sheet "Summary" per part, sheet "By TopBox" per line.
    * Quantities are numbers, dates are written as dd/mm/yyyy text. */
   async function downloadExcel() {
-    const XLSX = await import("xlsx");
+    const XLSX = await lazyImport(() => import("xlsx"));
     const day = (iso: string) => localStamp(iso).slice(0, 10);
     const qtyHead = booked === "open" ? "To book (negative = return to stock)" : "Qty";
     const summarySheet = XLSX.utils.aoa_to_sheet([
