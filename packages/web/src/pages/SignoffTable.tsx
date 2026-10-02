@@ -210,8 +210,8 @@ export function SignoffTable(props: { typeId?: string; title: string; startLabel
             {busy ? "Generating…" : "Generate PDF"}
           </button>
           {grouped && (
-            <button style={{ ...ghost, height: 52, borderColor: "var(--accent)", color: "var(--accent)", opacity: picked.length === 0 ? 0.45 : 1 }} onClick={() => void pdf(false, "all")} disabled={busy || picked.length === 0} title="Every visit of each selected TopBox — its whole history">
-              PDF all visits
+            <button style={{ ...ghost, height: 52, borderColor: "var(--accent)", color: "var(--accent)", opacity: picked.length === 0 ? 0.45 : 1 }} onClick={() => void pdf(true, "all")} disabled={busy || picked.length === 0} title="Every visit of each selected TopBox — its whole history — here on the page (save, print or close)">
+              View PDF all visits
             </button>
           )}
         </div>

@@ -5,6 +5,7 @@ import { fetchLoginUsers, fetchServiceOpen, login, loginByName } from "../lib/cl
 import { APP_VERSION, clearCacheAndCookies } from "../lib/clearCache.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 import { cycleTouchSize, useTouchSizeLabel } from "../lib/touchSize.js";
+import { toggleOnScreenKeyboard, useOnScreenKeyboardLabel } from "../components/OnScreenKeyboard.js";
 
 // Tap your name, type your PIN — the whole sign-in. Every active user is a tile on the first
 // screen so nobody types a username. Same card/colour language as decom's sign-in screen.
@@ -41,6 +42,7 @@ const initials = (name: string) =>
 export function SignInPage({ onSignedIn, message }: SignInPageProps) {
   const { themeLabel, cycleTheme } = useTheme();
   const sizeLabel = useTouchSizeLabel();
+  const keyboardLabel = useOnScreenKeyboardLabel();
   const [users, setUsers] = useState<LoginUser[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<LoginUser | null>(null);
@@ -86,6 +88,9 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 8 }}>
           <div style={{ fontSize: 24, fontWeight: 700 }}>Biosite Sign-off</div>
           <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={toggleOnScreenKeyboard} className="mono" style={smallButton} title="On-screen keyboard for text fields">
+              {keyboardLabel}
+            </button>
             <button type="button" onClick={cycleTouchSize} className="mono" style={smallButton}>
               {sizeLabel}
             </button>
@@ -254,6 +259,7 @@ function PinPanel({ user, now, onClose, onLocked, onSignedIn }: { user: LoginUse
           inputMode="numeric"
           autoComplete="current-password"
           aria-label="PIN"
+          data-no-osk
           disabled={Boolean(locked)}
           className="mono"
           style={{ ...input, height: 52, fontSize: 26, letterSpacing: ".4em", textAlign: "center" }}

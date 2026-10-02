@@ -6,6 +6,7 @@ import { useIdleLogout } from "./lib/idleLogout.js";
 import { connectLiveEvents, disconnectLiveEvents } from "./lib/liveEvents.js";
 import { useTheme } from "./theme/ThemeContext.js";
 import { cycleTouchSize, useTouchSizeLabel } from "./lib/touchSize.js";
+import { toggleOnScreenKeyboard, useOnScreenKeyboardLabel } from "./components/OnScreenKeyboard.js";
 import { SavingIndicator } from "./components/SavingIndicator.js";
 import { SignInPage } from "./pages/SignInPage.js";
 import { HomePage } from "./pages/HomePage.js";
@@ -38,6 +39,7 @@ export function App() {
   const navigate = useNavigate();
   const { themeLabel, cycleTheme } = useTheme();
   const sizeLabel = useTouchSizeLabel();
+  const keyboardLabel = useOnScreenKeyboardLabel();
 
   async function checkSession() {
     const user = await fetchMe();
@@ -111,6 +113,9 @@ export function App() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none", marginLeft: 16 }}>
             <SavingIndicator />
+            <button onClick={toggleOnScreenKeyboard} className="mono" style={navButton} title="The app's own on-screen keyboard for text fields (notes…) — for touch screens / kiosks">
+              {keyboardLabel}
+            </button>
             <button onClick={cycleTouchSize} className="mono" style={navButton}>
               {sizeLabel}
             </button>

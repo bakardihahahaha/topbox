@@ -23,46 +23,9 @@ function reveal() {
   el.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
-/** Chromium's VirtualKeyboard API (Edge / Chrome on Windows touch screens). */
-type VirtualKeyboard = { show(): void };
-const virtualKeyboard = (): VirtualKeyboard | undefined => (navigator as Navigator & { virtualKeyboard?: VirtualKeyboard }).virtualKeyboard;
-
 export function initKeyboardSafe(): void {
   document.addEventListener("focusin", (e) => {
     if (opensKeyboard(e.target as Element)) setTimeout(reveal, 350);
   });
-
-  // Windows + Edge on a touch screen: Windows only pops its touch keyboard up by itself in tablet
-  // mode (or with the "show the touch keyboard" setting). A finger tapping a text field (a note,
-  // a name…) asks for it straight away instead. Mouse and pen taps are left alone, and iPad /
-  // Android open their keyboard on their own anyway.
-  document.addEventListener(
-    "pointerdown",
-    (e) => {
-      if (e.pointerType !== "touch" || !virtualKeyboard()) return;
-      const el = (e.target as Element | null)?.closest("input, textarea") ?? null;
-      if (opensKeyboard(el)) el.setAttribute("virtualkeyboardpolicy", "manual");
-    },
-    true,
-  );
-  document.addEventListener(
-    "pointerup",
-    (e) => {
-      const vk = virtualKeyboard();
-      if (e.pointerType !== "touch" || !vk) return;
-      const el = (e.target as Element | null)?.closest("input, textarea") ?? null;
-      if (!opensKeyboard(el)) return;
-      // After the tap's own focus has happened.
-      setTimeout(() => {
-        if (document.activeElement !== el) el.focus();
-        try {
-          vk.show();
-        } catch {
-          // not available here — the system decides
-        }
-      }, 0);
-    },
-    true,
-  );
   window.visualViewport?.addEventListener("resize", () => setTimeout(reveal, 50));
 }

@@ -13,6 +13,7 @@ import { ThemeProvider } from "./theme/ThemeContext.js";
 import { App } from "./App.js";
 import { ConfirmHost } from "./components/ConfirmHost.js";
 import { PdfViewerHost } from "./components/PdfViewerHost.js";
+import { OnScreenKeyboardHost } from "./components/OnScreenKeyboard.js";
 import { initPwaUpdateCheck } from "./lib/pwaUpdate.js";
 import { initTouchSize } from "./lib/touchSize.js";
 import { initKeyboardSafe } from "./lib/keyboardSafe.js";
@@ -31,6 +32,7 @@ createRoot(document.getElementById("root")!).render(
       </BrowserRouter>
       <ConfirmHost />
       <PdfViewerHost />
+      <OnScreenKeyboardHost />
     </ThemeProvider>
   </StrictMode>,
 );

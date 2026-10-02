@@ -1,6 +1,6 @@
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { checkDoneAt, departedAt, typeNameOf, type Signoff } from "@biosite-signoff/shared";
-import { downloadPdf } from "../lib/pdfLazy.js";
+import { viewPdf } from "../lib/pdfLazy.js";
 import { getVisits } from "../lib/api.js";
 import { useData } from "../lib/useData.js";
 import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
@@ -47,8 +47,8 @@ export function MechanismHistoryPage() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {list.length > 0 && (
-            <button style={{ ...ghost, height: 56, fontSize: 14 }} onClick={() => void downloadPdf(list)} title="Every visit of this TopBox, oldest first">
-              PDF — all {list.length} visit{list.length === 1 ? "" : "s"}
+            <button style={{ ...ghost, height: 56, fontSize: 14 }} onClick={() => viewPdf(list)} title="Every visit of this TopBox, oldest first — here on the page (save, print or close)">
+              View PDF all visits ({list.length})
             </button>
           )}
           {(!latest || !inWorkshop) && visits.data && me.role !== "viewer" && me.canStart !== false && (

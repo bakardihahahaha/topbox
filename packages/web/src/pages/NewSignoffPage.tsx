@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { SerialInput } from "../components/SerialInput.js";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { allowsRefurbishedR, departedAt, isOncePerTopbox, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
+import { allowsRefurbishedR, departedAt, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
 import { topboxUrl } from "../lib/format.js";
 import type { Template } from "@biosite-signoff/shared";
@@ -36,15 +36,12 @@ export function NewSignoffPage() {
   const lastVisit = previous?.[previous.length - 1];
   const stillIn = lastVisit && !departedAt(lastVisit);
   // An "only once per TopBox" type (Setup → Types, e.g. New (UK)) can't be picked again for a
-  // TopBox that already had it. Unless someone picks a type themselves, a returning serial defaults
-  // to the first repeatable type (e.g. Service), else the first type still allowed for it.
+  // TopBox that already had it. Nothing is picked for anyone: the type is always a conscious choice
+  // (only "+ Start <type>" on a type tab comes with that type chosen).
   const blockOf = (t: SignoffType) => (previous && previous.length > 0 && serial.trim() ? oncePerTopboxBlock(serial.trim(), previous, t) : null);
-  const returning = Boolean(previous && previous.length > 0 && !stillIn);
   const picked = types.find((t) => t.id === typeId);
   const pickedBlocked = picked ? blockOf(picked) : null;
-  // First repeatable type still allowed (e.g. Service), else any type still allowed.
-  const fallback = types.find((t) => !isOncePerTopbox(t) && !blockOf(t)) ?? types.find((t) => !blockOf(t));
-  const type = (picked && !pickedBlocked ? picked : undefined) ?? (returning || pickedBlocked ? fallback : undefined) ?? picked ?? types[0];
+  const type = picked && !pickedBlocked ? picked : undefined;
   const key = mechanismKey(serial);
   const hasR = serial.trim() !== "" && key !== serial.trim().toUpperCase();
   // The refurbished R only on the types that allow it (Setup → Types).
@@ -152,19 +149,25 @@ export function NewSignoffPage() {
               </>
             ) : (
               <>
-                Returning mechanism — this will be visit <b>{previous.length + 1}</b>. Type set to <b>{type?.name}</b>{canAddR ? " — add R if it was refurbished" : ""}.
+                Returning mechanism — this will be visit <b>{previous.length + 1}</b>.{type ? "" : " Choose its type above."}
+                {canAddR ? " Add R if it was refurbished." : ""}
               </>
             )}
           </div>
         )}
-        {pickedBlocked && picked && type && type.id !== picked.id && (
+        {pickedBlocked && picked && (
           <div style={{ ...infoBox, marginBottom: 0 }}>
-            {serial.trim()} has already had a {picked.name} visit — {picked.name} can only be used once per TopBox, so <b>{type.name}</b> is selected instead.
+            {serial.trim()} has already had a {picked.name} visit — {picked.name} can only be used once per TopBox. Choose another type.
           </div>
         )}
         {typeBlock && <div style={{ ...errorBox, marginBottom: 0 }}>{typeBlock}</div>}
-        <button ref={startRef} type="submit" disabled={busy || !chosen || !serial.trim() || Boolean(typeBlock)} style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !serial.trim() || typeBlock ? 0.6 : 1 }}>
-          {busy ? "Creating…" : "Start sign-off"}
+        <button
+          ref={startRef}
+          type="submit"
+          disabled={busy || !chosen || !type || !serial.trim() || Boolean(typeBlock)}
+          style={{ ...primary, height: 58, fontSize: 15, opacity: busy || !chosen || !type || !serial.trim() || typeBlock ? 0.6 : 1 }}
+        >
+          {busy ? "Creating…" : !type ? "Choose a type first" : "Start sign-off"}
         </button>
       </form>
     </div>
