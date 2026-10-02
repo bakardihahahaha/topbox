@@ -208,7 +208,7 @@ export function SetupUsersPage() {
                       onClick={async () => {
                         if (
                           await confirmDialog(
-                            `Delete ${u.name} forever? They're removed from the system for good and can't be unblocked. Their history stays untouched: signatures, checks and the audit log keep their name.`,
+                            `Delete ${u.name} forever? They're removed from the system for good and can't be unblocked. Their history stays untouched: signatures, checks, photos and the audit log keep their name.`,
                             { confirmLabel: "Delete forever", danger: true },
                           )
                         ) {
