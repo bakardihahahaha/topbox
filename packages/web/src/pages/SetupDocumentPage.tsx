@@ -163,12 +163,6 @@ export function SetupDocumentPage() {
             <span style={{ display: "block", fontSize: 12.5, color: "var(--text-3)" }}>On the screens and in the PDF. The time is always recorded — this only hides or shows it.</span>
           </span>
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, gridColumn: "1 / -1" }}>
-          <span className="mono" style={label}>
-            Footer on every screen (the app, not the PDF — leave empty for none)
-          </span>
-          <input value={s.screenFooter ?? ""} onChange={(e) => set({ screenFooter: e.target.value })} maxLength={300} placeholder="e.g. Biosite Systems Ltd — internal use only · Support: ext. 214" style={input} />
-        </label>
         <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, cursor: "pointer", gridColumn: "1 / -1" }}>
           <input type="checkbox" checked={s.photosEnabled === true} onChange={(e) => set({ photosEnabled: e.target.checked })} style={{ width: 26, height: 26, accentColor: "var(--accent)" }} />
           <span>
@@ -179,6 +173,16 @@ export function SetupDocumentPage() {
             </span>
           </span>
         </label>
+      </section>
+
+      <section style={{ ...card, marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div>
+          <div style={{ fontWeight: 700 }}>App footer</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 2 }}>
+            A line of text at the bottom of every screen of the app, the sign-in screen included (not on the PDF). Leave it empty for no footer. Press Save below.
+          </div>
+        </div>
+        <input value={s.screenFooter ?? ""} onChange={(e) => set({ screenFooter: e.target.value })} maxLength={300} placeholder="Type the footer text here" aria-label="App footer" style={input} />
       </section>
 
       <section style={{ ...card, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
