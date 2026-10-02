@@ -90,12 +90,14 @@ export function SetupUsersPage() {
       {error && <div style={errorBox}>{error}</div>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {[...(users ?? []).filter((u) => !u.locked), ...(users ?? []).filter((u) => u.locked)].map((u, i, all) => (
+        {ordered(users ?? []).map((u, i, all) => (
           <div key={u.id} style={{ display: "contents" }}>
-          {u.locked && (i === 0 || !all[i - 1]!.locked) && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Blocked ({all.filter((x) => x.locked).length})</div>
-              <div style={{ ...hint, margin: "2px 0 0" }}>Not on the sign-in screen and can&apos;t sign in. Their work stays as it is. Unblock to bring someone back, or delete them forever.</div>
+          {(i === 0 || groupOf(all[i - 1]!) !== groupOf(u)) && (
+            <div style={{ marginTop: i === 0 ? 4 : 18, paddingBottom: 6, borderBottom: "1px solid var(--border-soft)" }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>
+                {GROUPS[groupOf(u)].title} <span style={{ color: "var(--text-3)", fontWeight: 600 }}>({all.filter((x) => groupOf(x) === groupOf(u)).length})</span>
+              </div>
+              <div style={{ ...hint, margin: "2px 0 0" }}>{GROUPS[groupOf(u)].hint}</div>
             </div>
           )}
           <div style={{ ...card, display: "flex", flexDirection: "column", gap: 8, opacity: u.locked ? 0.75 : 1 }}>
@@ -254,3 +256,17 @@ function StartsToggle({ checked, onChange }: { checked: boolean; onChange: (v: b
     </label>
   );
 }
+
+/** Setup → Users is split by role (then Blocked last), each group A–Z. */
+type Group = Role | "blocked";
+const GROUPS: Record<Group, { title: string; hint: string }> = {
+  admin: { title: "Admins", hint: "Everything, including Setup." },
+  operator: { title: "Operators", hint: "Do the checks. \"Starts sign-offs\" also lets them open new sign-offs, do the 1st check and record replaced parts." },
+  viewer: { title: "Viewers", hint: "Look and download PDFs only." },
+  parts: { title: "Parts used", hint: "Only the Parts used page — booking parts out of stock." },
+  blocked: { title: "Blocked", hint: "Not on the sign-in screen and can't sign in. Their work stays as it is. Unblock to bring someone back, or delete them forever." },
+};
+const GROUP_ORDER: Group[] = ["admin", "operator", "viewer", "parts", "blocked"];
+const groupOf = (u: UserSummary): Group => (u.locked ? "blocked" : u.role);
+const ordered = (users: UserSummary[]) =>
+  [...users].sort((a, b) => GROUP_ORDER.indexOf(groupOf(a)) - GROUP_ORDER.indexOf(groupOf(b)) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
