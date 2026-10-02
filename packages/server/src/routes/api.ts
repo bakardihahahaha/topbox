@@ -62,6 +62,7 @@ const documentSettingsInput = z.object({
   footerText: z.string().max(500),
   documentIdLabel: z.string().max(100),
   showSignTime: z.boolean().default(true),
+  photosEnabled: z.boolean().default(false),
 });
 
 export async function readDocumentSettings(store: Store): Promise<DocumentSettings> {
@@ -296,6 +297,8 @@ export function registerApi(app: FastifyInstance, s: Services): void {
   // Resized on the device before upload (~0.2–1 MB); sent as a data URL so the offline queue can
   // hold it as plain JSON until there's signal.
   app.post<{ Params: { id: string } }>("/api/signoffs/:id/photos", { ...authed, bodyLimit: 15 * 1024 * 1024 }, async (req) => {
+    // Photos switched off in Setup → Document: nothing is taken or stored.
+    if (!(await readDocumentSettings(s.store)).photosEnabled) throw new HttpError(403, "PHOTOS_OFF", "Photos are switched off (Setup → Document).");
     const body = parse(
       z.object({
         photoId: z.string().uuid(),

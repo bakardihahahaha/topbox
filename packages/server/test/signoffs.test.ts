@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Signoff } from "@biosite-signoff/shared";
 import { FAKE_JPEG, FAKE_JPEG_URL, setup } from "./helpers.js";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const SIG = "M10 10L50 60L90 20";
@@ -811,5 +811,23 @@ describe("admin corrections on signed checks", () => {
     expect(after.signatures.find((g) => g.checkId === c1!.id)?.name).toBe("Olga Operator");
     const log = (await admin("GET", "/api/audit?limit=500")).json() as { detail: unknown }[];
     expect(JSON.stringify(log)).toContain("adminEditSignedCheck");
+  });
+});
+
+describe("photos switch (Setup → Document)", () => {
+  it("off: uploads refused; on: stored on the NAS in the TopBox's own serial-number folder", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const id = randomUUID();
+    const s = (await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "PH-77R", typeId: "service" })).json() as Signoff;
+    const settings = (await admin("GET", "/api/document-settings")).json();
+    await admin("PUT", "/api/document-settings", { ...settings, photosEnabled: false });
+    const off = await admin("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: s.template.checks[0]!.id, dataUrl: FAKE_JPEG_URL });
+    expect(off.json().error).toBe("PHOTOS_OFF");
+    await admin("PUT", "/api/document-settings", { ...settings, photosEnabled: true });
+    const on = (await admin("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: s.template.checks[0]!.id, dataUrl: FAKE_JPEG_URL })).json() as Signoff;
+    expect(on.photos).toHaveLength(1);
+    // data/photos/<serial number>/<date>_<check>_<id>.jpg
+    expect(readdirSync(join(t.photosDir, "PH-77R")).filter((f) => f.endsWith(".jpg"))).toHaveLength(1);
   });
 });

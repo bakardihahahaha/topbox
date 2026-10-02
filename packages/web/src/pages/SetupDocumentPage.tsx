@@ -163,6 +163,16 @@ export function SetupDocumentPage() {
             <span style={{ display: "block", fontSize: 12.5, color: "var(--text-3)" }}>On the screens and in the PDF. The time is always recorded — this only hides or shows it.</span>
           </span>
         </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 14, cursor: "pointer", gridColumn: "1 / -1" }}>
+          <input type="checkbox" checked={s.photosEnabled === true} onChange={(e) => set({ photosEnabled: e.target.checked })} style={{ width: 26, height: 26, accentColor: "var(--accent)" }} />
+          <span>
+            <b>Check photos</b>
+            <span style={{ display: "block", fontSize: 12.5, color: "var(--text-3)" }}>
+              On: a camera button under each Sign button; photos are saved on the NAS in a folder per TopBox serial number (photos/&lt;serial&gt;/) and added to the PDF. Off: no camera and no
+              photo pages — photos already taken stay on the NAS.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section style={{ ...card, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>

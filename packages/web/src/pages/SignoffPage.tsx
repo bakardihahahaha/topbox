@@ -16,7 +16,7 @@ import { SignModal } from "../components/SignModal.js";
 import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount } from "../lib/permissions.js";
 import { topboxUrl } from "../lib/format.js";
-import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
+import { signStamp, usePhotosEnabled, useShowSignTime } from "../lib/documentSettings.js";
 import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
 import { SerialInput } from "../components/SerialInput.js";
 import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
@@ -56,6 +56,8 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   const types = useSignoffTypes();
   const operators = useOperatorCount();
   const showTime = useShowSignTime();
+  // Setup → Document → Check photos.
+  const photosOn = usePhotosEnabled();
   const typesRef = useRef(types);
   typesRef.current = types;
   const inflight = useRef(0);
@@ -433,7 +435,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                           {firstCheckBlock(s, c.id, me) ? "Starters only" : checkOrderBlock(s, c.id, me) ? "Not yet" : block ? "Other operator" : "Sign"}
                         </button>
                       )}
-                      {!closed && (
+                      {!closed && photosOn && (
                         <div style={{ marginTop: 6 }}>
                           <CameraButton
                             signoff={s}
@@ -450,7 +452,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                           />
                         </div>
                       )}
-                      <PhotoStrip signoff={s} checkId={c.id} canRemove={canRemovePhoto} onRemove={removePhotoNow} />
+                      {photosOn && <PhotoStrip signoff={s} checkId={c.id} canRemove={canRemovePhoto} onRemove={removePhotoNow} />}
                     </td>
                   );
                 })}
@@ -515,11 +517,13 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
         </div>
       )}
 
-      <PhotosCard
-        signoff={s}
-        canRemove={canRemovePhoto}
-        onRemove={removePhotoNow}
-      />
+      {photosOn && (
+        <PhotosCard
+          signoff={s}
+          canRemove={canRemovePhoto}
+          onRemove={removePhotoNow}
+        />
+      )}
 
       {/* Notes */}
       <div style={{ ...card, marginBottom: 12 }}>

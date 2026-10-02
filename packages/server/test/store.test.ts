@@ -7,7 +7,7 @@ describe("Store generic table access", () => {
   it("round-trips every mirrored table through readRows/importRows", async () => {
     const t = await setup();
     const { token } = await t.login("op", "2222");
-    await t.store.appSettings.set("document", JSON.stringify({ companyName: "X" }));
+    await t.store.appSettings.set("document", JSON.stringify({ companyName: "X", photosEnabled: true }));
     const part = await t.catalog.createPart({ partNumber: "P", name: "Part", description: "d" });
     await t.catalog.updateTemplate(t.template.id, { ...t.template, partIds: [part.id] });
     const id = crypto.randomUUID();

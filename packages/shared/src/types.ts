@@ -225,6 +225,9 @@ export interface DocumentSettings {
   /** Show the time next to signature dates (screens and PDF). The time is always recorded; this
    * only decides whether it's shown. */
   showSignTime: boolean;
+  /** Check photos (camera under each Sign button, photo pages in the PDF). Off = no camera and no
+   * photo pages; photos already taken stay stored on the NAS. */
+  photosEnabled: boolean;
 }
 
 export const DEFAULT_DOCUMENT_SETTINGS: DocumentSettings = {
@@ -235,6 +238,7 @@ export const DEFAULT_DOCUMENT_SETTINGS: DocumentSettings = {
   footerText: "Biosite Systems Ltd, registered in England and Wales. Reg. No. 7308880",
   documentIdLabel: "Document Identifier:",
   showSignTime: true,
+  photosEnabled: false,
 };
 
 /** One tile on the sign-in screen. */

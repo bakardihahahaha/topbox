@@ -15,6 +15,9 @@ export function useDocumentSettings(): DocumentSettings {
   return s;
 }
 
+/** Whether check photos are switched on (Setup → Document). */
+export const usePhotosEnabled = () => useDocumentSettings().photosEnabled === true;
+
 /** Whether signature times are shown (Setup → Document). */
 export const useShowSignTime = () => useDocumentSettings().showSignTime;
 

@@ -32,6 +32,8 @@ export async function setup(opts: { withSheets?: boolean; now?: () => number } =
     op2: (await auth.createUser({ name: "Otto", role: "operator", pin: "3333" }, null)).id,
   };
   const template = await catalog.createTemplate(mechanismChecklistSeed());
+  // Photos are off by default (Setup → Document); the photo tests need them on.
+  await store.appSettings.set("document", JSON.stringify({ photosEnabled: true }));
 
   async function login(alias: string, pin: string, ip = "10.0.0.1") {
     const res = await app.inject({ method: "POST", url: "/api/auth/login", payload: { userId: ids[alias] ?? alias, pin }, remoteAddress: ip });
