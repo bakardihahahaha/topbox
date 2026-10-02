@@ -63,6 +63,7 @@ const documentSettingsInput = z.object({
   documentIdLabel: z.string().max(100),
   showSignTime: z.boolean().default(true),
   photosEnabled: z.boolean().default(false),
+  screenFooter: z.string().max(300).default(""),
 });
 
 export async function readDocumentSettings(store: Store): Promise<DocumentSettings> {
@@ -106,6 +107,9 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     }
     return { token: result.token, role: result.role, userId: result.userId };
   });
+
+  /** Public: the footer line shown on every screen, the sign-in screen included. */
+  app.get("/api/footer", async () => ({ text: (await readDocumentSettings(s.store)).screenFooter }));
 
   /** Public: whether the service is open now — nothing else. */
   app.get("/api/auth/status", async () => ({ open: !(await s.auth.isClosed()) }));

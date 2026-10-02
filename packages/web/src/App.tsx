@@ -9,6 +9,7 @@ import { cycleTouchSize, useTouchSizeLabel } from "./lib/touchSize.js";
 import { toggleOnScreenKeyboard, useOnScreenKeyboardLabel } from "./components/OnScreenKeyboard.js";
 import { SavingIndicator } from "./components/SavingIndicator.js";
 import { SignInPage } from "./pages/SignInPage.js";
+import { ScreenFooter } from "./components/ScreenFooter.js";
 import { HomePage } from "./pages/HomePage.js";
 import { DeletedPage } from "./pages/DeletedPage.js";
 import { getDeletedCount } from "./lib/api.js";
@@ -82,13 +83,18 @@ export function App() {
   if (status === "checking") return null;
   if (status === "signedOut" || !me) {
     return (
-      <SignInPage
-        onSignedIn={() => {
-          setMessage(null);
-          void checkSession();
-        }}
-        message={message ?? undefined}
-      />
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <SignInPage
+            onSignedIn={() => {
+              setMessage(null);
+              void checkSession();
+            }}
+            message={message ?? undefined}
+          />
+        </div>
+        <ScreenFooter />
+      </div>
     );
   }
 
@@ -175,6 +181,7 @@ export function App() {
           </Routes>
           )}
         </div>
+        <ScreenFooter />
       </div>
     </MeContext.Provider>
   );
