@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { allowedPartIds, allowsRefurbishedR, checkOrderBlock, crossCheckBlock, firstCheckBlock, isCheckFullyMarked, mechanismKey, photoBlock, signoffProgress, signoffStatus, summarize, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
+import { allowedPartIds, allowsRefurbishedR, checkOrderBlock, crossCheckBlock, firstCheckBlock, isCheckFullyMarked, mechanismKey, signoffProgress, signoffStatus, summarize, typeNameOf, type MarkValue, type Part, type Signoff, type Template, type TemplateCheck } from "@biosite-signoff/shared";
 import * as api from "../lib/api.js";
 import { ApiError } from "../lib/client.js";
 import { useMe } from "../lib/meContext.js";
@@ -17,9 +17,7 @@ import { useSignoffTypes } from "../lib/signoffTypes.js";
 import { useOperatorCount } from "../lib/permissions.js";
 import { topboxUrl } from "../lib/format.js";
 import { signStamp, useShowSignTime } from "../lib/documentSettings.js";
-import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
 import { SerialInput } from "../components/SerialInput.js";
-import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
 import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
 
 const NEXT: Record<string, MarkValue | null> = { none: "pass", pass: "fail", fail: "na", na: null };
@@ -37,7 +35,6 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [signing, setSigning] = useState<TemplateCheck | null>(null);
-  const [photoBusy, setPhotoBusy] = useState<string | null>(null);
   // Opened on its own (/signoffs/:id) nobody tells us whether a later visit exists — look it up.
   const [laterVisitExists, setLaterVisitExists] = useState(false);
   // Admin correcting a signed check: asked once per sign-off; the operator's signature stays.
@@ -210,29 +207,6 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
       return;
     }
     await mutate({ kind: "updateHeader", id, patch: { typeId } }, () => api.updateSignoffHeader(id, { typeId }));
-  }
-
-  /** Camera → shrunk JPEG → shown at once, uploaded with the queue. */
-  // Operators take back only their own photos (until the sign-off is complete); admins any.
-  const canRemovePhoto = (p: { takenBy: string }) => isAdmin || (!closed && p.takenBy === me.userId);
-  const removePhotoNow = (photoId: string) => mutate({ kind: "removePhoto", id, photoId }, () => api.removePhoto(id, photoId));
-
-  async function takePhotos(checkId: string, files: File[], as?: { userId: string; name: string }) {
-    setPhotoBusy(checkId);
-    try {
-      // One after another — each is shrunk, shown and queued before the next is read.
-      for (const file of files) {
-        const dataUrl = await toJpegDataUrl(file);
-        const photoId = crypto.randomUUID();
-        const takenAt = new Date().toISOString();
-        await rememberPhoto(photoId, dataUrl);
-        await mutate({ kind: "addPhoto", id, photoId, checkId, dataUrl, takenAt, asUserId: as?.userId, asName: as?.name }, () => api.addPhoto(id, photoId, checkId, dataUrl, takenAt, as?.userId));
-      }
-    } catch (err) {
-      setError(`Couldn't use that photo: ${errorMessage(err)}`);
-    } finally {
-      setPhotoBusy(null);
-    }
   }
 
   async function remove() {
@@ -433,24 +407,6 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                           {firstCheckBlock(s, c.id, me) ? "Starters only" : checkOrderBlock(s, c.id, me) ? "Not yet" : block ? "Other operator" : "Sign"}
                         </button>
                       )}
-                      {!closed && (
-                        <div style={{ marginTop: 6 }}>
-                          <CameraButton
-                            signoff={s}
-                            checkId={c.id}
-                            checkLabel={c.label}
-                            busy={photoBusy === c.id}
-                            blocked={photoBlock(s, c.id, me, operators)}
-                            onBlocked={setError}
-                            onFiles={(files, as) => takePhotos(c.id, files, as)}
-                            canRemove={canRemovePhoto}
-                            onRemove={removePhotoNow}
-                            isAdmin={isAdmin}
-                            me={me}
-                          />
-                        </div>
-                      )}
-                      <PhotoStrip signoff={s} checkId={c.id} canRemove={canRemovePhoto} onRemove={removePhotoNow} />
                     </td>
                   );
                 })}
@@ -515,12 +471,6 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
         </div>
       )}
 
-      <PhotosCard
-        signoff={s}
-        canRemove={canRemovePhoto}
-        onRemove={removePhotoNow}
-      />
-
       {/* Notes */}
       <div style={{ ...card, marginBottom: 12 }}>
         <span className="mono" style={label}>
@@ -562,7 +512,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
 }
 
 /** An earlier visit is drawn in greys: the theme's green (ticks, buttons, chips) is swapped for
- * neutral tones on this subtree only — plain CSS variables, so pop-ups (photos, PDF) still work. */
+ * neutral tones on this subtree only — plain CSS variables, so pop-ups (PDF viewer) still work. */
 const HISTORY_GREY = {
   "--accent": "var(--text-3)",
   "--accent-wash": "var(--surface-alt)",

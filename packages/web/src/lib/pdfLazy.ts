@@ -46,6 +46,9 @@ async function branding(override?: DocumentSettings): Promise<PdfBranding> {
 
 /** Every photo of these sign-offs, for the attachment pages (ones this device can't reach are
  * left out rather than failing the whole PDF). */
+/** Photos are no longer taken (the camera was dropped); any already stored stay out of PDFs too. */
+const withoutPhotos = (list: Signoff[]): Signoff[] => list.map((s) => ({ ...s, photos: [] }));
+
 async function loadPhotos(signoffs: Signoff[]): Promise<PdfPhotos> {
   const ids = signoffs.flatMap((s) => (s.photos ?? []).map((p) => p.id));
   const loaded = await Promise.all(ids.map(async (id) => [id, await photoForPdf(id)] as const));
@@ -53,8 +56,9 @@ async function loadPhotos(signoffs: Signoff[]): Promise<PdfPhotos> {
 }
 
 export async function downloadPdf(signoffs: Signoff[]): Promise<void> {
-  const [pdf, b, photos] = await Promise.all([lazyImport(() => import("./pdf.js")), branding(), loadPhotos(signoffs)]);
-  pdf.downloadSignoffsPdf(signoffs, b, photos);
+  const list = withoutPhotos(signoffs);
+  const [pdf, b, photos] = await Promise.all([lazyImport(() => import("./pdf.js")), branding(), loadPhotos(list)]);
+  pdf.downloadSignoffsPdf(list, b, photos);
 }
 
 /** Shows the PDF on this page (in-app viewer: Save, Print, ✕ back to where you were).
@@ -62,7 +66,7 @@ export async function downloadPdf(signoffs: Signoff[]): Promise<void> {
  * Setup → Document preview unsaved changes. */
 export function viewPdf(signoffs: Signoff[] | (() => Promise<Signoff[]>), settings?: DocumentSettings): void {
   showPdfViewer(async () => {
-    const list = typeof signoffs === "function" ? await signoffs() : signoffs;
+    const list = withoutPhotos(typeof signoffs === "function" ? await signoffs() : signoffs);
     const [pdf, b, photos] = await Promise.all([lazyImport(() => import("./pdf.js")), branding(settings), loadPhotos(list)]);
     return { blob: pdf.signoffsPdfBlob(list, b, photos), fileName: pdf.pdfFileName(list) };
   });
