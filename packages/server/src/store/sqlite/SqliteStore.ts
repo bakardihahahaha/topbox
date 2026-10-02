@@ -338,6 +338,15 @@ class SqliteParts implements PartsRepo {
     this.tx(() => {
       this.db.prepare(`UPDATE parts SET ${keys.map((k) => `${k} = ?`).join(", ")} WHERE id = ?`).run(...keys.map((k) => cols[k]), id);
       this.enqueue("parts", id);
+      // Every sign-off that recorded this part shows it as it is now — history included.
+      const p = this.db.prepare("SELECT part_number, name FROM parts WHERE id = ?").get(id) as { part_number: string; name: string } | undefined;
+      if (!p) return;
+      const lines = this.db.prepare("SELECT id FROM signoff_parts WHERE part_id = ? AND (part_number != ? OR name != ?)").all(id, p.part_number, p.name) as { id: string }[];
+      const fix = this.db.prepare("UPDATE signoff_parts SET part_number = ?, name = ?, updated_at = ? WHERE id = ?");
+      for (const l of lines) {
+        fix.run(p.part_number, p.name, cols.updated_at, l.id);
+        this.enqueue("signoff_parts", l.id);
+      }
     });
   }
   async reorder(ids: string[], at: string) {

@@ -149,9 +149,9 @@ describe("sign-off flow", () => {
     expect(withPart.parts).toMatchObject([{ id: line, partNumber: "SP-01", name: "Plunger spring", qty: 2, note: "worn" }]);
     expect((await call("PUT", `/api/signoffs/${svcId}/parts/${randomUUID()}`, { partId: bolt.id, qty: 1 })).statusCode).toBe(400);
 
-    // Renaming the part later doesn't rewrite the recorded snapshot.
+    // Renaming the part in Setup → Parts renames it on the sign-offs that recorded it too.
     await t.catalog.updatePart(spring.id, { name: "Spring v2" });
-    expect(((await call("GET", `/api/signoffs/${svcId}`)).json() as Signoff).parts[0]!.name).toBe("Plunger spring");
+    expect(((await call("GET", `/api/signoffs/${svcId}`)).json() as Signoff).parts[0]!.name).toBe("Spring v2");
 
     // Operators can't change the type at all; an admin can, once the parts are gone.
     expect((await call("PATCH", `/api/signoffs/${svcId}`, { mode: "new" })).statusCode).toBe(403);
@@ -829,5 +829,25 @@ describe("photos switch (Setup → Document)", () => {
     expect(on.photos).toHaveLength(1);
     // data/photos/<serial number>/<date>_<check>_<id>.jpg
     expect(readdirSync(join(t.photosDir, "PH-77R")).filter((f) => f.endsWith(".jpg"))).toHaveLength(1);
+  });
+});
+
+describe("renaming a part in Setup", () => {
+  it("updates every sign-off that recorded it — history, Parts used and the backup sheet", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const part = await t.catalog.createPart({ partNumber: "OLD-1", name: "Old spring", description: "" });
+    const id = randomUUID();
+    await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "RN-1", typeId: "service" });
+    await admin("PUT", `/api/signoffs/${id}/parts/${randomUUID()}`, { partId: part.id, qty: 2 });
+    await t.catalog.updatePart(part.id, { partNumber: "NEW-1", name: "New spring" });
+    const s = (await admin("GET", `/api/signoffs/${id}`)).json() as Signoff;
+    expect(s.parts.map((p) => [p.partNumber, p.name, p.qty])).toEqual([["NEW-1", "New spring", 2]]);
+    const range = "from=2000-01-01T00:00:00.000Z&to=2100-01-01T00:00:00.000Z";
+    const usage = (await admin("GET", `/api/parts-usage?${range}`)).json() as { partNumber: string; name: string }[];
+    expect(usage.map((u) => `${u.partNumber} ${u.name}`)).toEqual(["NEW-1 New spring"]);
+    await t.mirror.flush();
+    const tab = t.sheets.tabs.get("sheet-1/signoff_parts")!;
+    expect(tab.some((r) => r.includes("NEW-1"))).toBe(true);
   });
 });

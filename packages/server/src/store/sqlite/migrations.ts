@@ -252,6 +252,21 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE users ADD COLUMN card_hash TEXT NOT NULL DEFAULT '';
   `,
+  // 13: replaced-part lines follow the part as it is now in Setup → Parts (part number, name) —
+  // lines recorded before a part was renamed are brought up to date, and queued for the backup
+  // sheet. Parts deleted from Setup keep the name they had.
+  `
+  INSERT OR REPLACE INTO mirror_outbox (tbl, row_id, enqueued_at)
+    SELECT 'signoff_parts', sp.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    FROM signoff_parts sp JOIN parts p ON p.id = sp.part_id
+    WHERE p.deleted_at = '' AND (sp.part_number != p.part_number OR sp.name != p.name);
+  UPDATE signoff_parts SET
+    part_number = (SELECT p.part_number FROM parts p WHERE p.id = signoff_parts.part_id),
+    name = (SELECT p.name FROM parts p WHERE p.id = signoff_parts.part_id)
+  WHERE EXISTS (
+    SELECT 1 FROM parts p WHERE p.id = signoff_parts.part_id AND p.deleted_at = '' AND (signoff_parts.part_number != p.part_number OR signoff_parts.name != p.name)
+  );
+  `,
 ];
 
 export function migrate(db: Database.Database): void {
