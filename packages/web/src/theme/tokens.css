@@ -209,3 +209,9 @@ button {
 ::-webkit-scrollbar-button {
   display: none;
 }
+
+/* A check box next to a long label must never be squeezed smaller than its neighbours. */
+input[type="checkbox"],
+input[type="radio"] {
+  flex-shrink: 0;
+}
