@@ -459,8 +459,18 @@ export class SignoffService {
       if (photo.takenBy !== actor.userId) throw forbidden(`This photo was taken by ${photo.takenByName} — only they or an admin can remove it.`);
       this.assertEditable(s, actor);
     }
+    const file = (await this.store.signoffs.getPhoto(photoId))?.file;
     await this.store.signoffs.removePhoto(id, photoId, new Date().toISOString());
+    // Gone from the NAS too, not just hidden.
+    if (file) await this.photoFiles.remove(file).catch(() => {});
     return this.refresh(id);
+  }
+
+  /** On start-up: deletes the files of photos removed before files were deleted along with them. */
+  async purgeRemovedPhotoFiles(): Promise<number> {
+    const files = await this.store.signoffs.deletedPhotoFiles();
+    for (const f of files) await this.photoFiles.remove(f).catch(() => {});
+    return files.length;
   }
 
   async removePart(id: string, partRowId: string, actor: Actor): Promise<Signoff> {

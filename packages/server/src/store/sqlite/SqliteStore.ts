@@ -814,6 +814,11 @@ class SqliteSignoffs implements SignoffsRepo {
     return r ? { ...toPhoto(r), signoffId: r.signoff_id, file: r.file } : null;
   }
 
+  async deletedPhotoFiles() {
+    // Photos removed from a sign-off (their row stays for the backup sheet; the file shouldn't).
+    return (this.db.prepare("SELECT file FROM signoff_photos WHERE deleted_at != '' AND file != ''").all() as { file: string }[]).map((r) => r.file);
+  }
+
   async removePhoto(signoffId: string, photoId: string, at: string) {
     this.tx(() => {
       const res = this.db.prepare("UPDATE signoff_photos SET deleted_at = ?, updated_at = ? WHERE id = ? AND signoff_id = ? AND deleted_at = ''").run(at, at, photoId, signoffId);

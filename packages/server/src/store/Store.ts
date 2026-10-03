@@ -171,6 +171,8 @@ export interface SignoffsRepo {
   /** Idempotent on photo id. `file` is relative to the photos folder. */
   addPhoto(signoffId: string, photo: SignoffPhoto & { file: string }, at: string): Promise<void>;
   getPhoto(photoId: string): Promise<(SignoffPhoto & { signoffId: string; file: string }) | null>;
+  /** Files of photos already removed from their sign-off. */
+  deletedPhotoFiles(): Promise<string[]>;
   removePhoto(signoffId: string, photoId: string, at: string): Promise<void>;
 }
 

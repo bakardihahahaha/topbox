@@ -38,6 +38,7 @@ async function main() {
   mkdirSync(PHOTOS_PATH, { recursive: true });
   console.log(`Photos: ${resolve(PHOTOS_PATH)}`);
   const signoffs = new SignoffService(store, signoffTypes, new PhotoFiles(PHOTOS_PATH));
+  void signoffs.purgeRemovedPhotoFiles().catch(() => {});
 
   // ADMIN_NAME / ADMIN_PIN from docker-compose.yml — only used on the very first start (empty
   // database); after that the admin changes their PIN in the app (Setup → My account).

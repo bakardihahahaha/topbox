@@ -873,3 +873,26 @@ describe("part reference photos (Setup → Parts)", () => {
     expect((await op("GET", `/api/parts/${part.id}/photo`)).statusCode).toBe(404);
   });
 });
+
+describe("removing a check photo", () => {
+  it("deletes its file from the NAS too; start-up clears files of photos removed earlier", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const id = randomUUID();
+    const s = (await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "RM-1", typeId: "service" })).json() as Signoff;
+    const checkId = s.template.checks[0]!.id;
+    const [a, b] = [randomUUID(), randomUUID()];
+    await admin("POST", `/api/signoffs/${id}/photos`, { photoId: a, checkId, dataUrl: FAKE_JPEG_URL });
+    await admin("POST", `/api/signoffs/${id}/photos`, { photoId: b, checkId, dataUrl: FAKE_JPEG_URL });
+    const folder = join(t.photosDir, "RM-1");
+    expect(readdirSync(folder)).toHaveLength(2);
+    await admin("DELETE", `/api/signoffs/${id}/photos/${a}`);
+    expect(readdirSync(folder)).toHaveLength(1);
+    // A photo removed by an older version (row marked deleted, file left behind):
+    const left = readdirSync(folder)[0]!;
+    await t.store.signoffs.removePhoto(id, b, new Date().toISOString());
+    expect(readdirSync(folder)).toEqual([left]);
+    expect(await t.signoffs.purgeRemovedPhotoFiles()).toBe(2);
+    expect(existsSync(folder)).toBe(false); // the empty RM-1 folder is gone too
+  });
+});

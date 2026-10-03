@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 /** Photo image files on the NAS's disk (PHOTOS_PATH, by default a `photos` folder next to the
@@ -35,7 +35,10 @@ export class PhotoFiles {
   }
 
   async remove(file: string): Promise<void> {
-    await rm(this.abs(file), { force: true });
+    const p = this.abs(file);
+    await rm(p, { force: true });
+    // The TopBox's folder goes too once its last photo is gone (only an empty one — rmdir refuses otherwise).
+    if (dirname(p) !== this.root) await rmdir(dirname(p)).catch(() => {});
   }
 
   /** Danger zone: every photo file goes (the folder itself stays). */
