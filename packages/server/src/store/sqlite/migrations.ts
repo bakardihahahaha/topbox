@@ -267,6 +267,10 @@ const MIGRATIONS: string[] = [
     SELECT 1 FROM parts p WHERE p.id = signoff_parts.part_id AND p.deleted_at = '' AND (signoff_parts.part_number != p.part_number OR signoff_parts.name != p.name)
   );
   `,
+  // 14: a reference photo per part (Setup → Parts) — the file's path inside the part-photos folder.
+  `
+  ALTER TABLE parts ADD COLUMN photo_file TEXT NOT NULL DEFAULT '';
+  `,
 ];
 
 export function migrate(db: Database.Database): void {

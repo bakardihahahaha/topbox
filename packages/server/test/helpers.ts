@@ -18,7 +18,8 @@ export const FAKE_JPEG_URL = `data:image/jpeg;base64,${FAKE_JPEG.toString("base6
 export async function setup(opts: { withSheets?: boolean; now?: () => number } = {}) {
   const store = new SqliteStore(":memory:");
   const auth = new AuthService(store, { now: opts.now });
-  const catalog = new CatalogService(store);
+  const partPhotosDir = mkdtempSync(join(tmpdir(), "topbox-part-photos-"));
+  const catalog = new CatalogService(store, new PhotoFiles(partPhotosDir));
   const signoffTypes = new SignoffTypesService(store);
   const photosDir = mkdtempSync(join(tmpdir(), "topbox-photos-"));
   const signoffs = new SignoffService(store, signoffTypes, new PhotoFiles(photosDir));
@@ -46,5 +47,5 @@ export async function setup(opts: { withSheets?: boolean; now?: () => number } =
     return call;
   }
 
-  return { photosDir, ids, store, auth, catalog, signoffs, signoffTypes, sheets, mirror, app, template, login, as };
+  return { photosDir, partPhotosDir, ids, store, auth, catalog, signoffs, signoffTypes, sheets, mirror, app, template, login, as };
 }

@@ -300,11 +300,12 @@ interface PartRow {
   part_number: string;
   name: string;
   description: string;
+  photo_file: string;
   created_at: string;
   updated_at: string;
 }
 
-const toPart = (r: PartRow): Part => ({ id: r.id, partNumber: r.part_number, name: r.name, description: r.description, createdAt: r.created_at, updatedAt: r.updated_at });
+const toPart = (r: PartRow): Part => ({ id: r.id, partNumber: r.part_number, name: r.name, description: r.description, photoFile: r.photo_file ?? "", createdAt: r.created_at, updatedAt: r.updated_at });
 
 class SqliteParts implements PartsRepo {
   constructor(
@@ -333,6 +334,7 @@ class SqliteParts implements PartsRepo {
     if (patch.partNumber !== undefined) cols.part_number = patch.partNumber;
     if (patch.name !== undefined) cols.name = patch.name;
     if (patch.description !== undefined) cols.description = patch.description;
+    if (patch.photoFile !== undefined) cols.photo_file = patch.photoFile;
     cols.updated_at = patch.updatedAt ?? new Date().toISOString();
     const keys = Object.keys(cols);
     this.tx(() => {

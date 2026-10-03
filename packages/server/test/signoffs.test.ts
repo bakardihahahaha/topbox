@@ -851,3 +851,25 @@ describe("renaming a part in Setup", () => {
     expect(tab.some((r) => r.includes("NEW-1"))).toBe(true);
   });
 });
+
+describe("part reference photos (Setup → Parts)", () => {
+  it("admin uploads / replaces / removes; everyone signed in can see it; files live in part-photos/", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const op = t.as((await t.login("op", "2222", "10.0.0.7")).token, "10.0.0.7");
+    const part = await t.catalog.createPart({ partNumber: "SP 01/A", name: "Spring", description: "" });
+    expect((await op("PUT", `/api/parts/${part.id}/photo`, { dataUrl: FAKE_JPEG_URL })).statusCode).toBe(403);
+    const one = (await admin("PUT", `/api/parts/${part.id}/photo`, { dataUrl: FAKE_JPEG_URL })).json() as { photoFile: string };
+    expect(one.photoFile).toMatch(/^SP-01-A_/);
+    expect(readdirSync(t.partPhotosDir)).toEqual([one.photoFile]);
+    const got = await op("GET", `/api/parts/${part.id}/photo`);
+    expect(got.statusCode).toBe(200);
+    expect(got.headers["content-type"]).toBe("image/jpeg");
+    const two = (await admin("PUT", `/api/parts/${part.id}/photo`, { dataUrl: FAKE_JPEG_URL })).json() as { photoFile: string };
+    expect(readdirSync(t.partPhotosDir)).toEqual([two.photoFile]); // the old file is gone
+    expect(((await op("GET", "/api/parts")).json() as { photoFile: string }[])[0]!.photoFile).toBe(two.photoFile);
+    await admin("DELETE", `/api/parts/${part.id}/photo`);
+    expect(readdirSync(t.partPhotosDir)).toEqual([]);
+    expect((await op("GET", `/api/parts/${part.id}/photo`)).statusCode).toBe(404);
+  });
+});

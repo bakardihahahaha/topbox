@@ -18,6 +18,7 @@ import { useOperatorCount } from "../lib/permissions.js";
 import { topboxUrl } from "../lib/format.js";
 import { signStamp, usePhotosEnabled, useShowSignTime } from "../lib/documentSettings.js";
 import { CameraButton, PhotoStrip, PhotosCard } from "../components/PhotosCard.js";
+import { PartPhotoThumb } from "../components/PartPhoto.js";
 import { SerialInput } from "../components/SerialInput.js";
 import { rememberPhoto, toJpegDataUrl } from "../lib/photos.js";
 import { card, chip, danger, errorBox, errorMessage, ghost, infoBox, input, label, page, primary } from "../lib/ui.js";
@@ -493,6 +494,7 @@ export function SignoffPage({ signoffId, embedded, earlierVisit }: { signoffId?:
                   number={p.partNumber}
                   name={p.name}
                   description={p.description}
+                  photo={p.photoFile ? { partId: p.id, file: p.photoFile } : undefined}
                   line={line}
                   disabled={partsLocked}
                   onToggle={(on) => {
@@ -693,6 +695,8 @@ function PartRow(props: {
   number: string;
   name: string;
   description: string;
+  /** Reference photo from Setup → Parts — a thumbnail that enlarges on a tap. */
+  photo?: { partId: string; file: string };
   line: { id: string; qty: number; note: string } | undefined;
   onToggle: (on: boolean) => void;
   onChange: (qty: number, note: string) => void;
@@ -720,7 +724,8 @@ function PartRow(props: {
   const current = clamp(Number(qty));
   return (
     <div style={{ border: `1px solid ${line ? "var(--accent)" : "var(--border-soft)"}`, background: line ? "var(--accent-wash)" : "transparent", borderRadius: "var(--radius-control)", padding: "8px 10px" }}>
-      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", flex: 1, minWidth: 0 }}>
         <input type="checkbox" checked={Boolean(line)} disabled={props.disabled} onChange={(e) => props.onToggle(e.target.checked)} style={{ width: 26, height: 26, accentColor: "var(--accent)", flex: "none" }} />
         <span style={{ minWidth: 0 }}>
           <span className="mono" style={{ fontSize: 12, color: "var(--text-3)", marginRight: 8 }}>
@@ -730,6 +735,8 @@ function PartRow(props: {
           {props.description && <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>{props.description}</div>}
         </span>
       </label>
+      {props.photo && <PartPhotoThumb partId={props.photo.partId} file={props.photo.file} label={`${props.number} — ${props.name}`} />}
+      </div>
       {line && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10, marginLeft: 36 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}>

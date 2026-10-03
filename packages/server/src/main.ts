@@ -20,6 +20,8 @@ const TRUST_PROXY = process.env.TRUST_PROXY === "true";
 // Photo files (JPEG) — by default a `photos` folder next to the database, i.e. inside the NAS's
 // bind-mounted data folder, created automatically.
 const PHOTOS_PATH = process.env.PHOTOS_PATH || join(dirname(resolve(DB_PATH)), "photos");
+// Reference photos of the parts (Setup → Parts) — a `part-photos` folder next to the database.
+const PART_PHOTOS_PATH = process.env.PART_PHOTOS_PATH || join(dirname(resolve(DB_PATH)), "part-photos");
 
 async function main() {
   mkdirSync(dirname(resolve(DB_PATH)), { recursive: true });
@@ -29,7 +31,9 @@ async function main() {
   const store = new SqliteStore(DB_PATH);
 
   const auth = new AuthService(store, { failureDelayMs: 1000 });
-  const catalog = new CatalogService(store);
+  mkdirSync(PART_PHOTOS_PATH, { recursive: true });
+  console.log(`Part photos: ${resolve(PART_PHOTOS_PATH)}`);
+  const catalog = new CatalogService(store, new PhotoFiles(PART_PHOTOS_PATH));
   const signoffTypes = new SignoffTypesService(store);
   mkdirSync(PHOTOS_PATH, { recursive: true });
   console.log(`Photos: ${resolve(PHOTOS_PATH)}`);

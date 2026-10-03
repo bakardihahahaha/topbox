@@ -2,10 +2,53 @@ import { randomUUID } from "node:crypto";
 import type { Part, PartInput, Template, TemplateInput } from "@biosite-signoff/shared";
 import type { Store } from "../store/Store.js";
 import { badRequest, conflict, notFound } from "./errors.js";
+import { PhotoFiles } from "./photoFiles.js";
 
 /** Admin-defined reference data: replaceable parts and checklist templates. */
 export class CatalogService {
-  constructor(private readonly store: Store) {}
+  /** `partPhotos`: the part-photos folder on the NAS (reference photos, Setup → Parts). */
+  constructor(
+    private readonly store: Store,
+    private readonly partPhotos?: PhotoFiles,
+  ) {}
+
+  // ---- part photos ---------------------------------------------------------------------------
+
+  /** Reference photo of a part — so operators recognise it before ticking it. Saved on the NAS as
+   * part-photos/<part number>_<id>_<time>.jpg; a new photo replaces the old file. */
+  async setPartPhoto(id: string, jpeg: Buffer): Promise<Part> {
+    const part = await this.store.parts.get(id);
+    if (!part) throw notFound("Part");
+    if (!this.partPhotos) throw badRequest("Part photos aren't set up on this server.");
+    if (jpeg.length < 100 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw badRequest("The photo must be a JPEG image.");
+    const clean = part.partNumber.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "part";
+    const file = `${clean}_${id.slice(0, 8)}_${randomUUID().slice(0, 8)}.jpg`;
+    await this.partPhotos.write(file, jpeg);
+    if (part.photoFile && part.photoFile !== file) await this.partPhotos.remove(part.photoFile).catch(() => {});
+    await this.store.parts.update(id, { photoFile: file });
+    return (await this.store.parts.get(id))!;
+  }
+
+  async removePartPhoto(id: string): Promise<Part> {
+    const part = await this.store.parts.get(id);
+    if (!part) throw notFound("Part");
+    if (part.photoFile && this.partPhotos) await this.partPhotos.remove(part.photoFile).catch(() => {});
+    await this.store.parts.update(id, { photoFile: "" });
+    return (await this.store.parts.get(id))!;
+  }
+
+  async partPhoto(id: string): Promise<Buffer> {
+    const part = await this.store.parts.get(id);
+    if (!part?.photoFile || !this.partPhotos) throw notFound("Photo");
+    return this.partPhotos.read(part.photoFile).catch(() => {
+      throw notFound("Photo");
+    });
+  }
+
+  /** Factory reset: every part photo goes. */
+  async wipePartPhotos(): Promise<void> {
+    await this.partPhotos?.removeAll();
+  }
 
   // ---- parts ---------------------------------------------------------------------------------
 

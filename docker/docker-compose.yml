@@ -26,6 +26,9 @@ services:
       # Photos taken during checks (JPEG files) — the "photos" folder inside the same data folder,
       # created automatically: /volume1/docker/topbox/data/photos/<serial number>/…
       PHOTOS_PATH: /app/data/photos
+      # Reference photos of the parts (Setup > Parts) — the "part-photos" folder next to it:
+      # /volume1/docker/topbox/data/part-photos/<part number>_….jpg
+      PART_PHOTOS_PATH: /app/data/part-photos
       # DSM's reverse proxy is the only thing that can reach this container (port published on
       # 127.0.0.1 only), so trusting its X-Forwarded-For is safe — and required for the
       # one-IP-per-account rule and the login rate limit to see real client IPs.

@@ -73,10 +73,14 @@ export function PartsUsagePage() {
 
   // "To book" = what changed since the last booking (negative = back to stock).
   const toBook = (l: PartUsageLine) => l.qty - l.bookedOutQty;
-  const lines = useMemo(
+  const inView = useMemo(
     () => (usage.data ?? []).filter((l) => (booked === "all" ? !l.removed || toBook(l) !== 0 : booked === "open" ? toBook(l) !== 0 : Boolean(l.bookedOutAt) && toBook(l) === 0)),
     [usage.data, booked],
   );
+  // Which kinds to show (type + status, e.g. "Service · in progress"); none ticked = all.
+  const [kinds, setKinds] = useState<Set<string>>(new Set());
+  const kindOptions = useMemo(() => [...new Set(inView.map(kindOf))].sort((a, b) => a.localeCompare(b)), [inView]);
+  const lines = useMemo(() => (kinds.size === 0 ? inView : inView.filter((l) => kinds.has(kindOf(l)))), [inView, kinds]);
   // The open view counts what's still to book; the others what was used.
   const shownQty = (l: PartUsageLine) => (booked === "open" ? toBook(l) : l.qty);
 
@@ -165,7 +169,7 @@ export function PartsUsagePage() {
   const selectedIds = lines.filter((l) => selected.has(l.lineId)).map((l) => l.lineId);
   // 100 lines per page; another period / view starts again at page 1.
   const [linePage, setLinePage] = useState(0);
-  const viewKey = `${from.getTime()}|${to.getTime()}|${booked}`;
+  const viewKey = `${from.getTime()}|${to.getTime()}|${booked}|${[...kinds].join(",")}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
   if (lastViewKey !== viewKey) {
     setLastViewKey(viewKey);
@@ -267,7 +271,10 @@ export function PartsUsagePage() {
           {lines.length > 0 && (
             <div style={{ ...card, padding: 0, overflowX: "auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 14px", flexWrap: "wrap" }}>
-                <div style={{ fontWeight: 700 }}>By TopBox ({lines.length})</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 700 }}>By TopBox ({lines.length})</div>
+                  <KindFilter options={kindOptions} chosen={kinds} onChange={setKinds} />
+                </div>
                 {/* Always the same buttons in the same place (greyed when they don't apply), so ticking
                     never shifts the table. Booked out view: tick lines → "Mark … as not booked out". */}
                 {isAdmin && (
@@ -374,3 +381,52 @@ export function PartsUsagePage() {
     </div>
   );
 }
+
+/** "Service", "Service · in progress", "New (UK)"… — what the By TopBox filter offers. */
+function kindOf(l: PartUsageLine): string {
+  return l.status === "complete" ? l.typeName : `${l.typeName} · in progress`;
+}
+
+/** A drop-down list of ticks: which kinds of sign-off to show. Nothing ticked = everything. */
+function KindFilter({ options, chosen, onChange }: { options: string[]; chosen: Set<string>; onChange: (next: Set<string>) => void }) {
+  const [open, setOpen] = useState(false);
+  const active = [...chosen].filter((k) => options.includes(k));
+  const label = active.length === 0 ? "All types" : active.length === 1 ? active[0] : `${active.length} types`;
+  const toggle = (k: string) => {
+    const next = new Set(chosen);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    onChange(next);
+  };
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{ ...ghost, height: 40, display: "flex", alignItems: "center", gap: 8, borderColor: active.length ? "var(--accent)" : "var(--border)", color: active.length ? "var(--accent)" : "var(--text-2)" }}
+      >
+        Show: {label} <span style={{ fontSize: 11 }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 30 }} />
+          <div style={{ position: "absolute", top: 44, left: 0, zIndex: 31, minWidth: 240, background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: "var(--radius-control)", padding: 6, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" }}>
+            <button type="button" onClick={() => onChange(new Set())} style={{ ...rowStyle, fontWeight: 700, color: active.length === 0 ? "var(--accent)" : "var(--text)" }}>
+              <input type="checkbox" readOnly checked={active.length === 0} style={box} /> All types
+            </button>
+            {options.length === 0 && <div style={{ padding: "8px 10px", fontSize: 13, color: "var(--text-4)" }}>Nothing in this period.</div>}
+            {options.map((k) => (
+              <button key={k} type="button" onClick={() => toggle(k)} style={rowStyle}>
+                <input type="checkbox" readOnly checked={chosen.has(k)} style={box} /> {k}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const rowStyle = { display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 44, padding: "6px 10px", background: "transparent", border: "none", color: "var(--text)", fontSize: 14, textAlign: "left" as const, cursor: "pointer", borderRadius: 6 };
+const box = { width: 20, height: 20, accentColor: "var(--accent)", pointerEvents: "none" as const };

@@ -26,7 +26,7 @@ export const TABLES: readonly TableSpec[] = [
   // Deliberately without password_hash (the PIN hash) or any lockout counters: the backup sheet is
   // not a credential store. A restored user comes back locked and needs a new PIN from an admin.
   { name: "users", columns: ["id", "username", "name", "role", "locked", "created_at", "updated_at", "deleted_at", "can_start"] },
-  { name: "parts", columns: ["id", "part_number", "name", "description", "created_at", "updated_at", "deleted_at", "sort_order"] },
+  { name: "parts", columns: ["id", "part_number", "name", "description", "created_at", "updated_at", "deleted_at", "sort_order", "photo_file"] },
   {
     name: "templates",
     columns: [

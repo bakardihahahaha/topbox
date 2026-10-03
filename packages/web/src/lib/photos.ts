@@ -20,7 +20,7 @@ async function openCache(): Promise<Cache | null> {
 }
 
 /** Camera/file image → resized JPEG data URL. */
-export async function toJpegDataUrl(file: File): Promise<string> {
+export async function toJpegDataUrl(file: Blob): Promise<string> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");

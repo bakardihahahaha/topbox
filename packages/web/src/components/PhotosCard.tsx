@@ -5,6 +5,7 @@ import { listUsers, type UserSummary } from "../lib/api.js";
 import { confirmDialog } from "../lib/confirmDialog.js";
 import { localStamp } from "../lib/format.js";
 import { card, ghost, primary } from "../lib/ui.js";
+import { CameraCapture, isMobileDevice } from "./CameraCapture.js";
 
 const checkLabel = (s: Signoff, checkId: string) => s.template.checks.find((c) => c.id === checkId)?.label ?? "check";
 
@@ -206,7 +207,9 @@ function PhotoSheet(props: {
   useEffect(() => {
     if (props.isAdmin) void listUsers().then((u) => setPeople(u.filter((x) => x.role !== "viewer" && x.role !== "parts" && !x.locked)), () => {});
   }, [props.isAdmin]);
-  async function add(list: FileList | null) {
+  // Computers / kiosks: the live webcam view instead of a file picker (see CameraCapture).
+  const [webcam, setWebcam] = useState(false);
+  async function add(list: FileList | File[] | null) {
     const files = [...(list ?? [])];
     if (files.length === 0) return;
     setWorking(files.length);
@@ -236,7 +239,7 @@ function PhotoSheet(props: {
           </label>
         )}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button type="button" style={big} disabled={working > 0} onClick={() => camera.current?.click()}>
+          <button type="button" style={big} disabled={working > 0} onClick={() => (isMobileDevice() ? camera.current?.click() : setWebcam(true))}>
             📷 Take photo
           </button>
           <button type="button" style={{ ...big, background: "transparent", color: "var(--accent)", border: "1px solid var(--accent)" }} disabled={working > 0} onClick={() => gallery.current?.click()}>
@@ -261,6 +264,18 @@ function PhotoSheet(props: {
         <button type="button" style={{ ...ghost, height: 56, fontSize: 15 }} onClick={props.onClose} disabled={working > 0}>
           Done ({mine.length} photo{mine.length === 1 ? "" : "s"})
         </button>
+        {webcam && (
+          <CameraCapture
+            title={`Photos — ${props.checkLabel}`}
+            multiple
+            onPhoto={(blob) => add([new File([blob], "camera.jpg", { type: "image/jpeg" })])}
+            onClose={() => setWebcam(false)}
+            onFallback={() => {
+              setWebcam(false);
+              gallery.current?.click();
+            }}
+          />
+        )}
         <input ref={camera} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => void add(e.target.files).then(() => (e.target.value = ""))} />
         <input ref={gallery} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => void add(e.target.files).then(() => (e.target.value = ""))} />
       </div>

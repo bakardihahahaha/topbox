@@ -60,6 +60,8 @@ export interface Part {
   partNumber: string;
   name: string;
   description: string;
+  /** Reference photo (Setup → Parts): its file on the NAS, '' = none. Changes with every new photo. */
+  photoFile?: string;
   createdAt: string;
   updatedAt: string;
 }

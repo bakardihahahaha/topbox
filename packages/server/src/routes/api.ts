@@ -205,6 +205,15 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     const body = parse(partInput.extend({ id: id.optional() }), req.body);
     return s.catalog.createPart(body, body.id);
   });
+  app.put<{ Params: { id: string } }>("/api/parts/:id/photo", { ...admin, bodyLimit: 15 * 1024 * 1024 }, async (req) => {
+    const body = parse(z.object({ dataUrl: z.string().max(14 * 1024 * 1024).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/, "The photo must be a JPEG image") }), req.body);
+    return s.catalog.setPartPhoto(req.params.id, Buffer.from(body.dataUrl.slice(body.dataUrl.indexOf(",") + 1), "base64"));
+  });
+  app.delete<{ Params: { id: string } }>("/api/parts/:id/photo", admin, async (req) => s.catalog.removePartPhoto(req.params.id));
+  app.get<{ Params: { id: string } }>("/api/parts/:id/photo", authed, async (req, reply) => {
+    const jpeg = await s.catalog.partPhoto(req.params.id);
+    return reply.header("content-type", "image/jpeg").header("cache-control", "private, max-age=31536000, immutable").send(jpeg);
+  });
   app.put("/api/parts/order", admin, async (req) => s.catalog.reorderParts(parse(z.object({ ids: z.array(id) }), req.body).ids));
   app.patch<{ Params: { id: string } }>("/api/parts/:id", admin, async (req) => s.catalog.updatePart(req.params.id, parse(partInput.partial(), req.body)));
   app.delete<{ Params: { id: string } }>("/api/parts/:id", admin, async (req) => {
@@ -394,6 +403,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     await s.store.wipe(body.scope, me.userId);
     await s.signoffs.wipePhotos();
     if (body.scope === "everything") {
+      await s.catalog.wipePartPhotos();
       // Like a first start: the example checklist again (types, document settings and
       // permissions fall back to their defaults on their own).
       const seed = await s.catalog.createTemplate(mechanismChecklistSeed());

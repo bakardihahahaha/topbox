@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import type { Part } from "@biosite-signoff/shared";
-import { createPart, deletePart, listParts, reorderParts, updatePart } from "../lib/api.js";
+import { createPart, deletePart, listParts, removePartPhoto, reorderParts, setPartPhoto, updatePart } from "../lib/api.js";
+import { toJpegDataUrl } from "../lib/photos.js";
+import { PartPhotoThumb } from "../components/PartPhoto.js";
+import { CameraCapture, isMobileDevice } from "../components/CameraCapture.js";
 import { useData } from "../lib/useData.js";
 import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
@@ -64,6 +67,34 @@ export function SetupPartsPage() {
     }
   }
 
+  // Reference photo (shown to operators next to the part on a sign-off; saved on the NAS).
+  const fileInput = useRef<HTMLInputElement>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const [photoFor, setPhotoFor] = useState<Part | null>(null);
+  const [webcamFor, setWebcamFor] = useState<Part | null>(null);
+  const [photoBusy, setPhotoBusy] = useState<string | null>(null);
+  async function savePhoto(p: Part, image: Blob) {
+    setError(null);
+    setPhotoBusy(p.id);
+    try {
+      const updated = await setPartPhoto(p.id, await toJpegDataUrl(image));
+      setData((ps) => ps?.map((x) => (x.id === p.id ? updated : x)) ?? ps);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPhotoBusy(null);
+    }
+  }
+  async function dropPhoto(p: Part) {
+    if (!(await confirmDialog(`Remove the photo of ${p.partNumber} "${p.name}"?`, { confirmLabel: "Remove", danger: true }))) return;
+    try {
+      const updated = await removePartPhoto(p.id);
+      setData((ps) => ps?.map((x) => (x.id === p.id ? updated : x)) ?? ps);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   async function remove(p: Part) {
     if (!(await confirmDialog(`Delete part ${p.partNumber} "${p.name}"? Sign-offs that already recorded it keep it; it's removed from every template's list.`, { confirmLabel: "Delete", danger: true }))) return;
     setData((ps) => ps?.filter((x) => x.id !== p.id) ?? ps);
@@ -79,7 +110,7 @@ export function SetupPartsPage() {
     <div style={page}>
       <h1 style={h1}>Setup</h1>
       <SetupSubNav />
-      <p style={hint}>Every part that can be replaced during a service. Define them once here, then tick which ones apply to each template — operators only ever tick them, never type them. Use ↑ ↓ to set the order: the sign-off form and the PDF list the parts in this same order.</p>
+      <p style={hint}>Every part that can be replaced during a service. Define them once here, then tick which ones apply to each template — operators only ever tick them, never type them. Use ↑ ↓ to set the order: the sign-off form and the PDF list the parts in this same order. Add a photo so operators can see what a part looks like (tap it on the sign-off to enlarge); photos are saved on the NAS in the part-photos folder.</p>
 
       <form onSubmit={add} style={{ ...card, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginBottom: 16 }}>
         <input value={form.partNumber} onChange={(e) => setForm({ ...form, partNumber: e.target.value })} placeholder="Part number" className="mono" style={input} />
@@ -93,6 +124,40 @@ export function SetupPartsPage() {
       {error && <div style={errorBox}>{error}</div>}
       {parts?.length === 0 && <div style={{ color: "var(--text-4)", fontSize: 13 }}>No parts yet — add one above.</div>}
 
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f && photoFor) void savePhoto(photoFor, f);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={cameraInput}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f && photoFor) void savePhoto(photoFor, f);
+          e.target.value = "";
+        }}
+      />
+      {webcamFor && (
+        <CameraCapture
+          title={`Photo of ${webcamFor.partNumber} — ${webcamFor.name}`}
+          onPhoto={(blob) => savePhoto(webcamFor, blob)}
+          onClose={() => setWebcamFor(null)}
+          onFallback={() => {
+            setWebcamFor(null);
+            fileInput.current?.click();
+          }}
+        />
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {parts?.map((p, i) =>
           editing?.id === p.id ? (
@@ -126,7 +191,36 @@ export function SetupPartsPage() {
                 <span style={{ fontWeight: 600 }}>{p.name}</span>
                 {p.description && <div style={{ fontSize: 12, color: "var(--text-3)" }}>{p.description}</div>}
               </div>
-              <div style={{ display: "flex", gap: 6, flex: "none" }}>
+              {p.photoFile && <PartPhotoThumb partId={p.id} file={p.photoFile} label={`${p.partNumber} — ${p.name}`} size={56} />}
+              <div style={{ display: "flex", gap: 6, flex: "none", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  style={ghost}
+                  disabled={photoBusy === p.id}
+                  onClick={() => {
+                    setPhotoFor(p);
+                    if (isMobileDevice()) cameraInput.current?.click();
+                    else setWebcamFor(p);
+                  }}
+                  title="Take a photo of this part with the camera"
+                >
+                  {photoBusy === p.id ? "Saving…" : "📷 Camera"}
+                </button>
+                <button
+                  style={ghost}
+                  disabled={photoBusy === p.id}
+                  onClick={() => {
+                    setPhotoFor(p);
+                    fileInput.current?.click();
+                  }}
+                  title="Upload a photo of this part"
+                >
+                  {p.photoFile ? "Change photo" : "Upload photo"}
+                </button>
+                {p.photoFile && (
+                  <button style={danger} onClick={() => void dropPhoto(p)}>
+                    Remove photo
+                  </button>
+                )}
                 <button style={ghost} onClick={() => setEditing(p)}>
                   Edit
                 </button>
