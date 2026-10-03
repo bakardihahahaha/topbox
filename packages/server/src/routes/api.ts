@@ -63,6 +63,7 @@ const documentSettingsInput = z.object({
   documentIdLabel: z.string().max(100),
   showSignTime: z.boolean().default(true),
   photosEnabled: z.boolean().default(false),
+  shutterSound: z.boolean().default(true),
   screenFooter: z.string().max(300).default(""),
 });
 

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ghost, primary } from "../lib/ui.js";
+import { useDocumentSettings } from "../lib/documentSettings.js";
+import { playShutter } from "../lib/shutterSound.js";
 
 /** Phones and tablets: the file input with `capture` opens the real camera app. A computer has no
  * such thing — there the same input only opens a file picker — so it gets the live webcam view. */
@@ -20,6 +22,8 @@ export function CameraCapture(props: { title: string; multiple?: boolean; onPhot
   const [taken, setTaken] = useState(0);
   const [flash, setFlash] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Setup → Document → Camera shutter sound.
+  const sound = useDocumentSettings().shutterSound !== false;
 
   useEffect(() => {
     let live: MediaStream | null = null;
@@ -67,6 +71,7 @@ export function CameraCapture(props: { title: string; multiple?: boolean; onPhot
     canvas.getContext("2d")!.drawImage(v, 0, 0);
     const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.9));
     if (!blob) return;
+    if (sound) playShutter();
     setFlash(true);
     setTimeout(() => setFlash(false), 150);
     setBusy(true);

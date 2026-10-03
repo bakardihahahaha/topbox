@@ -9,6 +9,7 @@ import { viewPdf } from "../lib/pdfLazy.js";
 import { useMe } from "../lib/meContext.js";
 import { SetupSubNav } from "../components/SetupSubNav.js";
 import { card, errorBox, errorMessage, ghost, h1, hint, infoBox, input, label, page, primary } from "../lib/ui.js";
+import { playShutter } from "../lib/shutterSound.js";
 
 /** Shrinks an uploaded logo to at most 600x160 px so it stays small (it's stored in the database
  * and mirrored to one Google Sheets cell) while staying sharp in print. */
@@ -170,6 +171,25 @@ export function SetupDocumentPage() {
             <span style={{ display: "block", fontSize: 12.5, color: "var(--text-3)" }}>
               On: a camera button under each Sign button; photos are saved on the NAS in a folder per TopBox serial number (photos/&lt;serial&gt;/) and added to the PDF. Off: no camera and no
               photo pages — photos already taken stay on the NAS.
+            </span>
+          </span>
+        </label>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 14, cursor: "pointer", gridColumn: "1 / -1" }}>
+          <input type="checkbox" checked={s.shutterSound !== false} onChange={(e) => set({ shutterSound: e.target.checked })} style={{ width: 26, height: 26, accentColor: "var(--accent)" }} />
+          <span>
+            <b>Camera shutter sound</b>
+            <span style={{ display: "block", fontSize: 12.5, color: "var(--text-3)" }}>
+              A &quot;click&quot; when a photo is taken with the app&apos;s camera (computers / kiosks — check photos and part photos). Phones and tablets use their own camera app and its own sound.{" "}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  playShutter();
+                }}
+                style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 700, cursor: "pointer", padding: 0, fontSize: 12.5 }}
+              >
+                ▶ Play
+              </button>
             </span>
           </span>
         </label>

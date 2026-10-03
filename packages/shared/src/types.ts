@@ -230,6 +230,8 @@ export interface DocumentSettings {
   /** Check photos (camera under each Sign button, photo pages in the PDF). Off = no camera and no
    * photo pages; photos already taken stay stored on the NAS. */
   photosEnabled: boolean;
+  /** "Click" shutter sound when a photo is taken with the in-app camera. */
+  shutterSound: boolean;
   /** A line of text at the bottom of every screen of the app (sign-in screen too). Empty = none. */
   screenFooter: string;
 }
@@ -243,6 +245,7 @@ export const DEFAULT_DOCUMENT_SETTINGS: DocumentSettings = {
   documentIdLabel: "Document Identifier:",
   showSignTime: true,
   photosEnabled: false,
+  shutterSound: true,
   screenFooter: "",
 };
 
