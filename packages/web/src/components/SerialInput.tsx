@@ -117,24 +117,25 @@ function Keypad({ value, onChange, onEnter, onClose }: { value: string; onChange
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
       {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-        <button key={d} type="button" onClick={() => onChange(value + d)} style={key}>
+        <button key={d} type="button" onClick={() => onChange(value + d)} style={keypadKey}>
           {d}
         </button>
       ))}
-      <button type="button" onClick={() => onChange("")} style={{ ...key, fontSize: 16, color: "var(--text-2)" }}>
+      <button type="button" onClick={() => onChange("")} style={{ ...keypadKey, fontSize: 16, color: "var(--text-2)" }}>
         Clear
       </button>
-      <button type="button" onClick={() => onChange(value + "0")} style={key}>
+      <button type="button" onClick={() => onChange(value + "0")} style={keypadKey}>
         0
       </button>
-      <button type="button" onClick={() => onChange(value.slice(0, -1))} style={{ ...key, fontSize: 20 }} aria-label="Delete">
+      <button type="button" onClick={() => onChange(value.slice(0, -1))} style={{ ...keypadKey, fontSize: 20 }} aria-label="Delete">
         ⌫
       </button>
     </div>
   );
 }
 
-const key: CSSProperties = {
+/** One key of the number keypad — exported so buttons next to it (e.g. +R) look the same. */
+export const keypadKey: CSSProperties = {
   height: 68,
   borderRadius: "var(--radius-control)",
   border: "1px solid var(--border)",

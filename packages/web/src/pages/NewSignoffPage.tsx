@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { SerialInput } from "../components/SerialInput.js";
+import { SerialInput, keypadKey } from "../components/SerialInput.js";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { allowsRefurbishedR, departedAt, mechanismKey, oncePerTopboxBlock, refurbishedRBlock, type Signoff, type SignoffType } from "@biosite-signoff/shared";
 import { getVisits } from "../lib/api.js";
@@ -13,7 +13,7 @@ import { mutateOrQueue } from "../lib/offlineQueue.js";
 import { withSaving } from "../lib/savingStatus.js";
 import { cacheSignoff } from "../lib/signoffCache.js";
 import { draftSignoff } from "../lib/localSignoff.js";
-import { card, errorBox, errorMessage, ghost, h1, hint, infoBox, input, label, page, primary } from "../lib/ui.js";
+import { card, errorBox, errorMessage, h1, hint, infoBox, input, label, page, primary } from "../lib/ui.js";
 
 export function NewSignoffPage() {
   const navigate = useNavigate();
@@ -132,9 +132,12 @@ export function NewSignoffPage() {
           <SerialInput inline value={serial} onChange={setSerial} placeholder="Type the serial number" onDone={() => startRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })} />
         </div>
         {(canAddR || hasR) && (
-          <button type="button" onClick={() => setSerial(hasR ? serial.trim().slice(0, -1) : `${serial.trim()}R`)} style={{ ...ghost, height: 48, alignSelf: "flex-start" }} title="R = refurbished">
-            {hasR ? "Remove R" : "+R refurbished"}
-          </button>
+          // Same size as a keypad key, in the keypad's grid, right under it.
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: -8 }}>
+            <button type="button" onClick={() => setSerial(hasR ? serial.trim().slice(0, -1) : `${serial.trim()}R`)} style={{ ...keypadKey, fontSize: 17 }} title="R = refurbished">
+              {hasR ? "Remove R" : "+R refurbished"}
+            </button>
+          </div>
         )}
 
         {previous && previous.length > 0 && lastVisit && (
