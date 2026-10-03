@@ -71,6 +71,8 @@ export const saveDocumentSettings = (s: DocumentSettings) => sendJson<DocumentSe
 export interface SecuritySettings {
   idleTimeoutMinutes: number;
   singleIp: boolean;
+  /** Signing in on another device signs the previous one out. */
+  oneDevice: boolean;
 }
 export interface OperatingHours {
   enabled: boolean;

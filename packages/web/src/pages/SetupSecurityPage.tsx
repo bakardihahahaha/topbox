@@ -39,13 +39,24 @@ export function SetupSecurityPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={card}>
             <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={s.oneDevice} onChange={(e) => void save({ oneDevice: e.target.checked })} style={{ width: 24, height: 24, accentColor: "var(--accent)", marginTop: 2 }} />
+              <span>
+                <div style={{ fontWeight: 700 }}>One device at a time</div>
+                <div style={{ ...hint, margin: "4px 0 0" }}>
+                  Signing in on another device (or another browser) signs that person out everywhere else — straight away, with a message on the old screen. Unsaved changes stay on the old
+                  device and sync next time someone signs in there.
+                </div>
+              </span>
+            </label>
+          </div>
+          <div style={card}>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
               <input type="checkbox" checked={s.singleIp} onChange={(e) => void save({ singleIp: e.target.checked })} style={{ width: 24, height: 24, accentColor: "var(--accent)", marginTop: 2 }} />
               <span>
                 <div style={{ fontWeight: 700 }}>One network (IP) per account</div>
                 <div style={{ ...hint, margin: "4px 0 0" }}>
-                  A session only works from the IP it signed in from, and signing in from a second IP is refused while the first session is still active. A token copied to another
-                  network stops working immediately. Devices behind the same router share one IP, so several devices on site still work. When a phone switches from Wi-Fi to mobile data it
-                  simply has to sign in again.
+                  A session only works from the IP it signed in from — a token copied to another network stops working immediately. When a phone switches from Wi-Fi to mobile data it
+                  simply has to sign in again. With &quot;One device at a time&quot; off, signing in from a second IP is refused while the first session is still active.
                 </div>
               </span>
             </label>

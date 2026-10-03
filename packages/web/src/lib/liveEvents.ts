@@ -1,4 +1,4 @@
-import { getToken } from "./client.js";
+import { getToken, signedOutHere } from "./client.js";
 
 // One shared SSE connection for the whole signed-in session — not one per screen. The server
 // (routes/events.ts) fires a "change" event on every successful write from any device, so every
@@ -14,6 +14,11 @@ export function connectLiveEvents(): void {
   if (!token) return;
   source = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
   source.addEventListener("change", () => listeners.forEach((l) => l()));
+  // The same person signed in on another device: this one is signed out right away.
+  source.addEventListener("signedout", () => {
+    disconnectLiveEvents();
+    signedOutHere("otherDevice");
+  });
 }
 
 export function disconnectLiveEvents(): void {

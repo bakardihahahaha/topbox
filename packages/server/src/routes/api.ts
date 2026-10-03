@@ -12,7 +12,7 @@ import type { Store } from "../store/Store.js";
 import { HttpError } from "../services/errors.js";
 import { bearerToken, requireAdmin, requireAuth } from "./authMiddleware.js";
 import { parse } from "./validate.js";
-import { dataChangeEmitter } from "../events.js";
+import { dataChangeEmitter, sessionEndedEmitter } from "../events.js";
 
 export interface Services {
   store: Store;
@@ -135,7 +135,7 @@ export function registerApi(app: FastifyInstance, s: Services): void {
 
   app.get("/api/security", admin, async () => s.auth.securitySettings());
   app.patch("/api/security", admin, async (req) => {
-    const body = parse(z.object({ idleTimeoutMinutes: z.number().int().optional(), singleIp: z.boolean().optional() }), req.body);
+    const body = parse(z.object({ idleTimeoutMinutes: z.number().int().optional(), singleIp: z.boolean().optional(), oneDevice: z.boolean().optional() }), req.body);
     return s.auth.setSecuritySettings(body, req.user!.userId);
   });
 
@@ -444,10 +444,18 @@ export function registerApi(app: FastifyInstance, s: Services): void {
     reply.raw.write(": connected\n\n");
     const send = () => reply.raw.write("event: change\ndata: {}\n\n");
     const heartbeat = setInterval(() => reply.raw.write(": ping\n\n"), 20_000);
+    // Signed in on another device: this one is told at once and signs itself out.
+    const ended = (token: string) => {
+      if (token !== req.query.token) return;
+      reply.raw.write('event: signedout\ndata: {"reason":"other-device"}\n\n');
+      reply.raw.end();
+    };
     dataChangeEmitter.on("change", send);
+    sessionEndedEmitter.on("ended", ended);
     req.raw.on("close", () => {
       clearInterval(heartbeat);
       dataChangeEmitter.off("change", send);
+      sessionEndedEmitter.off("ended", ended);
     });
   });
 }

@@ -2,6 +2,7 @@ import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import { PIN_PATTERN, type LoginUser, type Role } from "@biosite-signoff/shared";
 import type { Store, UserRecord } from "../store/Store.js";
 import { audit } from "./audit.js";
+import { sessionEndedEmitter } from "../events.js";
 import { HttpError, badRequest, conflict, forbidden, notFound } from "./errors.js";
 import { hashPassword as hashPin, verifyPassword as verifyPin } from "./password.js";
 import { DEFAULT_OPERATING_HOURS, OPERATING_HOURS_SETTING, isOpenAt, validOperatingHours, type OperatingHours } from "./operatingHours.js";
@@ -32,12 +33,15 @@ const DEFAULT_IDLE_MINUTES = 30;
 
 export const IDLE_SETTING = "security.idle_timeout_minutes";
 export const SINGLE_IP_SETTING = "security.single_ip";
+export const ONE_DEVICE_SETTING = "security.one_device";
 
 export interface SecuritySettings {
   /** 0 = never. */
   idleTimeoutMinutes: number;
-  /** One account = one IP at a time. */
+  /** A session only works from the IP it signed in from. */
   singleIp: boolean;
+  /** One device at a time: signing in on another device signs the previous one out. */
+  oneDevice: boolean;
 }
 
 export interface UserSummary {
@@ -111,7 +115,8 @@ export class AuthService {
   async securitySettings(): Promise<SecuritySettings> {
     const idle = await this.store.settings.get(IDLE_SETTING);
     const single = await this.store.settings.get(SINGLE_IP_SETTING);
-    return { idleTimeoutMinutes: idle === null ? DEFAULT_IDLE_MINUTES : Number(idle), singleIp: single === null ? true : single === "1" };
+    const oneDevice = await this.store.settings.get(ONE_DEVICE_SETTING);
+    return { idleTimeoutMinutes: idle === null ? DEFAULT_IDLE_MINUTES : Number(idle), singleIp: single === null ? true : single === "1", oneDevice: oneDevice === null ? true : oneDevice === "1" };
   }
 
   async setSecuritySettings(patch: Partial<SecuritySettings>, actorId: string): Promise<SecuritySettings> {
@@ -121,6 +126,7 @@ export class AuthService {
       await this.store.settings.set(IDLE_SETTING, String(m));
     }
     if (patch.singleIp !== undefined) await this.store.settings.set(SINGLE_IP_SETTING, patch.singleIp ? "1" : "0");
+    if (patch.oneDevice !== undefined) await this.store.settings.set(ONE_DEVICE_SETTING, patch.oneDevice ? "1" : "0");
     await audit(this.store, { actorId, action: "WRITE", entity: "security_settings", detail: patch });
     return this.securitySettings();
   }
@@ -243,10 +249,15 @@ export class AuthService {
     }
 
     // Only checked once the PIN is proven — a guesser learns nothing about where the user is.
-    const { idleTimeoutMinutes, singleIp } = await this.securitySettings();
+    const { idleTimeoutMinutes, singleIp, oneDevice } = await this.securitySettings();
     const sessions = await this.store.sessions.listForUser(user.id);
     for (const s of sessions) if (!this.isLive(s, idleTimeoutMinutes, now)) await this.store.sessions.delete(s.token);
-    if (singleIp && sessions.some((s) => this.isLive(s, idleTimeoutMinutes, now) && s.ip !== ip)) {
+    const live = sessions.filter((s) => this.isLive(s, idleTimeoutMinutes, now));
+    if (oneDevice && live.length > 0) {
+      // One device at a time: the newest sign-in wins — every other device is signed out now.
+      for (const s of live) await this.endSession(s.token);
+      await audit(this.store, { actorId: user.id, action: "AUTH_SESSIONS_REPLACED", entity: "user", entityId: user.id, detail: { signedOut: live.length, ips: [...new Set(live.map((s) => s.ip))] }, ip });
+    } else if (singleIp && live.some((s) => s.ip !== ip)) {
       await audit(this.store, { actorId: user.id, action: "AUTH_BLOCKED_IP", entity: "user", entityId: user.id, detail: { reason: "active session on another IP" }, ip });
       return { ok: false, reason: "ACTIVE_ON_ANOTHER_IP" };
     }
@@ -258,6 +269,12 @@ export class AuthService {
     await this.store.sessions.create({ token, userId: user.id, ip, createdAt: at, expiresAt: new Date(now + SESSION_TTL_MS).toISOString(), lastActivityAt: at });
     await audit(this.store, { actorId: user.id, action: "AUTH_SUCCESS", entity: "user", entityId: user.id, ip });
     return { ok: true, token, userId: user.id, role: user.role };
+  }
+
+  /** Ends one session and tells its device at once (its live-events stream signs it out). */
+  private async endSession(token: string): Promise<void> {
+    await this.store.sessions.delete(token);
+    sessionEndedEmitter.emit("ended", token);
   }
 
   async logout(token: string): Promise<void> {

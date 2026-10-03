@@ -38,11 +38,22 @@ export class ApiError extends Error {
 /** Fired when any request comes back 401 — App.tsx drops to the sign-in screen (the session was
  * ended by idle timeout, an admin, or being used from another IP). */
 /** "closed": the service is outside its operating hours (non-admins are signed out). */
-type SignedOutReason = "session" | "closed";
+type SignedOutReason = "session" | "closed" | "otherDevice";
 const unauthorizedListeners = new Set<(reason: SignedOutReason) => void>();
 export function onUnauthorized(listener: (reason: SignedOutReason) => void): () => void {
   unauthorizedListeners.add(listener);
   return () => unauthorizedListeners.delete(listener);
+}
+
+/** Signed out from elsewhere (the server said so over the live-events stream). */
+export function signedOutHere(reason: SignedOutReason): void {
+  setToken(null);
+  try {
+    localStorage.removeItem("biosite-signoff.me");
+  } catch {
+    // best-effort
+  }
+  unauthorizedListeners.forEach((l) => l(reason));
 }
 
 export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {

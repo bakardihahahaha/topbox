@@ -60,7 +60,9 @@ export function App() {
         setMessage(
           reason === "closed"
             ? "The service has closed for today — you've been signed out."
-            : "Your session ended (timed out, ended by an admin, or your network changed) — sign in again. Unsaved changes are kept on this device and will sync.",
+            : reason === "otherDevice"
+              ? "You signed in on another device, so you were signed out here (one device at a time)."
+              : "Your session ended (timed out, ended by an admin, or your network changed) — sign in again. Unsaved changes are kept on this device and will sync.",
         );
       }),
     [],

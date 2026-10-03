@@ -54,8 +54,21 @@ describe("PIN sign-in", () => {
     expect((await t.login("op2", "3333", "7.7.7.7")).res.json().error).toBe("TEMP_LOCKED");
   });
 
-  it("refuses a second IP while a live session exists on the first", async () => {
+  it("one device at a time: signing in elsewhere signs the previous device out", async () => {
     const t = await setup();
+    const pc = await t.login("op", "2222", "1.1.1.1");
+    const pcCall = t.as(pc.token, "1.1.1.1");
+    expect((await pcCall("GET", "/api/auth/me")).statusCode).toBe(200);
+    const tablet = await t.login("op", "2222", "2.2.2.2");
+    expect(tablet.res.statusCode).toBe(200);
+    expect((await pcCall("GET", "/api/auth/me")).statusCode).toBe(401); // the PC is signed out
+    expect((await t.as(tablet.token, "2.2.2.2")("GET", "/api/auth/me")).statusCode).toBe(200);
+  });
+
+  it("with 'one device' off, the one-IP rule refuses a second IP while a live session exists on the first", async () => {
+    const t = await setup();
+    const admin = await t.login("admin", "1111", "9.9.9.9");
+    await t.as(admin.token, "9.9.9.9")("PATCH", "/api/security", { oneDevice: false });
     expect((await t.login("op", "2222", "1.1.1.1")).res.statusCode).toBe(200);
     expect((await t.login("op", "2222", "1.1.1.1")).res.statusCode).toBe(200);
     const b = await t.login("op", "2222", "2.2.2.2");
