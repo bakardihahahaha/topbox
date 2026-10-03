@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 /** Photo image files on the NAS's disk (PHOTOS_PATH, by default a `photos` folder next to the
@@ -6,6 +6,10 @@ import { dirname, join, resolve, sep } from "node:path";
  *   photos/<serial number>/<date>_<check>_<id>.jpg
  * The database keeps each photo's path relative to this folder, so a later serial-number change
  * (667 → 667R) never loses a file. */
+/** What the NAS / Windows / macOS drop into folders by themselves (Synology's @eaDir thumbnail
+ * index above all) — a folder holding only these counts as empty. */
+const SYSTEM_JUNK = new Set(["@eaDir", "#recycle", "Thumbs.db", "desktop.ini", ".DS_Store"]);
+
 export class PhotoFiles {
   private readonly root: string;
 
@@ -37,8 +41,24 @@ export class PhotoFiles {
   async remove(file: string): Promise<void> {
     const p = this.abs(file);
     await rm(p, { force: true });
-    // The TopBox's folder goes too once its last photo is gone (only an empty one — rmdir refuses otherwise).
-    if (dirname(p) !== this.root) await rmdir(dirname(p)).catch(() => {});
+    // The TopBox's folder goes too once its last photo is gone.
+    if (dirname(p) !== this.root) await this.removeIfEmpty(dirname(p));
+  }
+
+  /** Deletes a folder that holds no photos any more (system junk like @eaDir doesn't count). */
+  private async removeIfEmpty(dir: string): Promise<boolean> {
+    const entries = await readdir(dir).catch(() => null);
+    if (!entries || entries.some((e) => !SYSTEM_JUNK.has(e))) return false;
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    return true;
+  }
+
+  /** On start-up: removes every TopBox folder left empty (e.g. by an older version). */
+  async pruneEmptyFolders(): Promise<number> {
+    const entries = await readdir(this.root, { withFileTypes: true }).catch(() => []);
+    let n = 0;
+    for (const e of entries) if (e.isDirectory() && !SYSTEM_JUNK.has(e.name) && (await this.removeIfEmpty(join(this.root, e.name)))) n++;
+    return n;
   }
 
   /** Danger zone: every photo file goes (the folder itself stays). */

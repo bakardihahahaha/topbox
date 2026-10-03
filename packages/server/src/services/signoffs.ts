@@ -198,7 +198,9 @@ export class SignoffService {
     }
     const files = await this.store.signoffs.hardDelete(id);
     if (files === null) throw conflict("NOT_DELETED", "Only a sign-off in the Deleted tab can be deleted forever.");
-    await Promise.all(files.map((f) => this.photoFiles.remove(f).catch(() => {})));
+    // One after another, so the TopBox's folder is removed once its last photo is gone.
+    for (const f of files) await this.photoFiles.remove(f).catch(() => {});
+    await this.photoFiles.pruneEmptyFolders();
   }
 
   async permissions(): Promise<Permissions> {
@@ -470,6 +472,7 @@ export class SignoffService {
   async purgeRemovedPhotoFiles(): Promise<number> {
     const files = await this.store.signoffs.deletedPhotoFiles();
     for (const f of files) await this.photoFiles.remove(f).catch(() => {});
+    await this.photoFiles.pruneEmptyFolders();
     return files.length;
   }
 

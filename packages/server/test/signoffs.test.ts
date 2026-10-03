@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { Signoff } from "@biosite-signoff/shared";
 import { FAKE_JPEG, FAKE_JPEG_URL, setup } from "./helpers.js";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SIG = "M10 10L50 60L90 20";
@@ -894,5 +894,28 @@ describe("removing a check photo", () => {
     expect(readdirSync(folder)).toEqual([left]);
     expect(await t.signoffs.purgeRemovedPhotoFiles()).toBe(2);
     expect(existsSync(folder)).toBe(false); // the empty RM-1 folder is gone too
+  });
+});
+
+describe("photo folders on the NAS", () => {
+  it("delete forever removes the TopBox's folder, even with Synology's @eaDir inside; start-up prunes empty ones", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const id = randomUUID();
+    const s = (await admin("POST", "/api/signoffs", { id, templateId: t.template.id, serialNumber: "DF-9", typeId: "service" })).json() as Signoff;
+    await admin("POST", `/api/signoffs/${id}/photos`, { photoId: randomUUID(), checkId: s.template.checks[0]!.id, dataUrl: FAKE_JPEG_URL });
+    const folder = join(t.photosDir, "DF-9");
+    mkdirSync(join(folder, "@eaDir", "thumb"), { recursive: true }); // what DSM adds by itself
+    await admin("PUT", "/api/permissions", { deleteSignoffs: "all" });
+    await admin("DELETE", `/api/signoffs/${id}`);
+    expect((await admin("DELETE", `/api/signoffs/${id}/forever`)).statusCode).toBe(200);
+    expect(existsSync(folder)).toBe(false);
+    // An empty folder left behind earlier goes on start-up; one with photos stays.
+    mkdirSync(join(t.photosDir, "OLD-1", "@eaDir"), { recursive: true });
+    mkdirSync(join(t.photosDir, "KEEP-1"), { recursive: true });
+    writeFileSync(join(t.photosDir, "KEEP-1", "x.jpg"), "x");
+    await t.signoffs.purgeRemovedPhotoFiles();
+    expect(existsSync(join(t.photosDir, "OLD-1"))).toBe(false);
+    expect(existsSync(join(t.photosDir, "KEEP-1", "x.jpg"))).toBe(true);
   });
 });
