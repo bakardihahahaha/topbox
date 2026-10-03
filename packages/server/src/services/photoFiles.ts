@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 /** Photo image files on the NAS's disk (PHOTOS_PATH, by default a `photos` folder next to the
@@ -17,9 +17,21 @@ export class PhotoFiles {
     this.root = resolve(root);
   }
 
+  /** A serial number / part number / label made safe as a file or folder name. */
+  static cleanName(s: string, fallback = "x"): string {
+    return s.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || fallback;
+  }
+
   static fileName(serial: string, checkLabel: string, takenAt: string, id: string): string {
-    const clean = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "x";
+    const clean = (s: string) => PhotoFiles.cleanName(s);
     return `${clean(serial)}/${takenAt.slice(0, 10)}_${clean(checkLabel)}_${id.slice(0, 8)}.jpg`;
+  }
+
+  /** Renames a file inside the folder (e.g. a part photo after its part number changed). */
+  async move(from: string, to: string): Promise<void> {
+    const target = this.abs(to);
+    await mkdir(dirname(target), { recursive: true });
+    await rename(this.abs(from), target);
   }
 
   private abs(file: string): string {

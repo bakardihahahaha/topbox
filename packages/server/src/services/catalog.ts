@@ -21,8 +21,7 @@ export class CatalogService {
     if (!part) throw notFound("Part");
     if (!this.partPhotos) throw badRequest("Part photos aren't set up on this server.");
     if (jpeg.length < 100 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw badRequest("The photo must be a JPEG image.");
-    const clean = part.partNumber.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "part";
-    const file = `${clean}_${id.slice(0, 8)}_${randomUUID().slice(0, 8)}.jpg`;
+    const file = `${PhotoFiles.cleanName(part.partNumber, "part")}_${id.slice(0, 8)}_${randomUUID().slice(0, 8)}.jpg`;
     await this.partPhotos.write(file, jpeg);
     if (part.photoFile && part.photoFile !== file) await this.partPhotos.remove(part.photoFile).catch(() => {});
     await this.store.parts.update(id, { photoFile: file });
@@ -84,7 +83,22 @@ export class CatalogService {
     }
     if (patch.name !== undefined && !patch.name.trim()) throw badRequest("Name is required.");
     await this.store.parts.update(id, { partNumber: patch.partNumber?.trim(), name: patch.name?.trim(), description: patch.description?.trim() });
-    return (await this.store.parts.get(id))!;
+    const part = (await this.store.parts.get(id))!;
+    // The photo belongs to the part (by its id), so it stays whatever is renamed — only its file
+    // on the NAS is renamed to carry the new part number.
+    if (part.photoFile && this.partPhotos) {
+      const file = `${PhotoFiles.cleanName(part.partNumber, "part")}_${id.slice(0, 8)}_${randomUUID().slice(0, 8)}.jpg`;
+      if (!part.photoFile.startsWith(`${PhotoFiles.cleanName(part.partNumber, "part")}_`)) {
+        try {
+          await this.partPhotos.move(part.photoFile, file);
+          await this.store.parts.update(id, { photoFile: file });
+          return (await this.store.parts.get(id))!;
+        } catch {
+          // file missing / locked — keep the old name, the photo still works
+        }
+      }
+    }
+    return part;
   }
 
   /** The admin's order of the parts — the order sign-offs list them in. Must name every part once. */

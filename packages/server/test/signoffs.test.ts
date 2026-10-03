@@ -919,3 +919,21 @@ describe("photo folders on the NAS", () => {
     expect(existsSync(join(t.photosDir, "KEEP-1", "x.jpg"))).toBe(true);
   });
 });
+
+describe("part photo after renaming the part", () => {
+  it("stays with the part; its file on the NAS takes the new part number", async () => {
+    const t = await setup();
+    const admin = t.as((await t.login("admin", "1111")).token);
+    const part = await t.catalog.createPart({ partNumber: "SP-01", name: "Spring", description: "old" });
+    await admin("PUT", `/api/parts/${part.id}/photo`, { dataUrl: FAKE_JPEG_URL });
+    await admin("PATCH", `/api/parts/${part.id}`, { name: "New spring", description: "new" });
+    const kept = readdirSync(t.partPhotosDir);
+    expect(kept[0]!.startsWith("SP-01_")).toBe(true); // name / description only: same file
+    await admin("PATCH", `/api/parts/${part.id}`, { partNumber: "SP-99" });
+    const p = ((await admin("GET", "/api/parts")).json() as { partNumber: string; name: string; photoFile: string }[])[0]!;
+    expect([p.partNumber, p.name]).toEqual(["SP-99", "New spring"]);
+    expect(p.photoFile.startsWith("SP-99_")).toBe(true);
+    expect(readdirSync(t.partPhotosDir)).toEqual([p.photoFile]);
+    expect((await admin("GET", `/api/parts/${part.id}/photo`)).statusCode).toBe(200);
+  });
+});
