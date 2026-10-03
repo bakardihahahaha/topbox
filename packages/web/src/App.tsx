@@ -83,8 +83,8 @@ export function App() {
   if (status === "checking") return null;
   if (status === "signedOut" || !me) {
     return (
-      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-        <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           <SignInPage
             onSignedIn={() => {
               setMessage(null);
@@ -103,8 +103,8 @@ export function App() {
   const partsOnly = me.role === "parts";
   return (
     <MeContext.Provider value={me}>
-      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-        <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border-soft)", flex: "none", overflowX: "auto" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid var(--border-soft)", flex: "none", overflowX: "auto", position: "sticky", top: 0, zIndex: 50, background: "var(--bg-deep)" }}>
           <div style={{ display: "flex", gap: 16, alignItems: "center", flex: "none" }}>
             {partsOnly ? (
               <NavTab to="/parts-used" label="Parts used" />
@@ -145,7 +145,7 @@ export function App() {
             </button>
           </div>
         </nav>
-        <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+        <div style={{ flex: 1, overflowX: "clip" }}>
           {partsOnly ? (
             <Routes>
               <Route path="/parts-used" element={<PartsUsagePage />} />

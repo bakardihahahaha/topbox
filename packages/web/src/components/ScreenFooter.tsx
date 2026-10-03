@@ -32,7 +32,7 @@ export function ScreenFooter() {
   }, []);
   if (!text.trim()) return null;
   return (
-    <footer style={{ flex: "none", padding: "6px 16px", borderTop: "1px solid var(--border-soft)", background: "var(--bg-base)", color: "var(--text-3)", fontSize: 12, textAlign: "center", whiteSpace: "pre-wrap" }}>
+    <footer style={{ flex: "none", position: "sticky", bottom: 0, zIndex: 50, padding: "6px 16px", borderTop: "1px solid var(--border-soft)", background: "var(--bg-base)", color: "var(--text-3)", fontSize: 12, textAlign: "center", whiteSpace: "pre-wrap" }}>
       {text}
     </footer>
   );

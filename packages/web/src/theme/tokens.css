@@ -100,10 +100,12 @@
   box-sizing: border-box;
 }
 
+/* The page itself scrolls (no fixed-height inner scroller), so pinch-zoom works like on any
+   website: zoomed in, the view pans up / down / sideways freely. The top bar and the footer
+   stay put with position: sticky. */
 html,
 body {
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100dvh;
 }
 
 html {
@@ -125,11 +127,11 @@ body {
 }
 
 /* --zoom (lib/touchSize.ts) scales the whole interface for big touch screens and gloved hands.
-   A percentage height resolves against the (unzoomed) body, so 100% still fills exactly one
-   screen — no need to divide by the zoom factor. */
+   The page scrolls as a whole, so the zoomed interface simply gets taller. */
 #root {
   zoom: var(--zoom, 1);
-  height: 100%;
+  /* At least one screen tall, whatever the zoom (a zoomed element's own height is scaled). */
+  min-height: calc(100dvh / var(--zoom, 1));
   display: flex;
   flex-direction: column;
 }

@@ -83,7 +83,7 @@ export function SignInPage({ onSignedIn, message }: SignInPageProps) {
   const visible = (users ?? []).filter((u) => u.name.toLowerCase().includes(filter.trim().toLowerCase()));
 
   return (
-    <div style={{ height: "100%", overflowY: "auto", background: "var(--bg-deep)", padding: 16 }}>
+    <div style={{ flex: 1, background: "var(--bg-deep)", padding: 16 }}>
       <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 8 }}>
           <div style={{ fontSize: 24, fontWeight: 700 }}>Biosite Sign-off</div>
