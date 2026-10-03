@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { SIGNATURE_BOX } from "@biosite-signoff/shared";
+import { signatureBounds } from "../lib/signaturePath.js";
 
 export interface SignaturePadHandle {
   clear: () => void;
@@ -142,9 +143,17 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { onChange: (path: st
 /** Read-only rendering of a stored signature path. */
 export function SignatureImage({ path, height = 34 }: { path: string; height?: number }) {
   const { width: W, height: H } = SIGNATURE_BOX;
+  // Same box as before, but the ink itself is zoomed to fill it (proportions kept, centred).
+  const b = signatureBounds(path, 6);
+  const viewBox = b ? (() => {
+    const aspect = W / H;
+    const w = Math.max(b.width, b.height * aspect);
+    const h = w / aspect;
+    return `${b.x - (w - b.width) / 2} ${b.y - (h - b.height) / 2} ${w} ${h}`;
+  })() : `0 0 ${W} ${H}`;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ height, width: (height * W) / H, maxWidth: "100%", background: "#fff", borderRadius: "var(--radius-micro)", display: "block" }}>
-      <path d={path} fill="none" stroke="#1c1d2e" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+    <svg viewBox={viewBox} style={{ height, width: (height * W) / H, maxWidth: "100%", background: "#fff", borderRadius: "var(--radius-micro)", display: "block" }}>
+      <path d={path} fill="none" stroke="#1c1d2e" strokeWidth={1.8} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

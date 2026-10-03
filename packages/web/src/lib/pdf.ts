@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable, { type CellHookData } from "jspdf-autotable";
 import { DEFAULT_DOCUMENT_SETTINGS, SIGNATURE_BOX, departedAt, typeNameOf, type DocumentSettings, type Signoff } from "@biosite-signoff/shared";
-import { parseSignaturePath } from "./signaturePath.js";
+import { parseSignaturePath, signatureBounds } from "./signaturePath.js";
 import { localStamp } from "./format.js";
 
 // The PDF is built entirely in the browser (jsPDF) on whatever device presses the button — the
@@ -144,14 +144,18 @@ function drawCross(doc: jsPDF, cx: number, cy: number) {
   doc.line(cx - 1.4, cy + 1.4, cx + 1.4, cy - 1.4);
 }
 
+/** The signature as large as its cell allows: only the inked area is scaled (proportions kept)
+ * and centred — a wide signature fills the width, an upright one the height. */
 function drawSignature(doc: jsPDF, path: string, x: number, y: number, w: number, h: number) {
-  const scale = Math.min(w / SIGNATURE_BOX.width, h / SIGNATURE_BOX.height);
-  const ox = x + (w - SIGNATURE_BOX.width * scale) / 2;
+  const box = signatureBounds(path, 4) ?? { x: 0, y: 0, width: SIGNATURE_BOX.width, height: SIGNATURE_BOX.height };
+  const scale = Math.min(w / box.width, h / box.height);
+  const ox = x + (w - box.width * scale) / 2 - box.x * scale;
+  const oy = y + (h - box.height * scale) / 2 - box.y * scale;
   doc.setDrawColor(20, 30, 90);
   doc.setLineWidth(0.3);
   for (const stroke of parseSignaturePath(path)) {
     for (let i = 1; i < stroke.length; i++) {
-      doc.line(ox + stroke[i - 1]!.x * scale, y + stroke[i - 1]!.y * scale, ox + stroke[i]!.x * scale, y + stroke[i]!.y * scale);
+      doc.line(ox + stroke[i - 1]!.x * scale, oy + stroke[i - 1]!.y * scale, ox + stroke[i]!.x * scale, oy + stroke[i]!.y * scale);
     }
   }
 }

@@ -13,6 +13,8 @@ export function PdfViewerHost() {
   const [file, setFile] = useState<{ blob: Blob; fileName: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pages, setPages] = useState(0);
+  // Page size on screen; 75% shows a whole A4 width comfortably on most screens.
+  const [zoom, setZoom] = useState(0.75);
 
   useEffect(() => {
     if (!req) return;
@@ -27,11 +29,6 @@ export function PdfViewerHost() {
         if (cancelled) return;
         url = URL.createObjectURL(blob);
         setFile({ blob, fileName, url });
-        const { renderPdfPages } = await lazyImport(() => import("../lib/pdfRender.js"));
-        const container = pagesRef.current;
-        if (!container || cancelled) return;
-        container.innerHTML = "";
-        setPages(await renderPdfPages(blob, container, () => cancelled));
       } catch (err) {
         if (!cancelled) setError(errorMessage(err));
       }
@@ -44,6 +41,30 @@ export function PdfViewerHost() {
       if (url) URL.revokeObjectURL(url);
     };
   }, [req]);
+
+  // (Re)draws the pages whenever the PDF or the zoom changes.
+  useEffect(() => {
+    if (!file) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { renderPdfPages } = await lazyImport(() => import("../lib/pdfRender.js"));
+        const container = pagesRef.current;
+        if (!container || cancelled) return;
+        container.innerHTML = "";
+        const n = await renderPdfPages(file.blob, container, () => cancelled, zoom);
+        if (!cancelled) setPages(n);
+      } catch (err) {
+        if (!cancelled) setError(errorMessage(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [file, zoom]);
+
+  // Every new PDF opens at the default size again.
+  useEffect(() => setZoom(0.75), [req]);
 
   if (!req) return null;
 
@@ -86,6 +107,32 @@ export function PdfViewerHost() {
           {file ? file.fileName : "Preparing PDF…"}
           {pages > 0 && <span style={{ color: "var(--text-4)" }}> · {pages} page{pages === 1 ? "" : "s"}</span>}
         </div>
+        <div role="group" aria-label="Zoom" style={{ display: "flex" }}>
+          {[0.5, 0.75, 1, 1.5, 2].map((z, i, all) => (
+            <button
+              key={z}
+              onClick={() => setZoom(z)}
+              aria-pressed={zoom === z}
+              className="mono"
+              style={{
+                ...ghost,
+                height: 52,
+                minWidth: 58,
+                padding: "0 8px",
+                fontSize: 13,
+                marginLeft: i ? -1 : 0,
+                borderRadius: i === 0 ? "var(--radius-control) 0 0 var(--radius-control)" : i === all.length - 1 ? "0 var(--radius-control) var(--radius-control) 0" : 0,
+                borderColor: zoom === z ? "var(--accent)" : "var(--border)",
+                background: zoom === z ? "var(--accent-wash)" : "transparent",
+                color: zoom === z ? "var(--accent)" : "var(--text-2)",
+                position: "relative",
+                zIndex: zoom === z ? 1 : 0,
+              }}
+            >
+              {Math.round(z * 100)}%
+            </button>
+          ))}
+        </div>
         <button style={{ ...primary, height: 52, minWidth: 110 }} onClick={save} disabled={!file}>
           Save
         </button>
@@ -96,7 +143,7 @@ export function PdfViewerHost() {
           ✕
         </button>
       </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 8px" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "16px 8px" }}>
         {error && <div style={{ color: "#f88", textAlign: "center", padding: 24 }}>{error}</div>}
         {!error && pages === 0 && <div style={{ color: "#aaa", textAlign: "center", padding: 24 }}>Loading…</div>}
         <div ref={pagesRef} />

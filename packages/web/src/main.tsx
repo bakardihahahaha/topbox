@@ -18,11 +18,13 @@ import { initPwaUpdateCheck } from "./lib/pwaUpdate.js";
 import { initTouchSize } from "./lib/touchSize.js";
 import { initKeyboardSafe } from "./lib/keyboardSafe.js";
 import { initStaleBundleReload } from "./lib/staleBundle.js";
+import { initNoZoomOnWindows } from "./lib/noZoom.js";
 
 initPwaUpdateCheck();
 initTouchSize();
 initKeyboardSafe();
 initStaleBundleReload();
+initNoZoomOnWindows();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
